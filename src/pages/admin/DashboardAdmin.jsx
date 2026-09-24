@@ -555,7 +555,7 @@ export default function DashboardAdmin() {
 
   return (
     <div className="container" style={{ paddingBottom: '90px', background: '#F8FAFC', minHeight: '100vh' }}>
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', position: 'relative', overflow: 'hidden' }}>
+      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', position: 'sticky', top: 0, zIndex: 50, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}></div>
         <div className="flex justify-between items-center position-relative mb-6">
           <div className="flex items-center gap-4">

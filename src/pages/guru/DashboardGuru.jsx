@@ -341,7 +341,7 @@ export default function DashboardGuru() {
       )}
 
       {/* Header ID Card */}
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem' }}>
+      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', position: 'sticky', top: 0, zIndex: 50 }}>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             {profile?.foto_profil ? (
