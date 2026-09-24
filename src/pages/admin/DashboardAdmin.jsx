@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2 } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X } from 'lucide-react'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import html2pdf from 'html2pdf.js'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
@@ -33,6 +35,9 @@ export default function DashboardAdmin() {
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
+  
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportPreviewData, setExportPreviewData] = useState({ columns: [], rows: [] })
   
   const navigate = useNavigate()
 
@@ -227,63 +232,139 @@ export default function DashboardAdmin() {
     }
   }
 
-  const downloadExcel = () => {
-    if (absensiData.length === 0) return alert("Tidak ada data untuk diunduh.");
-    
-    let worksheetData = [];
-    
-    if (laporanTipe === 'bulanan') {
-       // GET UNIQUE USERS
+  const handleOpenExportModal = () => {
+     if (absensiData.length === 0) return alert("Tidak ada data untuk diekspor.");
+     let columns = [];
+     let rows = [];
+
+     if (laporanTipe === 'bulanan') {
+       columns = ['No', 'Nama', 'NIP'];
+       const [year, month] = laporanBulan.split('-');
+       const daysInMonth = new Date(year, month, 0).getDate();
+       for(let i=1; i<=daysInMonth; i++) columns.push(i.toString());
+
        const userMap = {}
        pegawaiData.forEach(p => {
-          userMap[p.id] = {
-             nama: p.full_name || p.email,
-             nip: p.nip || '-',
-             absensi: {}
-          }
+          userMap[p.id] = { nama: p.full_name || p.email, nip: p.nip || '-', absensi: {} }
        })
        absensiData.forEach(a => {
           if(!userMap[a.user_id]) return;
-          const tgl = new Date(a.tanggal).getDate()
-          const inTime = a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
-          const outTime = a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
-          let statusText = ''
-          if (a.status === 'hadir') statusText = `✓\nIn: ${inTime}\nOut: ${outTime}`
-          else statusText = a.status.toUpperCase()
-          
-          userMap[a.user_id].absensi[tgl] = statusText
+          const tgl = new Date(a.tanggal).getDate();
+          userMap[a.user_id].absensi[tgl] = {
+             status: a.status,
+             in: a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
+             out: a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+          };
        })
-       
-       const [year, month] = laporanBulan.split('-')
-       const daysInMonth = new Date(year, month, 0).getDate()
-       
-       Object.values(userMap).forEach((user, index) => {
-          const row = {
-             'No': index + 1,
-             'Nama': user.nama,
-             'NIP': user.nip,
-          }
+
+       rows = Object.values(userMap).map((user, index) => {
+          const row = { No: index + 1, Nama: user.nama, NIP: user.nip };
           for(let i=1; i<=daysInMonth; i++) {
-             row[i.toString()] = user.absensi[i] || '-'
+             row[i] = user.absensi[i] || null;
           }
-          worksheetData.push(row)
-       })
-    } else {
-       worksheetData = getFilteredAndSortedData().map((a, index) => ({
-         'No': index + 1,
-         'Nama Pegawai': a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown',
-         'NIP': a.profiles?.nip || '-',
-         'Tanggal': new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+          return row;
+       });
+     } else {
+       columns = ['No', 'Nama', 'NIP', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
+       rows = getFilteredAndSortedData().map((a, index) => ({
+         No: index + 1,
+         Nama: a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown',
+         NIP: a.profiles?.nip || '-',
+         Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
          'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-         'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Belum Pulang',
-         'Status': a.status?.toUpperCase() || 'HADIR'
+         'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
+         Status: a.status?.toUpperCase() || 'HADIR'
        }));
+     }
+
+     setExportPreviewData({ columns, rows });
+     setShowExportModal(true);
+  }
+
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Laporan Presensi');
+
+    const headerRow = worksheet.addRow(exportPreviewData.columns);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+
+    worksheet.getColumn(1).width = 5;
+    worksheet.getColumn(2).width = 25;
+    worksheet.getColumn(3).width = 15;
+    if (laporanTipe === 'bulanan') {
+      for(let i=4; i<=exportPreviewData.columns.length; i++) worksheet.getColumn(i).width = 12;
+    } else {
+      for(let i=4; i<=7; i++) worksheet.getColumn(i).width = 18;
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Presensi");
-    XLSX.writeFile(workbook, `Laporan_Kehadiran_${laporanTipe}.xlsx`);
+    exportPreviewData.rows.forEach(row => {
+      const rowData = [];
+      exportPreviewData.columns.forEach(col => {
+         if (laporanTipe === 'bulanan' && col !== 'No' && col !== 'Nama' && col !== 'NIP') {
+            const cellData = row[col];
+            if (!cellData) rowData.push('-');
+            else if (cellData.status === 'hadir') rowData.push(`✓\nIn: ${cellData.in}\nOut: ${cellData.out}`);
+            else rowData.push(cellData.status.toUpperCase());
+         } else {
+            rowData.push(row[col]);
+         }
+      });
+      
+      const addedRow = worksheet.addRow(rowData);
+      addedRow.eachCell((cell, colNumber) => {
+         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+         
+         if (laporanTipe === 'bulanan' && colNumber > 3) {
+            const cellData = row[exportPreviewData.columns[colNumber-1]];
+            if (cellData) {
+               if (cellData.status === 'hadir') {
+                  cell.font = { color: { argb: 'FF2563EB' } };
+               } else if (cellData.status === 'izin') {
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF59E0B' } };
+                  cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+               } else if (cellData.status === 'sakit') {
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } };
+                  cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+               }
+            }
+         }
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Laporan_Kehadiran_${laporanTipe}.xlsx`);
+  }
+
+  const exportToPDF = () => {
+    const element = document.getElementById('export-preview-table');
+    const opt = {
+      margin:       0.2,
+      filename:     `Laporan_Kehadiran_${laporanTipe}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'in', format: 'legal', orientation: laporanTipe === 'bulanan' ? 'landscape' : 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save();
+  }
+
+  const exportToWord = () => {
+    const tableHTML = document.getElementById('export-preview-table').outerHTML;
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
+      "xmlns:w='urn:schemas-microsoft-com:office:word' "+
+      "xmlns='http://www.w3.org/TR/REC-html40'>"+
+      "<head><meta charset='utf-8'><title>Laporan Absensi</title></head><body>"+
+      "<h2 style='text-align:center;'>Laporan Absensi</h2>";
+    const footer = "</body></html>";
+    const sourceHTML = header + tableHTML + footer;
+    
+    const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
+    saveAs(blob, `Laporan_Kehadiran_${laporanTipe}.doc`);
   }
 
   const getFilteredAndSortedData = () => {
@@ -451,8 +532,8 @@ export default function DashboardAdmin() {
                   </button>
                   <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Laporan</h3>
                 </div>
-                <button onClick={downloadExcel} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.4rem 0.8rem', width: 'auto', fontSize: '0.8rem', borderRadius: '10px' }}>
-                  <Download size={14} /> Excel
+                <button onClick={handleOpenExportModal} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.4rem 0.8rem', width: 'auto', fontSize: '0.8rem', borderRadius: '10px' }}>
+                  <Download size={14} /> Ekspor
                 </button>
             </div>
 
@@ -754,6 +835,77 @@ export default function DashboardAdmin() {
           <LogOut size={24} strokeWidth={1.5} /> Log Out
         </button>
       </nav>
+      {showExportModal && (
+        <div className="popup-overlay" style={{ zIndex: 1000, padding: '1rem' }}>
+          <div className="popup-content" style={{ maxWidth: '900px', width: '100%', padding: '1.5rem', borderRadius: '24px', background: 'white' }}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Pratinjau Laporan ({laporanTipe.toUpperCase()})</h2>
+              <button onClick={() => setShowExportModal(false)} style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div style={{ overflowX: 'auto', maxHeight: '50vh', border: '1px solid #E2E8F0', borderRadius: '12px', marginBottom: '1.5rem' }}>
+              <table id="export-preview-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: laporanTipe === 'bulanan' ? '1200px' : '100%' }}>
+                <thead style={{ background: '#4F46E5', color: 'white', position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr>
+                    {exportPreviewData.columns.map((col, idx) => (
+                      <th key={idx} style={{ padding: '0.5rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'nowrap' }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {exportPreviewData.rows.map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      {exportPreviewData.columns.map((col, cIdx) => {
+                        let cellContent = row[col] || '-';
+                        let bg = 'white';
+                        let color = '#1E293B';
+                        let bold = false;
+                        
+                        if (laporanTipe === 'bulanan' && cIdx > 2 && cellContent !== '-') {
+                           if (cellContent.status === 'hadir') {
+                              color = '#2563EB'; // Blue
+                              cellContent = `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}`;
+                           } else if (cellContent.status === 'izin') {
+                              bg = '#FBBF24'; // Yellow
+                              color = 'white';
+                              bold = true;
+                              cellContent = 'IZIN';
+                           } else if (cellContent.status === 'sakit') {
+                              bg = '#EF4444'; // Red
+                              color = 'white';
+                              bold = true;
+                              cellContent = 'SAKIT';
+                           }
+                        }
+
+                        return (
+                          <td key={cIdx} style={{ padding: '0.4rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'pre-wrap', background: bg, color: color, fontWeight: bold ? 'bold' : 'normal', verticalAlign: 'middle' }}>
+                            {cellContent}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+               <button onClick={exportToExcel} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.8rem', fontSize: '0.9rem' }}>
+                  Download Excel
+               </button>
+               <button onClick={exportToPDF} className="btn" style={{ background: '#EF4444', color: 'white', padding: '0.8rem', fontSize: '0.9rem' }}>
+                  Download PDF
+               </button>
+               <button onClick={exportToWord} className="btn" style={{ background: '#2563EB', color: 'white', padding: '0.8rem', fontSize: '0.9rem' }}>
+                  Download Word
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

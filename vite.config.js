@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      workbox: {
+        maximumFileSizeToCacheInBytes: 10000000 // 10MB
+      },
       manifest: {
         name: 'Absensi Guru',
         short_name: 'Absensi',
