@@ -40,7 +40,7 @@ export default function DashboardAdmin() {
     setLoadingData(true)
     const { data } = await supabase
       .from('absensi')
-      .select('*, profiles(full_name, email)')
+      .select('*, profiles(full_name, email, foto_profil, jabatan)')
       .order('waktu_masuk', { ascending: false })
       .limit(200)
       
@@ -195,9 +195,23 @@ export default function DashboardAdmin() {
                 {/* Compact List Cards */}
                 {filteredAbsensi.map(a => (
                   <div key={a.id} className="card flex items-center justify-between" style={{ padding: '0.8rem 1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{a.profiles?.full_name || a.profiles?.email?.split('@')[0]}</h4>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
+                    <div className="flex gap-3 items-center">
+                       {a.profiles?.foto_profil ? (
+                          <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                       ) : (
+                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Users size={24} color="var(--text-muted)" />
+                          </div>
+                       )}
+                       <div>
+                         <h4 style={{ margin: 0, fontSize: '0.95rem' }}>
+                           {a.profiles?.full_name || a.profiles?.email?.split('@')[0]}
+                         </h4>
+                         <p style={{ margin: 0, fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : 'var(--text-muted)' }}>
+                           {new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                           {a.status && a.status !== 'hadir' && ` • ${a.status.toUpperCase()}: ${a.keterangan || '-'}`}
+                         </p>
+                       </div>
                     </div>
                     <div className="flex gap-4">
                       <div className="text-center">

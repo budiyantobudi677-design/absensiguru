@@ -9,6 +9,8 @@ export default function DashboardGuru() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('absensi') 
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
+  const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
+  const [keterangan, setKeterangan] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
   const navigate = useNavigate()
 
@@ -64,7 +66,7 @@ export default function DashboardGuru() {
           } else {
             showPopup("Terjadi Kesalahan", error.message, "error")
           }
-        } else {
+        } else if (jenis === 'pulang') {
           const { error } = await supabase
             .from('absensi')
             .update({ waktu_pulang: now, lokasi_pulang: loc })
@@ -76,14 +78,50 @@ export default function DashboardGuru() {
           } else {
             showPopup("Terjadi Kesalahan", error.message, "error")
           }
+        } else if (jenis === 'sakit' || jenis === 'izin') {
+          const { error } = await supabase
+            .from('absensi')
+            .insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
+          
+          if (!error) {
+            setHasCheckedIn(true)
+            setIzinMode(null)
+            showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
+          } else {
+            showPopup("Terjadi Kesalahan", error.message, "error")
+          }
         }
         setLoading(false)
       }, () => {
-        showPopup("Akses Lokasi Ditolak", "Mohon izinkan akses GPS untuk absensi.", "error")
+        showPopup("Akses Lokasi Ditolak", "Mohon izinkan akses GPS.", "error")
         setLoading(false)
       })
     } else {
       showPopup("GPS Tidak Didukung", "Browser Anda tidak mendukung lokasi.", "error")
+      setLoading(false)
+    }
+  }
+
+  const uploadFoto = async (event) => {
+    try {
+      setLoading(true)
+      const file = event.target.files[0]
+      if(!file) return
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`
+      const filePath = `${fileName}`
+
+      let { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file)
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
+      
+      await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', user.id)
+      setProfile({ ...profile, foto_profil: publicUrl })
+      showPopup("Tersimpan!", "Foto profil berhasil diperbarui.", "success")
+    } catch (error) {
+      showPopup("Gagal", error.message + " (Pastikan sudah membuat bucket 'avatars' public)", "error")
+    } finally {
       setLoading(false)
     }
   }
@@ -108,9 +146,13 @@ export default function DashboardGuru() {
       <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem' }}>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
-            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <UserCircle size={32} color="var(--primary)" />
-            </div>
+            {profile?.foto_profil ? (
+              <img src={profile.foto_profil} alt="Profil" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '2px solid white' }} />
+            ) : (
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <UserCircle size={32} color="var(--primary)" />
+              </div>
+            )}
             <div>
               <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.875rem' }}>Selamat Pagi,</p>
               <h2 style={{ fontSize: '1.25rem', marginTop: '0.1rem', letterSpacing: '0.5px' }}>
@@ -138,15 +180,32 @@ export default function DashboardGuru() {
             <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
 
             {!hasCheckedIn ? (
-              <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading}>
-                <Fingerprint size={48} strokeWidth={1.5} />
-                <span>Clock In</span>
-              </button>
+              <>
+                <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
+                  <Fingerprint size={48} strokeWidth={1.5} />
+                  <span>Clock In</span>
+                </button>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+                  <button onClick={() => setIzinMode('sakit')} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 1.5rem' }}>Sakit</button>
+                  <button onClick={() => setIzinMode('izin')} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 1.5rem' }}>Izin</button>
+                </div>
+              </>
             ) : (
               <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
                 <Fingerprint size={48} strokeWidth={1.5} />
                 <span>Clock Out</span>
               </button>
+            )}
+
+            {izinMode && (
+              <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
+                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>Form {izinMode === 'sakit' ? 'Sakit' : 'Izin'}</h4>
+                <textarea className="input" rows="3" placeholder="Masukkan keterangan..." value={keterangan} onChange={e => setKeterangan(e.target.value)} style={{ marginBottom: '1rem' }} />
+                <div className="flex gap-2">
+                  <button onClick={() => setIzinMode(null)} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
+                  <button onClick={() => handleAbsen(izinMode)} className="btn btn-primary" style={{ flex: 1 }}>Kirim</button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -179,6 +238,22 @@ export default function DashboardGuru() {
           <div className="fade-in">
             <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Pengaturan Profil</h3>
             <div className="card" style={{ border: 'none', background: 'white' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem' }}>
+                {profile?.foto_profil ? (
+                  <img src={profile.foto_profil} alt="Profil" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '1rem' }} />
+                ) : (
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <UserCircle size={40} color="var(--text-muted)" />
+                  </div>
+                )}
+                <div>
+                  <input type="file" id="upload-foto" accept="image/*" style={{ display: 'none' }} onChange={uploadFoto} disabled={loading} />
+                  <label htmlFor="upload-foto" className="btn" style={{ background: '#E0E7FF', color: '#4F46E5', fontSize: '0.85rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>
+                    {loading ? 'Mengunggah...' : 'Ubah Foto'}
+                  </label>
+                </div>
+              </div>
+
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 setLoading(true);
