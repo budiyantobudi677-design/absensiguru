@@ -238,6 +238,8 @@ export default function DashboardAdmin() {
      if (absensiData.length === 0) return alert("Tidak ada data untuk diekspor.");
      let columns = [];
      let rows = [];
+     let monthName = '';
+     let redColumns = [];
 
      if (laporanTipe === 'bulanan') {
        columns = ['No', 'Nama', 'NIP'];
@@ -245,10 +247,9 @@ export default function DashboardAdmin() {
        const yearNum = parseInt(yearStr);
        const monthNum = parseInt(monthStr) - 1;
        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-       const monthName = `${monthNames[monthNum]} ${yearNum}`;
+       monthName = `${monthNames[monthNum]} ${yearNum}`;
        
        const daysInMonth = new Date(yearNum, monthNum + 1, 0).getDate();
-       const redColumns = [];
        
        for(let i=1; i<=daysInMonth; i++) {
           columns.push(i.toString());
