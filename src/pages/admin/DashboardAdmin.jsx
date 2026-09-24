@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function DashboardAdmin() {
@@ -14,6 +14,7 @@ export default function DashboardAdmin() {
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
+  const [pengumumanData, setPengumumanData] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   
   const [searchTerm, setSearchTerm] = useState('')
@@ -101,11 +102,45 @@ export default function DashboardAdmin() {
     setLoadingData(false)
   }
 
+  const loadPengumuman = async () => {
+    setLoadingData(true)
+    const { data, error } = await supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(50)
+    if (!error && data) setPengumumanData(data)
+    setLoadingData(false)
+  }
+
+  const hapusPengumuman = async (id) => {
+    if (!window.confirm("Hapus pengumuman ini?")) return
+    const { error } = await supabase.from('pengumuman').delete().eq('id', id)
+    if (!error) {
+       setPengumumanData(pengumumanData.filter(p => p.id !== id))
+    }
+  }
+
+  const tambahPengumuman = async (e) => {
+    e.preventDefault()
+    const pesan = e.target.pesan.value
+    if (!pesan.trim()) return
+    const { data, error } = await supabase.from('pengumuman').insert({ pesan }).select()
+    if (!error && data) {
+       setPengumumanData([data[0], ...pengumumanData])
+       e.target.reset()
+       alert("Pengumuman berhasil dikirim!")
+    } else {
+       if (error?.code === '42P01') {
+          alert("Error: Tabel 'pengumuman' belum ada di Supabase. Silakan buat tabel terlebih dahulu!")
+       } else {
+          alert("Gagal mengirim pengumuman: " + error?.message)
+       }
+    }
+  }
+
   const handleMenuClick = (menu) => {
     setActiveTab(menu)
     if (menu === 'pegawai') loadPegawai()
     if (menu === 'laporan') loadAbsensi()
     if (menu === 'overview') fetchOverviewStats()
+    if (menu === 'pengumuman') loadPengumuman()
   }
 
   const compressImage = (file) => {
@@ -271,7 +306,13 @@ export default function DashboardAdmin() {
                 </div>
                 <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Laporan</h3>
               </div>
-              <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', gridColumn: 'span 2' }}>
+              <div onClick={() => handleMenuClick('pengumuman')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                  <Bell size={32} color="white" />
+                </div>
+                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Pengumuman</h3>
+              </div>
+              <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
                 <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
                   <Settings size={32} color="white" />
                 </div>
@@ -381,6 +422,49 @@ export default function DashboardAdmin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'pengumuman' && (
+          <div className="fade-in">
+             <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
+                  <ArrowLeft size={20} />
+                </button>
+                <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Notifikasi & Pengumuman</h3>
+             </div>
+             
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Buat Pengumuman Baru</h4>
+               <form onSubmit={tambahPengumuman}>
+                 <div className="input-group">
+                   <textarea name="pesan" className="input" rows="3" placeholder="Tulis pesan atau notifikasi ke semua pegawai..." required style={{ resize: 'vertical' }}></textarea>
+                 </div>
+                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#EC4899', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                   <Bell size={18} /> Broadcast Notifikasi
+                 </button>
+               </form>
+             </div>
+
+             <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Riwayat Pengumuman</h4>
+             {loadingData ? <p className="text-muted">Memuat data...</p> : (
+               <div className="flex flex-col gap-3">
+                 {pengumumanData.length === 0 && <p className="text-muted">Belum ada pengumuman.</p>}
+                 {pengumumanData.map(p => (
+                   <div key={p.id} className="card" style={{ padding: '1rem', border: '1px solid #F1F5F9', borderRadius: '16px', background: 'white' }}>
+                     <div className="flex justify-between items-start mb-2">
+                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                         {new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                       </span>
+                       <button onClick={() => hapusPengumuman(p.id)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}>
+                         <Trash2 size={16} />
+                       </button>
+                     </div>
+                     <p style={{ margin: 0, fontSize: '0.95rem', color: '#334E68', lineHeight: '1.5' }}>{p.pesan}</p>
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
         )}
 

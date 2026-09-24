@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, X } from 'lucide-react'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -16,6 +16,10 @@ export default function DashboardGuru() {
   // Offline State
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
   const [unsyncedCount, setUnsyncedCount] = useState(0)
+  
+  const [todayStatus, setTodayStatus] = useState(null)
+  const [pengumumanData, setPengumumanData] = useState([])
+  const [showPengumuman, setShowPengumuman] = useState(false)
 
   const navigate = useNavigate()
 
@@ -115,13 +119,23 @@ export default function DashboardGuru() {
 
       if (absensi && absensi.waktu_masuk) {
         setHasCheckedIn(true)
+        setTodayStatus(absensi.status)
       } else {
         // Also check if there's offline check-in for today
         const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
         const offlineToday = offlineData.find(d => d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin'))
-        if (offlineToday) setHasCheckedIn(true)
-        else setHasCheckedIn(false)
+        if (offlineToday) {
+           setHasCheckedIn(true)
+           setTodayStatus(offlineToday.jenis === 'masuk' ? 'hadir' : offlineToday.jenis)
+        } else {
+           setHasCheckedIn(false)
+           setTodayStatus(null)
+        }
       }
+
+      // Fetch Pengumuman
+      const { data: pData } = await supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(10)
+      if (pData) setPengumumanData(pData)
     } catch (err) {
       console.error(err)
     }
@@ -253,6 +267,28 @@ export default function DashboardGuru() {
   return (
     <div className="container" style={{ paddingBottom: '90px' }}>
       
+      {/* Pengumuman Modal */}
+      {showPengumuman && (
+        <div className="popup-overlay" onClick={() => setShowPengumuman(false)}>
+          <div className="card" style={{ background: 'white', width: '90%', maxWidth: '400px', padding: '1.5rem', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+               <h3 style={{ margin: 0, fontSize: '1.125rem' }}>Notifikasi</h3>
+               <button onClick={() => setShowPengumuman(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text-muted)" /></button>
+            </div>
+            {pengumumanData.length === 0 ? <p className="text-muted text-center">Belum ada pengumuman.</p> : (
+               <div className="flex flex-col gap-3">
+                 {pengumumanData.map(p => (
+                   <div key={p.id} style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                     <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginBottom: '0.25rem' }}>{new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                     <p style={{ margin: 0, fontSize: '0.9rem', color: '#1E293B', lineHeight: '1.4' }}>{p.pesan}</p>
+                   </div>
+                 ))}
+               </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Custom Popup Modal */}
       {popup.show && (
         <div className="popup-overlay">
@@ -284,6 +320,10 @@ export default function DashboardGuru() {
               </h2>
             </div>
           </div>
+          <button onClick={() => setShowPengumuman(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer', position: 'relative' }}>
+            <Bell size={20} />
+            {pengumumanData.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
+          </button>
         </div>
         <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
           <div className="flex items-center gap-3">
@@ -330,6 +370,12 @@ export default function DashboardGuru() {
                   <button onClick={() => setIzinMode('izin')} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 1.5rem' }}>Izin</button>
                 </div>
               </>
+            ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
+              <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
+                <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+              </div>
             ) : (
               <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
                 <Fingerprint size={48} strokeWidth={1.5} />
