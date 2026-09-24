@@ -8,7 +8,16 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+      if (data && data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+    }
+    fetchSettings()
+  }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -50,7 +59,7 @@ export default function Login() {
           }}>
             <UserCheck size={44} color="white" />
           </div>
-          <h1 style={{ fontSize: '2.25rem', marginBottom: '0.25rem' }}>HR Portal</h1>
+          <h1 style={{ fontSize: '2.25rem', marginBottom: '0.25rem' }}>{namaSekolah}</h1>
           <p className="text-muted" style={{ fontSize: '1rem' }}>Sistem Kehadiran Karyawan & Guru</p>
         </div>
         

@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
   const [activeTab, setActiveTab] = useState('overview') 
+  const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   
   // Data State
   const [pegawaiData, setPegawaiData] = useState([])
@@ -21,7 +22,13 @@ export default function DashboardAdmin() {
 
   useEffect(() => {
     fetchAdmin()
+    fetchSettings()
   }, [])
+
+  const fetchSettings = async () => {
+    const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+    if (data && data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+  }
 
   const fetchAdmin = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -110,7 +117,7 @@ export default function DashboardAdmin() {
             </div>
             <div>
               <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '500' }}>Administrator</p>
-              <h2 style={{ fontSize: '1.4rem', marginTop: '0.1rem', color: 'white' }}>HR Dashboard</h2>
+              <h2 style={{ fontSize: '1.4rem', marginTop: '0.1rem', color: 'white' }}>{namaSekolah}</h2>
             </div>
           </div>
         </div>
@@ -140,6 +147,39 @@ export default function DashboardAdmin() {
                 <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Pengaturan Sekolah</h3>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'pegawai' && (
+          <div className="fade-in">
+             <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
+                  <ArrowLeft size={20} />
+                </button>
+                <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Daftar Pegawai</h3>
+             </div>
+             {loadingData ? <p className="text-center text-muted">Memuat data pegawai...</p> : (
+               <div className="flex flex-col gap-2">
+                 {pegawaiData.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
+                 {pegawaiData.map(p => (
+                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
+                     <div className="flex gap-3 items-center">
+                       {p.foto_profil ? (
+                          <img src={p.foto_profil} style={{ width:'48px', height:'48px', borderRadius:'50%', objectFit:'cover'}} />
+                       ) : (
+                          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <UserCircle size={28} color="var(--text-muted)" />
+                          </div>
+                       )}
+                       <div>
+                         <h4 style={{ margin: 0, fontSize: '1rem' }}>{p.full_name || p.email}</h4>
+                         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} • {p.nip || 'Tanpa NIP'}</p>
+                       </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
         )}
 
@@ -244,13 +284,22 @@ export default function DashboardAdmin() {
              </div>
              
              <div className="card" style={{ border: 'none', background: 'white' }}>
-               <form onSubmit={(e) => {
+               <form onSubmit={async (e) => {
                  e.preventDefault();
-                 alert('Pengaturan disimpan! (Untuk menyimpan permanen ke database, tabel settings perlu ditambahkan terlebih dahulu)');
+                 const formData = new FormData(e.target);
+                 const newName = formData.get('nama_sekolah');
+                 
+                 const { error } = await supabase.from('settings').upsert({ id: 1, nama_sekolah: newName });
+                 if (error) {
+                   alert('Gagal menyimpan! (Tabel settings belum dibuat di Supabase)');
+                 } else {
+                   setNamaSekolah(newName);
+                   alert('Pengaturan berhasil disimpan permanen!');
+                 }
                }}>
                  <div className="input-group">
                    <label className="input-label">Nama Sekolah / Instansi</label>
-                   <input type="text" className="input" defaultValue="Sekolah Kita" />
+                   <input type="text" name="nama_sekolah" className="input" defaultValue={namaSekolah} required />
                  </div>
                  <div className="input-group">
                    <label className="input-label">URL Logo Sekolah (Opsional)</label>
