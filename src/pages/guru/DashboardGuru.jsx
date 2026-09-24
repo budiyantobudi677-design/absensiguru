@@ -31,6 +31,11 @@ export default function DashboardGuru() {
     return () => clearInterval(timer)
   }, [])
 
+  const getLocalDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   const fetchUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return navigate('/')
@@ -39,7 +44,7 @@ export default function DashboardGuru() {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(profile)
     
-    const today = new Date().toISOString().split('T')[0]
+    const today = getLocalDateString()
     const { data: absensi } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).single()
       
     if (absensi?.waktu_masuk) {
@@ -60,7 +65,7 @@ export default function DashboardGuru() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         const loc = `${position.coords.latitude}, ${position.coords.longitude}`
-        const today = new Date().toISOString().split('T')[0]
+        const today = getLocalDateString()
         const now = new Date().toISOString()
         
         if (jenis === 'masuk') {
@@ -159,7 +164,9 @@ export default function DashboardGuru() {
 
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
       
-      await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', user.id)
+      const { error: profileError } = await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', user.id)
+      if (profileError) throw profileError
+      
       setProfile({ ...profile, foto_profil: publicUrl })
       showPopup("Tersimpan!", "Foto profil berhasil diperbarui.", "success")
     } catch (error) {
