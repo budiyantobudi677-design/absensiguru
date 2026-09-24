@@ -289,9 +289,9 @@ export default function DashboardAdmin() {
                  const formData = new FormData(e.target);
                  const newName = formData.get('nama_sekolah');
                  
-                 const { error } = await supabase.from('settings').upsert({ id: 1, nama_sekolah: newName });
+                 const { error } = await supabase.from('settings').update({ nama_sekolah: newName }).eq('id', 1);
                  if (error) {
-                   alert('Gagal menyimpan! (Tabel settings belum dibuat di Supabase)');
+                   alert('Gagal menyimpan! Error: ' + error.message);
                  } else {
                    setNamaSekolah(newName);
                    alert('Pengaturan berhasil disimpan permanen!');
