@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, BookOpen, CheckCircle, UserCircle, Calendar, Fingerprint, Check } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw } from 'lucide-react'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -12,6 +12,11 @@ export default function DashboardGuru() {
   const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
   const [keterangan, setKeterangan] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
+  
+  // Offline State
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+  const [unsyncedCount, setUnsyncedCount] = useState(0)
+
   const navigate = useNavigate()
 
   const getGreeting = () => {
@@ -22,18 +27,66 @@ export default function DashboardGuru() {
     return 'Selamat Malam';
   }
 
-  // State for Custom Popup Animation
   const [popup, setPopup] = useState({ show: false, title: '', message: '', type: 'success' })
 
   useEffect(() => {
     fetchUser()
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+    
+    // Offline Listeners
+    const handleOnline = () => { setIsOffline(false); syncOfflineData(); }
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    // Initial check for unsynced
+    checkUnsynced()
+
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
   }, [])
 
   const getLocalDateString = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const checkUnsynced = () => {
+    const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
+    setUnsyncedCount(offlineData.length)
+  }
+
+  const syncOfflineData = async () => {
+    const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
+    if (offlineData.length === 0) return
+
+    setLoading(true)
+    let syncSuccessCount = 0
+    
+    for (const record of offlineData) {
+      if (record.jenis === 'masuk') {
+        const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: 'hadir' })
+        if (!error) syncSuccessCount++
+      } else if (record.jenis === 'pulang') {
+        const { error } = await supabase.from('absensi').update({ waktu_pulang: record.waktu, lokasi_pulang: record.loc }).eq('user_id', record.user_id).eq('tanggal', record.tanggal)
+        if (!error) syncSuccessCount++
+      } else if (record.jenis === 'sakit' || record.jenis === 'izin') {
+        const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: record.jenis, keterangan: record.keterangan })
+        if (!error) syncSuccessCount++
+      }
+    }
+    
+    localStorage.removeItem('offlineAbsensi')
+    setUnsyncedCount(0)
+    setLoading(false)
+    if (syncSuccessCount > 0) {
+      showPopup("Sinkronisasi Selesai", `${syncSuccessCount} data luring telah disinkronkan ke server.`, "success")
+      fetchUser() // Refresh UI
+    }
   }
 
   const fetchUser = async () => {
@@ -46,18 +99,18 @@ export default function DashboardGuru() {
       if (profile) setProfile(profile)
       
       const today = getLocalDateString()
-      const { data: absensiList, error: absensiError } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
+      const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
         
-      if (absensiError) {
-        showPopup("Debug Error", absensiError.message, "error")
-      }
-
       const absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null;
 
       if (absensi && absensi.waktu_masuk) {
         setHasCheckedIn(true)
       } else {
-        setHasCheckedIn(false)
+        // Also check if there's offline check-in for today
+        const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
+        const offlineToday = offlineData.find(d => d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin'))
+        if (offlineToday) setHasCheckedIn(true)
+        else setHasCheckedIn(false)
       }
     } catch (err) {
       console.error(err)
@@ -66,10 +119,24 @@ export default function DashboardGuru() {
 
   const showPopup = (title, message, type = 'success') => {
     setPopup({ show: true, title, message, type })
-    // Auto close after 3 seconds
     setTimeout(() => {
       setPopup({ show: false, title: '', message: '', type: 'success' })
     }, 3000)
+  }
+
+  const saveOffline = (jenis, loc, now, today, ket = '') => {
+    const record = { user_id: user.id, jenis, loc, waktu: now, tanggal: today, keterangan: ket }
+    const current = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
+    current.push(record)
+    localStorage.setItem('offlineAbsensi', JSON.stringify(current))
+    checkUnsynced()
+    
+    if (jenis !== 'pulang') {
+       setHasCheckedIn(true)
+       setIzinMode(null)
+    }
+    showPopup("Tersimpan Luring (Offline)", "Data disimpan sementara. Akan dikirim otomatis saat internet tersambung.", "success")
+    setLoading(false)
   }
 
   const handleAbsen = async (jenis) => {
@@ -80,47 +147,37 @@ export default function DashboardGuru() {
         const today = getLocalDateString()
         const now = new Date().toISOString()
         
-        if (jenis === 'masuk') {
-          const { error } = await supabase
-            .from('absensi')
-            .insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
-          
-          if (!error) {
+        if (isOffline) {
+           saveOffline(jenis, loc, now, today, keterangan)
+           return
+        }
+
+        try {
+          if (jenis === 'masuk') {
+            const { error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+            if (error) throw error
             setHasCheckedIn(true)
             showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
-          } else {
-            showPopup("Terjadi Kesalahan", error.message, "error")
-          }
-        } else if (jenis === 'pulang') {
-          const { error } = await supabase
-            .from('absensi')
-            .update({ waktu_pulang: now, lokasi_pulang: loc })
-            .eq('user_id', user.id)
-            .eq('tanggal', today)
-            
-          if (!error) {
+          } else if (jenis === 'pulang') {
+            const { error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today)
+            if (error) throw error
             showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
-          } else {
-            showPopup("Terjadi Kesalahan", error.message, "error")
-          }
-        } else if (jenis === 'sakit' || jenis === 'izin') {
-          const { error } = await supabase
-            .from('absensi')
-            .insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
-          
-          if (!error) {
+          } else if (jenis === 'sakit' || jenis === 'izin') {
+            const { error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
+            if (error) throw error
             setHasCheckedIn(true)
             setIzinMode(null)
             showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
-          } else {
-            showPopup("Terjadi Kesalahan", error.message, "error")
           }
+        } catch (error) {
+          // Fallback to offline if supabase fails
+          saveOffline(jenis, loc, now, today, keterangan)
         }
         setLoading(false)
       }, () => {
         showPopup("Akses Lokasi Ditolak", "Mohon izinkan akses GPS.", "error")
         setLoading(false)
-      })
+      }, { timeout: 10000 })
     } else {
       showPopup("GPS Tidak Didukung", "Browser Anda tidak mendukung lokasi.", "error")
       setLoading(false)
@@ -138,21 +195,15 @@ export default function DashboardGuru() {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          
           const MAX_SIZE = 600;
           if (width > height && width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
+            height *= MAX_SIZE / width; width = MAX_SIZE;
           } else if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
+            width *= MAX_SIZE / height; height = MAX_SIZE;
           }
-          
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = width; canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          
           canvas.toBlob((blob) => {
             resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' }));
           }, 'image/webp', 0.8);
@@ -163,26 +214,27 @@ export default function DashboardGuru() {
 
   const uploadFoto = async (event) => {
     try {
+      if (isOffline) {
+         showPopup("Tidak Ada Internet", "Anda harus online untuk mengubah foto profil.", "error")
+         return
+      }
       setLoading(true)
       const file = event.target.files[0]
       if(!file) return
-      
       const compressedFile = await compressImage(file)
       const fileName = `${user.id}-${Math.random()}.webp`
-      const filePath = `${fileName}`
-
-      let { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressedFile, { contentType: 'image/webp' })
+      
+      let { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, compressedFile, { contentType: 'image/webp' })
       if (uploadError) throw uploadError
 
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
-      
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
       const { error: profileError } = await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', user.id)
       if (profileError) throw profileError
       
       setProfile({ ...profile, foto_profil: publicUrl })
       showPopup("Tersimpan!", "Foto profil berhasil diperbarui.", "success")
     } catch (error) {
-      showPopup("Gagal", error.message + " (Pastikan sudah membuat bucket 'avatars' public)", "error")
+      showPopup("Gagal", error.message, "error")
     } finally {
       setLoading(false)
     }
@@ -205,7 +257,7 @@ export default function DashboardGuru() {
       )}
 
       {/* Header ID Card */}
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem' }}>
+      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem' }}>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             {profile?.foto_profil ? (
@@ -240,6 +292,22 @@ export default function DashboardGuru() {
       </div>
 
       <div style={{ padding: '0 1.5rem' }}>
+        
+        {/* Offline & Sync Indicators */}
+        {isOffline && (
+          <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', padding: '0.75rem', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#DC2626', fontSize: '0.85rem' }}>
+             <WifiOff size={16} /> Mode Luring (Offline) Aktif
+          </div>
+        )}
+        {!isOffline && unsyncedCount > 0 && (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', padding: '0.75rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', color: '#D97706', fontSize: '0.85rem' }}>
+             <span>Ada {unsyncedCount} data absen tertunda.</span>
+             <button onClick={syncOfflineData} style={{ background: 'transparent', border: 'none', color: '#D97706', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }} disabled={loading}>
+                <RefreshCw size={14} className={loading ? "spin" : ""} /> Sync
+             </button>
+          </div>
+        )}
+
         {activeTab === 'absensi' && (
           <div className="text-center">
             <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
@@ -275,30 +343,6 @@ export default function DashboardGuru() {
           </div>
         )}
 
-        {activeTab === 'jurnal' && (
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h3 style={{ fontSize: '1.25rem' }}>Jurnal Harian</h3>
-              <span style={{ fontSize: '0.875rem', color: 'var(--primary)', fontWeight: '600', background: 'var(--primary-light)', padding: '0.25rem 0.75rem', borderRadius: '99px' }}>Hari Ini</span>
-            </div>
-            
-            <div className="card" style={{ border: 'none', background: 'white' }}>
-              <form onSubmit={(e) => { e.preventDefault(); showPopup("Jurnal Terkirim", "Laporan harian Anda berhasil disimpan."); }}>
-                <div className="input-group">
-                  <label className="input-label">Mata Pelajaran / Tugas</label>
-                  <input type="text" className="input" placeholder="Kegiatan utama" required />
-                </div>
-                <div className="input-group">
-                  <label className="input-label">Laporan / Catatan</label>
-                  <textarea className="input" rows="4" placeholder="Detail pekerjaan atau materi yang disampaikan..." required></textarea>
-                </div>
-                <button type="submit" className="btn btn-primary" style={{ padding: '1rem' }}>
-                  Kirim Laporan
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
         {activeTab === 'pengaturan' && (
           <div className="fade-in">
             <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Pengaturan Profil</h3>
@@ -312,8 +356,8 @@ export default function DashboardGuru() {
                   </div>
                 )}
                 <div>
-                  <input type="file" id="upload-foto" accept="image/*" style={{ display: 'none' }} onChange={uploadFoto} disabled={loading} />
-                  <label htmlFor="upload-foto" className="btn" style={{ background: '#E0E7FF', color: '#4F46E5', fontSize: '0.85rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>
+                  <input type="file" id="upload-foto" accept="image/*" style={{ display: 'none' }} onChange={uploadFoto} disabled={loading || isOffline} />
+                  <label htmlFor="upload-foto" className="btn" style={{ background: '#E0E7FF', color: '#4F46E5', fontSize: '0.85rem', padding: '0.5rem 1rem', cursor: 'pointer', opacity: isOffline ? 0.5 : 1 }}>
                     {loading ? 'Mengunggah...' : 'Ubah Foto'}
                   </label>
                 </div>
@@ -321,20 +365,20 @@ export default function DashboardGuru() {
 
               <form onSubmit={async (e) => {
                 e.preventDefault();
+                if (isOffline) {
+                   showPopup("Offline", "Anda tidak bisa menyimpan profil saat offline.", "error")
+                   return
+                }
                 setLoading(true);
                 const formData = new FormData(e.target);
-                const updates = {
-                  full_name: formData.get('full_name'),
-                  nip: formData.get('nip'),
-                  jabatan: formData.get('jabatan')
-                };
+                const updates = { full_name: formData.get('full_name'), nip: formData.get('nip'), jabatan: formData.get('jabatan') };
                 
                 const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
                 if (!error) {
                   setProfile({ ...profile, ...updates });
                   showPopup("Tersimpan!", "Profil Anda berhasil diperbarui.", "success");
                 } else {
-                  showPopup("Gagal", "Silakan tambahkan kolom NIP & Jabatan di Supabase.", "error");
+                  showPopup("Gagal", error.message, "error");
                 }
                 setLoading(false);
               }}>
@@ -356,10 +400,14 @@ export default function DashboardGuru() {
               </form>
             </div>
 
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Keamanan</h3>
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', marginTop: '2rem' }}>Keamanan</h3>
             <div className="card" style={{ border: 'none', background: 'white' }}>
               <form onSubmit={async (e) => {
                 e.preventDefault();
+                if (isOffline) {
+                   showPopup("Offline", "Anda tidak bisa mengubah password saat offline.", "error")
+                   return
+                }
                 setLoading(true);
                 const formData = new FormData(e.target);
                 const newPassword = formData.get('new_password');
@@ -388,16 +436,18 @@ export default function DashboardGuru() {
 
       {/* Corporate Style Bottom Navigation */}
       <nav className="bottom-nav">
-        <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} onClick={() => setActiveTab('absensi')}>
+        <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('absensi')}>
           <Clock size={24} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
         </button>
-        <button className={`nav-item ${activeTab === 'jurnal' ? 'active' : ''}`} onClick={() => setActiveTab('jurnal')}>
-          <BookOpen size={24} strokeWidth={activeTab === 'jurnal' ? 2.5 : 1.5} /> Jurnal
-        </button>
-        <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} onClick={() => setActiveTab('pengaturan')}>
+        <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('pengaturan')}>
           <UserCircle size={24} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
         </button>
       </nav>
+      
+      <style>{`
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }
