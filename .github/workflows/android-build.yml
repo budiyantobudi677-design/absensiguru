@@ -36,7 +36,9 @@ jobs:
 
       - name: Make Gradle Executable
         working-directory: ./android
-        run: chmod +x ./gradlew
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x ./gradlew
 
       - name: Build APK
         working-directory: ./android
