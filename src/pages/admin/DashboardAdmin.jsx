@@ -14,6 +14,7 @@ export default function DashboardAdmin() {
   const [logoSekolah, setLogoSekolah] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
   const [rekapTampilJam, setRekapTampilJam] = useState(true)
+  const [exportFontSize, setExportFontSize] = useState(7)
   const [hariLiburData, setHariLiburData] = useState([])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -243,7 +244,7 @@ export default function DashboardAdmin() {
      let redColumns = [];
 
      if (laporanTipe === 'bulanan') {
-       columns = ['No', 'Nama', 'NIP'];
+       columns = ['No', 'Nama'];
        const [yearStr, monthStr] = laporanBulan.split('-');
        const yearNum = parseInt(yearStr);
        const monthNum = parseInt(monthStr) - 1;
@@ -281,18 +282,17 @@ export default function DashboardAdmin() {
        })
 
        rows = Object.values(userMap).map((user, index) => {
-          const row = { No: index + 1, Nama: user.nama, NIP: user.nip };
+          const row = { No: index + 1, Nama: `${user.nama}\nNIP: ${user.nip}` };
           for(let i=1; i<=daysInMonth; i++) {
              row[i] = user.absensi[i] || null;
           }
           return row;
        });
      } else {
-       columns = ['No', 'Nama', 'NIP', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
+       columns = ['No', 'Nama', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
        rows = getFilteredAndSortedData().map((a, index) => ({
          No: index + 1,
-         Nama: a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown',
-         NIP: a.profiles?.nip || '-',
+         Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
          Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
          'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
          'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
@@ -340,25 +340,26 @@ export default function DashboardAdmin() {
       const colName = exportPreviewData.columns[colNumber - 1];
       let bgColor = exportPreviewData.redColumns?.includes(colName) ? 'FFDC2626' : 'FF4F46E5';
       
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: exportFontSize };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
 
     worksheet.getColumn(1).width = 5;
-    worksheet.getColumn(2).width = 25;
-    worksheet.getColumn(3).width = 15;
+    // Auto shrink Nama column a bit based on exportFontSize
+    worksheet.getColumn(2).width = Math.max(15, 30 * (exportFontSize / 10));
+    
     if (laporanTipe === 'bulanan') {
-      for(let i=4; i<=exportPreviewData.columns.length; i++) worksheet.getColumn(i).width = rekapTampilJam ? 12 : 5;
+      for(let i=3; i<=exportPreviewData.columns.length; i++) worksheet.getColumn(i).width = rekapTampilJam ? 12 : 5;
     } else {
-      for(let i=4; i<=7; i++) worksheet.getColumn(i).width = 18;
+      for(let i=3; i<=6; i++) worksheet.getColumn(i).width = 18;
     }
 
     exportPreviewData.rows.forEach(row => {
       const rowData = [];
       exportPreviewData.columns.forEach(col => {
-         if (laporanTipe === 'bulanan' && col !== 'No' && col !== 'Nama' && col !== 'NIP') {
+         if (laporanTipe === 'bulanan' && col !== 'No' && col !== 'Nama') {
             const cellData = row[col];
             if (!cellData) rowData.push('-');
             else if (cellData.status === 'hadir') rowData.push(rekapTampilJam ? `✓\nIn: ${cellData.in}\nOut: ${cellData.out}` : '✓');
@@ -380,20 +381,25 @@ export default function DashboardAdmin() {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
          }
          
-         if (laporanTipe === 'bulanan' && colNumber > 3) {
+         let cellFont = { size: exportFontSize };
+         
+         if (laporanTipe === 'bulanan' && colNumber > 2) {
             const cellData = row[colName];
             if (cellData && cellData !== '-') {
                if (cellData.status === 'hadir') {
-                  cell.font = { color: { argb: 'FF2563EB' } };
+                  cellFont.color = { argb: 'FF2563EB' };
                } else if (cellData.status === 'izin') {
                   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
-                  cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                  cellFont.bold = true;
+                  cellFont.color = { argb: 'FFFFFFFF' };
                } else if (cellData.status === 'sakit') {
                   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } };
-                  cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                  cellFont.bold = true;
+                  cellFont.color = { argb: 'FFFFFFFF' };
                }
             }
          }
+         cell.font = cellFont;
       });
     });
 
@@ -427,7 +433,7 @@ export default function DashboardAdmin() {
        const head = [columns];
        const body = rows.map(r => columns.map(c => {
           let content = r[c] || '-';
-          if (laporanTipe === 'bulanan' && c !== 'No' && c !== 'Nama' && c !== 'NIP' && content !== '-') {
+          if (laporanTipe === 'bulanan' && c !== 'No' && c !== 'Nama' && content !== '-') {
              if (content.status === 'hadir') content = rekapTampilJam ? `✓\nIn: ${content.in}\nOut: ${content.out}` : '✓';
              else if (content.status === 'izin') content = 'IZIN';
              else if (content.status === 'sakit') content = 'SAKIT';
@@ -441,7 +447,7 @@ export default function DashboardAdmin() {
          body: body,
          theme: 'grid',
          styles: { 
-            fontSize: (laporanTipe === 'bulanan' && rekapTampilJam) ? 5 : 8,
+            fontSize: exportFontSize,
             cellPadding: (laporanTipe === 'bulanan' && rekapTampilJam) ? 0.5 : 1,
             halign: 'center',
             valign: 'middle',
@@ -463,7 +469,7 @@ export default function DashboardAdmin() {
                   data.cell.styles.fillColor = [254, 226, 226];
                }
                
-               if (colName !== 'No' && colName !== 'Nama' && colName !== 'NIP' && cellData && cellData !== '-') {
+               if (colName !== 'No' && colName !== 'Nama' && cellData && cellData !== '-') {
                   if (cellData.status === 'hadir') {
                      data.cell.styles.textColor = [37, 99, 235];
                   } else if (cellData.status === 'izin') {
@@ -498,7 +504,7 @@ export default function DashboardAdmin() {
         <style>
           @page WordSection1 { size: 841.95pt 595.35pt; mso-page-orientation: landscape; margin: 36.0pt; }
           div.WordSection1 { page: WordSection1; }
-          table { width: 100%; border-collapse: collapse; font-size: ${laporanTipe === 'bulanan' && rekapTampilJam ? '6pt' : '10pt'}; }
+          table { width: 100%; border-collapse: collapse; font-size: ${exportFontSize}pt; }
           td, th { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: middle; }
         </style>
       </head>
@@ -1015,6 +1021,11 @@ export default function DashboardAdmin() {
               </button>
             </div>
             
+            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', background: '#F8FAFC', padding: '0.8rem', borderRadius: '12px' }}>
+               <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Ukuran Huruf ({exportFontSize}px):</label>
+               <input type="range" min="4" max="14" step="1" value={exportFontSize} onChange={(e) => setExportFontSize(parseInt(e.target.value))} style={{ flex: 1 }} />
+            </div>
+
             <div style={{ overflowX: 'auto', maxHeight: '50vh', border: '1px solid #E2E8F0', borderRadius: '12px', marginBottom: '1.5rem' }}>
               <div id="export-preview-container" style={{ padding: '1.5rem', background: 'white', minWidth: laporanTipe === 'bulanan' ? '1200px' : '100%' }}>
                 <div style={{ textAlign: 'center', marginBottom: '1.5rem', fontWeight: 'bold', fontSize: '1rem', color: 'black' }}>
@@ -1047,7 +1058,7 @@ export default function DashboardAdmin() {
                         let isRedCol = exportPreviewData.redColumns?.includes(col);
                         if (isRedCol) bg = '#FEE2E2';
                         
-                        if (laporanTipe === 'bulanan' && cIdx > 2 && cellContent !== '-') {
+                        if (laporanTipe === 'bulanan' && cIdx > 1 && cellContent !== '-') {
                            if (cellContent.status === 'hadir') {
                               color = '#2563EB'; // Blue
                               cellContent = rekapTampilJam ? `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}` : '✓';
@@ -1065,7 +1076,7 @@ export default function DashboardAdmin() {
                         }
 
                         return (
-                          <td key={cIdx} style={{ padding: laporanTipe === 'bulanan' ? (rekapTampilJam ? '0.4rem' : '0.2rem 0.1rem') : '0.4rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'pre-wrap', background: bg, color: color, fontWeight: bold ? 'bold' : 'normal', verticalAlign: 'middle', fontSize: (laporanTipe === 'bulanan' && !rekapTampilJam) ? '0.7rem' : '0.8rem' }}>
+                          <td key={cIdx} style={{ padding: laporanTipe === 'bulanan' ? (rekapTampilJam ? '0.4rem' : '0.2rem 0.1rem') : '0.4rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'pre-wrap', background: bg, color: color, fontWeight: bold ? 'bold' : 'normal', verticalAlign: 'middle', fontSize: `${exportFontSize}px` }}>
                             {cellContent}
                           </td>
                         )
