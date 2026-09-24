@@ -14,6 +14,14 @@ export default function DashboardGuru() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const navigate = useNavigate()
 
+  const getGreeting = () => {
+    const hour = currentTime.getHours();
+    if (hour < 11) return 'Selamat Pagi';
+    if (hour < 15) return 'Selamat Siang';
+    if (hour < 18) return 'Selamat Sore';
+    return 'Selamat Malam';
+  }
+
   // State for Custom Popup Animation
   const [popup, setPopup] = useState({ show: false, title: '', message: '', type: 'success' })
 
@@ -180,21 +188,24 @@ export default function DashboardGuru() {
       {/* Header ID Card */}
       <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem' }}>
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {profile?.foto_profil ? (
-              <img src={profile.foto_profil} alt="Profil" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '2px solid white' }} />
+              <img src={profile.foto_profil} alt="Profil" style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)', background: 'white' }} />
             ) : (
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <UserCircle size={32} color="var(--primary)" />
+              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <UserCircle size={36} color="var(--primary)" />
               </div>
             )}
             <div>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.875rem' }}>Selamat Pagi,</p>
-              <h2 style={{ fontSize: '1.25rem', marginTop: '0.1rem', letterSpacing: '0.5px' }}>
+              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', marginBottom: '0.1rem' }}>{getGreeting()},</p>
+              <h2 style={{ fontSize: '1.3rem', marginTop: 0, letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
                 {profile?.full_name || user?.email?.split('@')[0]}
               </h2>
             </div>
           </div>
+          <button onClick={async () => { await supabase.auth.signOut(); navigate('/'); }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer' }}>
+            <LogOut size={20} />
+          </button>
         </div>
         <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
           <div className="flex items-center gap-3">
