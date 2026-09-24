@@ -351,7 +351,34 @@ export default function DashboardGuru() {
                   <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Matematika" />
                 </div>
                 <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.5rem' }} disabled={loading}>
-                  {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  {loading ? 'Menyimpan...' : 'Simpan Profil'}
+                </button>
+              </form>
+            </div>
+
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Keamanan</h3>
+            <div className="card" style={{ border: 'none', background: 'white' }}>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                const formData = new FormData(e.target);
+                const newPassword = formData.get('new_password');
+                
+                const { error } = await supabase.auth.updateUser({ password: newPassword });
+                if (!error) {
+                  showPopup("Berhasil!", "Password Anda telah diperbarui.", "success");
+                  e.target.reset();
+                } else {
+                  showPopup("Gagal", error.message, "error");
+                }
+                setLoading(false);
+              }}>
+                <div className="input-group">
+                  <label className="input-label">Ubah Password Baru</label>
+                  <input type="password" name="new_password" className="input" placeholder="Minimal 6 karakter" required minLength="6" />
+                </div>
+                <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#334E68', color: 'white' }} disabled={loading}>
+                  {loading ? 'Memproses...' : 'Ubah Password'}
                 </button>
               </form>
             </div>
