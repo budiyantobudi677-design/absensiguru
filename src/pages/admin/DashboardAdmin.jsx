@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Database, Search, ArrowUpDown } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Database, Search, ArrowUpDown, UserCircle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function DashboardAdmin() {
