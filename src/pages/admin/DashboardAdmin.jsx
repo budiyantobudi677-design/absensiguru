@@ -23,7 +23,11 @@ export default function DashboardAdmin() {
   
   const [searchTerm, setSearchTerm] = useState('')
   const [sortOrder, setSortOrder] = useState('newest')
-  const [laporanPeriod, setLaporanPeriod] = useState('hari_ini')
+  const [laporanTipe, setLaporanTipe] = useState('bulanan') // 'harian', 'bulanan', 'semester'
+  const [laporanTanggal, setLaporanTanggal] = useState(new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD
+  const [laporanBulan, setLaporanBulan] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM
+  const [laporanSemester, setLaporanSemester] = useState('ganjil')
+  const [laporanTahun, setLaporanTahun] = useState(new Date().getFullYear())
   
   const [pegawaiSearch, setPegawaiSearch] = useState('')
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
@@ -44,7 +48,7 @@ export default function DashboardAdmin() {
     if (activeTab === 'laporan') {
        loadAbsensi()
     }
-  }, [laporanPeriod])
+  }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun])
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
@@ -92,22 +96,25 @@ export default function DashboardAdmin() {
 
   const loadAbsensi = async () => {
     setLoadingData(true)
-    let query = supabase.from('absensi').select('*, profiles(full_name, email, foto_profil, jabatan)')
+    let query = supabase.from('absensi').select('*, profiles(full_name, email, foto_profil, jabatan, nip)')
     
-    const today = new Date()
-    if (laporanPeriod === 'hari_ini') {
-       query = query.eq('tanggal', today.toLocaleDateString('en-CA'))
-    } else if (laporanPeriod === 'bulan_ini') {
-       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA')
-       query = query.gte('tanggal', firstDay)
-    } else if (laporanPeriod === 'semester_ini') {
-       const month = today.getMonth()
-       const startMonth = month < 6 ? 0 : 6
-       const firstDay = new Date(today.getFullYear(), startMonth, 1).toLocaleDateString('en-CA')
-       query = query.gte('tanggal', firstDay)
+    if (laporanTipe === 'harian') {
+       query = query.eq('tanggal', laporanTanggal)
+    } else if (laporanTipe === 'bulanan') {
+       const [year, month] = laporanBulan.split('-')
+       const firstDay = new Date(year, month - 1, 1).toLocaleDateString('en-CA')
+       const lastDay = new Date(year, month, 0).toLocaleDateString('en-CA')
+       query = query.gte('tanggal', firstDay).lte('tanggal', lastDay)
+    } else if (laporanTipe === 'semester') {
+       const year = parseInt(laporanTahun)
+       const startMonth = laporanSemester === 'ganjil' ? 6 : 0 // Ganjil = Jul-Dec, Genap = Jan-Jun
+       const endMonth = laporanSemester === 'ganjil' ? 11 : 5
+       const firstDay = new Date(year, startMonth, 1).toLocaleDateString('en-CA')
+       const lastDay = new Date(year, endMonth + 1, 0).toLocaleDateString('en-CA')
+       query = query.gte('tanggal', firstDay).lte('tanggal', lastDay)
     }
     
-    const { data } = await query.order('waktu_masuk', { ascending: false }).limit(500)
+    const { data } = await query.order('waktu_masuk', { ascending: false }).limit(2000)
     if (data) setAbsensiData(data)
     setLoadingData(false)
   }
@@ -156,7 +163,10 @@ export default function DashboardAdmin() {
   const handleMenuClick = (menu) => {
     setActiveTab(menu)
     if (menu === 'pegawai') loadPegawai()
-    if (menu === 'laporan') loadAbsensi()
+    if (menu === 'laporan') {
+       loadPegawai()
+       loadAbsensi()
+    }
     if (menu === 'overview') fetchOverviewStats()
     if (menu === 'pengumuman') {
        loadPengumuman()
@@ -219,19 +229,61 @@ export default function DashboardAdmin() {
 
   const downloadExcel = () => {
     if (absensiData.length === 0) return alert("Tidak ada data untuk diunduh.");
-    const worksheetData = getFilteredAndSortedData().map((a, index) => ({
-      'No': index + 1,
-      'Nama Pegawai': a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown',
-      'Tanggal': new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-      'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Belum Pulang',
-      'Status': a.status?.toUpperCase() || 'HADIR'
-    }));
+    
+    let worksheetData = [];
+    
+    if (laporanTipe === 'bulanan') {
+       // GET UNIQUE USERS
+       const userMap = {}
+       pegawaiData.forEach(p => {
+          userMap[p.id] = {
+             nama: p.full_name || p.email,
+             nip: p.nip || '-',
+             absensi: {}
+          }
+       })
+       absensiData.forEach(a => {
+          if(!userMap[a.user_id]) return;
+          const tgl = new Date(a.tanggal).getDate()
+          const inTime = a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+          const outTime = a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+          let statusText = ''
+          if (a.status === 'hadir') statusText = `✓\nIn: ${inTime}\nOut: ${outTime}`
+          else statusText = a.status.toUpperCase()
+          
+          userMap[a.user_id].absensi[tgl] = statusText
+       })
+       
+       const [year, month] = laporanBulan.split('-')
+       const daysInMonth = new Date(year, month, 0).getDate()
+       
+       Object.values(userMap).forEach((user, index) => {
+          const row = {
+             'No': index + 1,
+             'Nama': user.nama,
+             'NIP': user.nip,
+          }
+          for(let i=1; i<=daysInMonth; i++) {
+             row[i.toString()] = user.absensi[i] || '-'
+          }
+          worksheetData.push(row)
+       })
+    } else {
+       worksheetData = getFilteredAndSortedData().map((a, index) => ({
+         'No': index + 1,
+         'Nama Pegawai': a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown',
+         'NIP': a.profiles?.nip || '-',
+         'Tanggal': new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+         'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+         'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Belum Pulang',
+         'Status': a.status?.toUpperCase() || 'HADIR'
+       }));
+    }
+
     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Presensi");
-    worksheet['!cols'] = [{wch: 5}, {wch: 25}, {wch: 20}, {wch: 15}, {wch: 15}, {wch: 12}];
-    XLSX.writeFile(workbook, `Laporan_Kehadiran.xlsx`);
+    XLSX.writeFile(workbook, `Laporan_Kehadiran_${laporanTipe}.xlsx`);
   }
 
   const getFilteredAndSortedData = () => {
@@ -406,10 +458,30 @@ export default function DashboardAdmin() {
 
             <div className="flex flex-col gap-3 mb-4">
                {/* Laporan Period Filter */}
-               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                 <button onClick={() => setLaporanPeriod('hari_ini')} className="btn" style={{ padding: '0.5rem', fontSize: '0.75rem', borderRadius: '10px', background: laporanPeriod === 'hari_ini' ? '#4F46E5' : '#E2E8F0', color: laporanPeriod === 'hari_ini' ? 'white' : '#475569' }}>Hari Ini</button>
-                 <button onClick={() => setLaporanPeriod('bulan_ini')} className="btn" style={{ padding: '0.5rem', fontSize: '0.75rem', borderRadius: '10px', background: laporanPeriod === 'bulan_ini' ? '#4F46E5' : '#E2E8F0', color: laporanPeriod === 'bulan_ini' ? 'white' : '#475569' }}>Bulan Ini</button>
-                 <button onClick={() => setLaporanPeriod('semester_ini')} className="btn" style={{ padding: '0.5rem', fontSize: '0.75rem', borderRadius: '10px', background: laporanPeriod === 'semester_ini' ? '#4F46E5' : '#E2E8F0', color: laporanPeriod === 'semester_ini' ? 'white' : '#475569' }}>Semester</button>
+               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                 <select className="input" value={laporanTipe} onChange={(e) => setLaporanTipe(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem' }}>
+                    <option value="harian">Harian</option>
+                    <option value="bulanan">Bulanan</option>
+                    <option value="semester">Semester</option>
+                 </select>
+                 
+                 {laporanTipe === 'harian' && (
+                    <input type="date" className="input" value={laporanTanggal} onChange={(e) => setLaporanTanggal(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }} />
+                 )}
+                 
+                 {laporanTipe === 'bulanan' && (
+                    <input type="month" className="input" value={laporanBulan} onChange={(e) => setLaporanBulan(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }} />
+                 )}
+                 
+                 {laporanTipe === 'semester' && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
+                      <select className="input" value={laporanSemester} onChange={(e) => setLaporanSemester(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }}>
+                         <option value="ganjil">Ganjil (Jul - Des)</option>
+                         <option value="genap">Genap (Jan - Jun)</option>
+                      </select>
+                      <input type="number" className="input" value={laporanTahun} onChange={(e) => setLaporanTahun(e.target.value)} placeholder="Tahun" style={{ padding: '0.5rem', fontSize: '0.85rem', width: '80px' }} />
+                    </div>
+                 )}
                </div>
                
                <div style={{ position: 'relative' }}>
@@ -583,22 +655,49 @@ export default function DashboardAdmin() {
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Daftar Hari Libur (Manual)</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
-                 const tanggal = e.target.tanggal.value;
+                 const startDateStr = e.target.tanggal_mulai.value;
+                 const endDateStr = e.target.tanggal_selesai.value || startDateStr;
                  const keterangan = e.target.keterangan.value;
-                 if(!tanggal || !keterangan) return;
+                 if(!startDateStr || !keterangan) return;
                  
-                 const { data, error } = await supabase.from('hari_libur').insert({ tanggal, keterangan }).select();
-                 if(!error && data) {
-                    setHariLiburData([data[0], ...hariLiburData]);
-                    e.target.reset();
-                 } else {
-                    alert("Gagal menambahkan hari libur. Pastikan Anda telah membuat tabel 'hari_libur' di Supabase.");
+                 const startDate = new Date(startDateStr);
+                 const endDate = new Date(endDateStr);
+                 
+                 if (endDate < startDate) return alert("Tanggal selesai tidak boleh lebih kecil dari tanggal mulai.");
+                 
+                 setLoadingData(true);
+                 const payload = [];
+                 let currDate = new Date(startDate);
+                 while(currDate <= endDate) {
+                    payload.push({
+                       tanggal: currDate.toLocaleDateString('en-CA'),
+                       keterangan: keterangan
+                    })
+                    currDate.setDate(currDate.getDate() + 1);
                  }
+                 
+                 const { data, error } = await supabase.from('hari_libur').insert(payload).select();
+                 if(!error && data) {
+                    const mergedData = [...data, ...hariLiburData].sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+                    setHariLiburData(mergedData.slice(0, 50));
+                    e.target.reset();
+                    alert("Hari libur berhasil ditambahkan!");
+                 } else {
+                    alert("Gagal menambahkan hari libur.");
+                 }
+                 setLoadingData(false);
                }}>
-                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.5rem' }}>
-                    <input type="date" name="tanggal" className="input" required />
-                    <input type="text" name="keterangan" className="input" placeholder="Misal: Idul Fitri" required />
+                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div>
+                       <label className="text-muted" style={{ fontSize: '0.75rem' }}>Mulai Tanggal</label>
+                       <input type="date" name="tanggal_mulai" className="input" required />
+                    </div>
+                    <div>
+                       <label className="text-muted" style={{ fontSize: '0.75rem' }}>Sampai Tanggal (Opsional)</label>
+                       <input type="date" name="tanggal_selesai" className="input" />
+                    </div>
                  </div>
+                 <input type="text" name="keterangan" className="input" placeholder="Keterangan libur (misal: Cuti Bersama)" required />
                  <button type="submit" className="btn" style={{ padding: '0.8rem', marginTop: '0.5rem', background: '#10B981', color: 'white', width: '100%' }}>Tambah Hari Libur</button>
                </form>
                
