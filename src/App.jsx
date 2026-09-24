@@ -38,8 +38,8 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  if (loading) {
-    return <div className="flex items-center justify-center w-full" style={{ minHeight: '100vh' }}>Loading...</div>
+  if (loading || role === null) {
+    return <div className="flex items-center justify-center w-full" style={{ minHeight: '100vh' }}>Memuat...</div>
   }
 
   return (
