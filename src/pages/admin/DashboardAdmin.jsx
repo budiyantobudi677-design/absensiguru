@@ -133,6 +133,12 @@ export default function DashboardAdmin() {
                 </div>
                 <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Laporan</h3>
               </div>
+              <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', gridColumn: 'span 2' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                  <Settings size={32} color="white" />
+                </div>
+                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Pengaturan Sekolah</h3>
+              </div>
             </div>
           </div>
         )}
@@ -211,6 +217,44 @@ export default function DashboardAdmin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'pengaturan' && (
+          <div className="fade-in">
+             <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
+                  <ArrowLeft size={20} />
+                </button>
+                <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Pengaturan Sekolah</h3>
+             </div>
+             
+             <div className="card" style={{ border: 'none', background: 'white' }}>
+               <form onSubmit={(e) => {
+                 e.preventDefault();
+                 alert('Pengaturan disimpan! (Untuk menyimpan permanen ke database, tabel settings perlu ditambahkan terlebih dahulu)');
+               }}>
+                 <div className="input-group">
+                   <label className="input-label">Nama Sekolah / Instansi</label>
+                   <input type="text" className="input" defaultValue="Sekolah Kita" />
+                 </div>
+                 <div className="input-group">
+                   <label className="input-label">URL Logo Sekolah (Opsional)</label>
+                   <input type="url" className="input" placeholder="https://..." />
+                 </div>
+                 <div className="input-group">
+                   <label className="input-label">Zona Waktu Default</label>
+                   <select className="input">
+                     <option value="WIB">Waktu Indonesia Barat (WIB)</option>
+                     <option value="WITA">Waktu Indonesia Tengah (WITA)</option>
+                     <option value="WIT">Waktu Indonesia Timur (WIT)</option>
+                   </select>
+                 </div>
+                 <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '1rem', background: '#F59E0B' }}>
+                   Simpan Pengaturan
+                 </button>
+               </form>
+             </div>
           </div>
         )}
       </div>

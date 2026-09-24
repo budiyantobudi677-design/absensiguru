@@ -175,6 +175,48 @@ export default function DashboardGuru() {
             </div>
           </div>
         )}
+        {activeTab === 'pengaturan' && (
+          <div className="fade-in">
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Pengaturan Profil</h3>
+            <div className="card" style={{ border: 'none', background: 'white' }}>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                const formData = new FormData(e.target);
+                const updates = {
+                  full_name: formData.get('full_name'),
+                  nip: formData.get('nip'),
+                  jabatan: formData.get('jabatan')
+                };
+                
+                const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+                if (!error) {
+                  setProfile({ ...profile, ...updates });
+                  showPopup("Tersimpan!", "Profil Anda berhasil diperbarui.", "success");
+                } else {
+                  showPopup("Gagal", "Silakan tambahkan kolom NIP & Jabatan di Supabase.", "error");
+                }
+                setLoading(false);
+              }}>
+                <div className="input-group">
+                  <label className="input-label">Nama Lengkap</label>
+                  <input type="text" name="full_name" className="input" defaultValue={profile?.full_name || ''} required />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">NIP / ID Pegawai</label>
+                  <input type="text" name="nip" className="input" defaultValue={profile?.nip || ''} placeholder="Contoh: 198012312005011002" />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Jabatan / Guru Mapel</label>
+                  <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Matematika" />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.5rem' }} disabled={loading}>
+                  {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Corporate Style Bottom Navigation */}
@@ -185,8 +227,8 @@ export default function DashboardGuru() {
         <button className={`nav-item ${activeTab === 'jurnal' ? 'active' : ''}`} onClick={() => setActiveTab('jurnal')}>
           <BookOpen size={24} strokeWidth={activeTab === 'jurnal' ? 2.5 : 1.5} /> Jurnal
         </button>
-        <button className={`nav-item`} onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>
-          <LogOut size={24} strokeWidth={1.5} /> Keluar
+        <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} onClick={() => setActiveTab('pengaturan')}>
+          <UserCircle size={24} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
         </button>
       </nav>
     </div>
