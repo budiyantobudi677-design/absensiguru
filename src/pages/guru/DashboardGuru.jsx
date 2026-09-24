@@ -134,7 +134,11 @@ export default function DashboardGuru() {
       }
 
       // Fetch Pengumuman
-      const { data: pData } = await supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(10)
+      const { data: pData } = await supabase.from('pengumuman')
+         .select('*')
+         .or(`target_type.eq.all,target_users.ilike.%${user.id}%`)
+         .order('created_at', { ascending: false })
+         .limit(10)
       if (pData) setPengumumanData(pData)
     } catch (err) {
       console.error(err)

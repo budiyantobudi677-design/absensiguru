@@ -15,6 +15,8 @@ export default function DashboardAdmin() {
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
   const [pengumumanData, setPengumumanData] = useState([])
+  const [targetType, setTargetType] = useState('all')
+  const [selectedPegawai, setSelectedPegawai] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   
   const [searchTerm, setSearchTerm] = useState('')
@@ -121,14 +123,22 @@ export default function DashboardAdmin() {
     e.preventDefault()
     const pesan = e.target.pesan.value
     if (!pesan.trim()) return
-    const { data, error } = await supabase.from('pengumuman').insert({ pesan }).select()
+    if (targetType === 'selected' && selectedPegawai.length === 0) {
+       return alert("Pilih minimal satu pegawai untuk menerima notifikasi ini.")
+    }
+    
+    const target_users = targetType === 'selected' ? selectedPegawai.join(',') : ''
+    const { data, error } = await supabase.from('pengumuman').insert({ pesan, target_type: targetType, target_users }).select()
+    
     if (!error && data) {
        setPengumumanData([data[0], ...pengumumanData])
        e.target.reset()
+       setTargetType('all')
+       setSelectedPegawai([])
        alert("Pengumuman berhasil dikirim!")
     } else {
-       if (error?.code === '42P01') {
-          alert("Error: Tabel 'pengumuman' belum ada di Supabase. Silakan buat tabel terlebih dahulu!")
+       if (error?.code === '42P01' || error?.message?.includes('target_type')) {
+          alert("Error: Struktur tabel 'pengumuman' belum diperbarui di Supabase. Silakan perbarui tabel (tambah kolom target_type dan target_users)!")
        } else {
           alert("Gagal mengirim pengumuman: " + error?.message)
        }
@@ -140,7 +150,10 @@ export default function DashboardAdmin() {
     if (menu === 'pegawai') loadPegawai()
     if (menu === 'laporan') loadAbsensi()
     if (menu === 'overview') fetchOverviewStats()
-    if (menu === 'pengumuman') loadPengumuman()
+    if (menu === 'pengumuman') {
+       loadPengumuman()
+       loadPegawai()
+    }
   }
 
   const compressImage = (file) => {
@@ -438,10 +451,33 @@ export default function DashboardAdmin() {
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Buat Pengumuman Baru</h4>
                <form onSubmit={tambahPengumuman}>
                  <div className="input-group">
-                   <textarea name="pesan" className="input" rows="3" placeholder="Tulis pesan atau notifikasi ke semua pegawai..." required style={{ resize: 'vertical' }}></textarea>
+                   <textarea name="pesan" className="input" rows="3" placeholder="Tulis pesan atau notifikasi..." required style={{ resize: 'vertical' }}></textarea>
                  </div>
-                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#EC4899', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-                   <Bell size={18} /> Broadcast Notifikasi
+                 
+                 <div className="input-group" style={{ marginTop: '1rem' }}>
+                   <label className="input-label" style={{ fontSize: '0.85rem' }}>Kirim Ke</label>
+                   <select className="input" value={targetType} onChange={(e) => setTargetType(e.target.value)} style={{ padding: '0.75rem', borderRadius: '12px' }}>
+                      <option value="all">Semua Pegawai</option>
+                      <option value="selected">Pegawai Tertentu</option>
+                   </select>
+                 </div>
+                 
+                 {targetType === 'selected' && (
+                    <div className="input-group" style={{ marginTop: '0.5rem', maxHeight: '200px', overflowY: 'auto', background: '#F8FAFC', padding: '1rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                       {pegawaiData.length === 0 ? <p className="text-muted text-sm m-0">Memuat data pegawai...</p> : pegawaiData.map(p => (
+                          <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0', cursor: 'pointer', borderBottom: '1px solid #F1F5F9' }}>
+                             <input type="checkbox" checked={selectedPegawai.includes(p.id)} onChange={(e) => {
+                                if (e.target.checked) setSelectedPegawai([...selectedPegawai, p.id]);
+                                else setSelectedPegawai(selectedPegawai.filter(id => id !== p.id));
+                             }} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                             <span style={{ fontSize: '0.95rem', color: '#334E68' }}>{p.full_name || p.email}</span>
+                          </label>
+                       ))}
+                    </div>
+                 )}
+
+                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '1.25rem', width: '100%', background: '#EC4899', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                   <Bell size={18} /> Kirim Notifikasi
                  </button>
                </form>
              </div>
