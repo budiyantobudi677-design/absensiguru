@@ -8,18 +8,31 @@ import DashboardAdmin from './pages/admin/DashboardAdmin'
 
 function App() {
   const [session, setSession] = useState(null)
+  const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      setLoading(false)
+      if (session) {
+        supabase.from('profiles').select('role').eq('id', session.user.id).single().then(({data}) => {
+          setRole(data?.role || 'guru')
+          setLoading(false)
+        })
+      } else {
+        setLoading(false)
+      }
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
+      if (session) {
+        supabase.from('profiles').select('role').eq('id', session.user.id).single().then(({data}) => {
+          setRole(data?.role || 'guru')
+        })
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -32,7 +45,7 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={!session ? <Login /> : <Navigate to="/guru" />} />
+        <Route path="/" element={!session ? <Login /> : (role === 'admin' ? <Navigate to="/admin" /> : <Navigate to="/guru" />)} />
         <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
         <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
       </Routes>
