@@ -397,6 +397,11 @@ export default function DashboardAdmin() {
       });
     });
 
+    worksheet.pageSetup.orientation = laporanTipe === 'bulanan' ? 'landscape' : 'portrait';
+    worksheet.pageSetup.fitToPage = true;
+    worksheet.pageSetup.fitToWidth = 1;
+    worksheet.pageSetup.fitToHeight = 0;
+
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), `Laporan_Kehadiran_${laporanTipe}.xlsx`);
   }
@@ -493,8 +498,8 @@ export default function DashboardAdmin() {
         <style>
           @page WordSection1 { size: 841.95pt 595.35pt; mso-page-orientation: landscape; margin: 36.0pt; }
           div.WordSection1 { page: WordSection1; }
-          table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-          td, th { border: 1px solid #000; padding: 4px; text-align: center; vertical-align: middle; }
+          table { width: 100%; border-collapse: collapse; font-size: ${laporanTipe === 'bulanan' && rekapTampilJam ? '6pt' : '10pt'}; }
+          td, th { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: middle; }
         </style>
       </head>
       <body>
