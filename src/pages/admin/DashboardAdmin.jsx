@@ -241,9 +241,28 @@ export default function DashboardAdmin() {
 
      if (laporanTipe === 'bulanan') {
        columns = ['No', 'Nama', 'NIP'];
-       const [year, month] = laporanBulan.split('-');
-       const daysInMonth = new Date(year, month, 0).getDate();
-       for(let i=1; i<=daysInMonth; i++) columns.push(i.toString());
+       const [yearStr, monthStr] = laporanBulan.split('-');
+       const yearNum = parseInt(yearStr);
+       const monthNum = parseInt(monthStr) - 1;
+       const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+       const monthName = `${monthNames[monthNum]} ${yearNum}`;
+       
+       const daysInMonth = new Date(yearNum, monthNum + 1, 0).getDate();
+       const redColumns = [];
+       
+       for(let i=1; i<=daysInMonth; i++) {
+          columns.push(i.toString());
+          const dateObj = new Date(yearNum, monthNum, i);
+          const dayOfWeek = dateObj.getDay();
+          let isRed = false;
+          if (hariKerja === 5 && (dayOfWeek === 0 || dayOfWeek === 6)) isRed = true;
+          if (hariKerja === 6 && dayOfWeek === 0) isRed = true;
+          
+          const dateStr = dateObj.toLocaleDateString('en-CA');
+          if (hariLiburData.some(h => h.tanggal === dateStr)) isRed = true;
+          
+          if (isRed) redColumns.push(i.toString());
+       }
 
        const userMap = {}
        pegawaiData.forEach(p => {
@@ -279,7 +298,12 @@ export default function DashboardAdmin() {
        }));
      }
 
-     setExportPreviewData({ columns, rows });
+     setExportPreviewData({ 
+        columns, 
+        rows,
+        monthName: laporanTipe === 'bulanan' ? monthName : '',
+        redColumns: laporanTipe === 'bulanan' ? redColumns : []
+     });
      setShowExportModal(true);
   }
 
@@ -287,10 +311,35 @@ export default function DashboardAdmin() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Laporan Presensi');
 
+    worksheet.mergeCells(1, 1, 1, exportPreviewData.columns.length);
+    worksheet.getCell(1, 1).value = 'DAFTAR HADIR';
+    worksheet.getCell(1, 1).font = { bold: true, size: 12 };
+    worksheet.getCell(1, 1).alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells(2, 1, 2, exportPreviewData.columns.length);
+    worksheet.getCell(2, 1).value = 'GURU DAN TENAGA KEPENDIDIKAN';
+    worksheet.getCell(2, 1).font = { bold: true, size: 12 };
+    worksheet.getCell(2, 1).alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells(3, 1, 3, exportPreviewData.columns.length);
+    worksheet.getCell(3, 1).value = namaSekolah.toUpperCase();
+    worksheet.getCell(3, 1).font = { bold: true, size: 12 };
+    worksheet.getCell(3, 1).alignment = { horizontal: 'center' };
+    
+    if (laporanTipe === 'bulanan') {
+       worksheet.mergeCells(4, 1, 4, exportPreviewData.columns.length);
+       worksheet.getCell(4, 1).value = `Bulan : ${exportPreviewData.monthName}`;
+       worksheet.getCell(4, 1).font = { bold: true, size: 11 };
+       worksheet.getCell(4, 1).alignment = { horizontal: 'left' };
+    }
+
     const headerRow = worksheet.addRow(exportPreviewData.columns);
-    headerRow.eachCell((cell) => {
+    headerRow.eachCell((cell, colNumber) => {
+      const colName = exportPreviewData.columns[colNumber - 1];
+      let bgColor = exportPreviewData.redColumns?.includes(colName) ? 'FFDC2626' : 'FF4F46E5';
+      
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
@@ -319,16 +368,23 @@ export default function DashboardAdmin() {
       
       const addedRow = worksheet.addRow(rowData);
       addedRow.eachCell((cell, colNumber) => {
+         const colName = exportPreviewData.columns[colNumber - 1];
+         let isRedColumn = exportPreviewData.redColumns?.includes(colName);
+         
          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
          
+         if (isRedColumn) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+         }
+         
          if (laporanTipe === 'bulanan' && colNumber > 3) {
-            const cellData = row[exportPreviewData.columns[colNumber-1]];
-            if (cellData) {
+            const cellData = row[colName];
+            if (cellData && cellData !== '-') {
                if (cellData.status === 'hadir') {
                   cell.font = { color: { argb: 'FF2563EB' } };
                } else if (cellData.status === 'izin') {
-                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF59E0B' } };
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
                   cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
                } else if (cellData.status === 'sakit') {
                   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } };
@@ -356,12 +412,11 @@ export default function DashboardAdmin() {
   }
 
   const exportToWord = () => {
-    const tableHTML = document.getElementById('export-preview-table').outerHTML;
+    const tableHTML = document.getElementById('export-preview-container').outerHTML;
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
       "xmlns:w='urn:schemas-microsoft-com:office:word' "+
       "xmlns='http://www.w3.org/TR/REC-html40'>"+
-      "<head><meta charset='utf-8'><title>Laporan Absensi</title></head><body>"+
-      "<h2 style='text-align:center;'>Laporan Absensi</h2>";
+      "<head><meta charset='utf-8'><title>Laporan Absensi</title></head><body>";
     const footer = "</body></html>";
     const sourceHTML = header + tableHTML + footer;
     
@@ -874,12 +929,23 @@ export default function DashboardAdmin() {
             </div>
             
             <div style={{ overflowX: 'auto', maxHeight: '50vh', border: '1px solid #E2E8F0', borderRadius: '12px', marginBottom: '1.5rem' }}>
-              <table id="export-preview-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: laporanTipe === 'bulanan' ? '1200px' : '100%' }}>
-                <thead style={{ background: '#4F46E5', color: 'white', position: 'sticky', top: 0, zIndex: 10 }}>
-                  <tr>
-                    {exportPreviewData.columns.map((col, idx) => (
-                      <th key={idx} style={{ padding: '0.5rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'nowrap' }}>{col}</th>
-                    ))}
+              <div id="export-preview-container" style={{ padding: '1.5rem', background: 'white', minWidth: laporanTipe === 'bulanan' ? '1200px' : '100%' }}>
+                <div style={{ textAlign: 'center', marginBottom: '1.5rem', fontWeight: 'bold', fontSize: '1rem', color: 'black' }}>
+                  <div style={{ fontSize: '1.2rem' }}>DAFTAR HADIR</div>
+                  <div style={{ fontSize: '1.2rem' }}>GURU DAN TENAGA KEPENDIDIKAN</div>
+                  <div style={{ fontSize: '1.2rem' }}>{namaSekolah.toUpperCase()}</div>
+                </div>
+                {laporanTipe === 'bulanan' && (
+                  <div style={{ textAlign: 'left', marginBottom: '0.5rem', fontWeight: 'bold', color: 'black' }}>
+                    Bulan : {exportPreviewData.monthName}
+                  </div>
+                )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead style={{ color: 'white', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr>
+                      {exportPreviewData.columns.map((col, idx) => (
+                        <th key={idx} style={{ padding: '0.5rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'nowrap', background: exportPreviewData.redColumns?.includes(col) ? '#EF4444' : '#4F46E5' }}>{col}</th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -890,6 +956,9 @@ export default function DashboardAdmin() {
                         let bg = 'white';
                         let color = '#1E293B';
                         let bold = false;
+                        
+                        let isRedCol = exportPreviewData.redColumns?.includes(col);
+                        if (isRedCol) bg = '#FEE2E2';
                         
                         if (laporanTipe === 'bulanan' && cIdx > 2 && cellContent !== '-') {
                            if (cellContent.status === 'hadir') {
@@ -918,6 +987,7 @@ export default function DashboardAdmin() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
