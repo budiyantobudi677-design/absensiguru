@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import html2pdf from 'html2pdf.js'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
@@ -401,24 +402,113 @@ export default function DashboardAdmin() {
   }
 
   const exportToPDF = () => {
-    const element = document.getElementById('export-preview-table');
-    const opt = {
-      margin:       0.2,
-      filename:     `Laporan_Kehadiran_${laporanTipe}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2 },
-      jsPDF:        { unit: 'in', format: 'legal', orientation: laporanTipe === 'bulanan' ? 'landscape' : 'portrait' }
+    const doc = new jsPDF({ orientation: laporanTipe === 'bulanan' ? 'landscape' : 'portrait', format: 'legal' });
+    const docWidth = doc.internal.pageSize.getWidth();
+    
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("DAFTAR HADIR", docWidth / 2, 15, { align: 'center' });
+    doc.text("GURU DAN TENAGA KEPENDIDIKAN", docWidth / 2, 22, { align: 'center' });
+    doc.text(namaSekolah.toUpperCase(), docWidth / 2, 29, { align: 'center' });
+
+    if (laporanTipe === 'bulanan') {
+      doc.setFontSize(12);
+      doc.text(`Bulan : ${exportPreviewData.monthName}`, 14, 40);
+    }
+    
+    const startY = laporanTipe === 'bulanan' ? 45 : 35;
+    
+    const drawTable = (columns, rows, startYPos) => {
+       const head = [columns];
+       const body = rows.map(r => columns.map(c => {
+          let content = r[c] || '-';
+          if (laporanTipe === 'bulanan' && c !== 'No' && c !== 'Nama' && c !== 'NIP' && content !== '-') {
+             if (content.status === 'hadir') content = rekapTampilJam ? `✓\nIn: ${content.in}\nOut: ${content.out}` : '✓';
+             else if (content.status === 'izin') content = 'IZIN';
+             else if (content.status === 'sakit') content = 'SAKIT';
+          }
+          return content;
+       }));
+
+       doc.autoTable({
+         startY: startYPos,
+         head: head,
+         body: body,
+         theme: 'grid',
+         styles: { 
+            fontSize: (laporanTipe === 'bulanan' && rekapTampilJam && columns.length > 15) ? 6.5 : (rekapTampilJam ? 7 : 8),
+            cellPadding: 1,
+            halign: 'center',
+            valign: 'middle'
+         },
+         headStyles: {
+            fillColor: [79, 70, 229]
+         },
+         didParseCell: function (data) {
+            if (laporanTipe === 'bulanan' && data.section === 'head') {
+               const colName = columns[data.column.index];
+               if (exportPreviewData.redColumns.includes(colName)) data.cell.styles.fillColor = [220, 38, 38];
+            }
+            if (laporanTipe === 'bulanan' && data.section === 'body') {
+               const colName = columns[data.column.index];
+               const cellData = rows[data.row.index][colName];
+               
+               if (exportPreviewData.redColumns.includes(colName)) {
+                  data.cell.styles.fillColor = [254, 226, 226];
+               }
+               
+               if (colName !== 'No' && colName !== 'Nama' && colName !== 'NIP' && cellData && cellData !== '-') {
+                  if (cellData.status === 'hadir') {
+                     data.cell.styles.textColor = [37, 99, 235];
+                  } else if (cellData.status === 'izin') {
+                     data.cell.styles.fillColor = [251, 191, 36];
+                     data.cell.styles.textColor = [255, 255, 255];
+                     data.cell.styles.fontStyle = 'bold';
+                  } else if (cellData.status === 'sakit') {
+                     data.cell.styles.fillColor = [239, 68, 68];
+                     data.cell.styles.textColor = [255, 255, 255];
+                     data.cell.styles.fontStyle = 'bold';
+                  }
+               }
+            }
+         }
+       });
     };
-    html2pdf().set(opt).from(element).save();
+
+    if (laporanTipe === 'bulanan' && rekapTampilJam && exportPreviewData.columns.length > 20) {
+       const mid = Math.ceil((exportPreviewData.columns.length - 3) / 2) + 3;
+       const colsPage1 = exportPreviewData.columns.slice(0, mid);
+       drawTable(colsPage1, exportPreviewData.rows, startY);
+       
+       doc.addPage();
+       const colsPage2 = ['No', 'Nama', 'NIP', ...exportPreviewData.columns.slice(mid)];
+       drawTable(colsPage2, exportPreviewData.rows, 15);
+    } else {
+       drawTable(exportPreviewData.columns, exportPreviewData.rows, startY);
+    }
+
+    doc.save(`Laporan_Kehadiran_${laporanTipe}.pdf`);
   }
 
   const exportToWord = () => {
-    const tableHTML = document.getElementById('export-preview-container').outerHTML;
-    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
-      "xmlns:w='urn:schemas-microsoft-com:office:word' "+
-      "xmlns='http://www.w3.org/TR/REC-html40'>"+
-      "<head><meta charset='utf-8'><title>Laporan Absensi</title></head><body>";
-    const footer = "</body></html>";
+    let tableHTML = document.getElementById('export-preview-container').outerHTML;
+    tableHTML = tableHTML.replace(/\n/g, '<br>');
+    const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+      xmlns:w='urn:schemas-microsoft-com:office:word' 
+      xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Laporan Absensi</title>
+        <style>
+          @page WordSection1 { size: 841.95pt 595.35pt; mso-page-orientation: landscape; margin: 36.0pt; }
+          div.WordSection1 { page: WordSection1; }
+          table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+          td, th { border: 1px solid #000; padding: 4px; text-align: center; vertical-align: middle; }
+        </style>
+      </head>
+      <body>
+        <div class="WordSection1">`;
+    const footer = "</div></body></html>";
     const sourceHTML = header + tableHTML + footer;
     
     const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
