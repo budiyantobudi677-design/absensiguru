@@ -436,10 +436,11 @@ export default function DashboardAdmin() {
          body: body,
          theme: 'grid',
          styles: { 
-            fontSize: (laporanTipe === 'bulanan' && rekapTampilJam && columns.length > 15) ? 6.5 : (rekapTampilJam ? 7 : 8),
-            cellPadding: 1,
+            fontSize: (laporanTipe === 'bulanan' && rekapTampilJam) ? 5 : 8,
+            cellPadding: (laporanTipe === 'bulanan' && rekapTampilJam) ? 0.5 : 1,
             halign: 'center',
-            valign: 'middle'
+            valign: 'middle',
+            minCellHeight: 8
          },
          headStyles: {
             fillColor: [79, 70, 229]
@@ -475,17 +476,7 @@ export default function DashboardAdmin() {
        });
     };
 
-    if (laporanTipe === 'bulanan' && rekapTampilJam && exportPreviewData.columns.length > 20) {
-       const mid = Math.ceil((exportPreviewData.columns.length - 3) / 2) + 3;
-       const colsPage1 = exportPreviewData.columns.slice(0, mid);
-       drawTable(colsPage1, exportPreviewData.rows, startY);
-       
-       doc.addPage();
-       const colsPage2 = ['No', 'Nama', 'NIP', ...exportPreviewData.columns.slice(mid)];
-       drawTable(colsPage2, exportPreviewData.rows, 15);
-    } else {
-       drawTable(exportPreviewData.columns, exportPreviewData.rows, startY);
-    }
+    drawTable(exportPreviewData.columns, exportPreviewData.rows, startY);
 
     doc.save(`Laporan_Kehadiran_${laporanTipe}.pdf`);
   }
