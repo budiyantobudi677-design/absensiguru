@@ -9,12 +9,16 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
+  const [logoSekolah, setLogoSekolah] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
     const fetchSettings = async () => {
       const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-      if (data && data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+      if (data) {
+        if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+        if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+      }
     }
     fetchSettings()
   }, [])
@@ -52,12 +56,13 @@ export default function Login() {
       <div style={{ width: '100%', padding: '2rem' }}>
         <div className="text-center mb-8">
           <div style={{ 
-            background: 'linear-gradient(135deg, var(--primary) 0%, #312E81 100%)', 
+            background: logoSekolah ? 'transparent' : 'linear-gradient(135deg, var(--primary) 0%, #312E81 100%)', 
             width: '88px', height: '88px', borderRadius: '24px', display: 'flex', 
             alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', 
-            boxShadow: '0 10px 25px -5px rgba(79, 70, 229, 0.5)' 
+            boxShadow: logoSekolah ? 'none' : '0 10px 25px -5px rgba(79, 70, 229, 0.5)',
+            overflow: 'hidden'
           }}>
-            <UserCheck size={44} color="white" />
+            {logoSekolah ? <img src={logoSekolah} alt="Logo Sekolah" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <UserCheck size={44} color="white" />}
           </div>
           <h1 style={{ fontSize: '2.25rem', marginBottom: '0.25rem' }}>{namaSekolah}</h1>
           <p className="text-muted" style={{ fontSize: '1rem' }}>Sistem Kehadiran Karyawan & Guru</p>

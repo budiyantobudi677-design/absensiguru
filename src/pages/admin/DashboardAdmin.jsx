@@ -8,15 +8,20 @@ export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
   const [activeTab, setActiveTab] = useState('overview') 
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
+  const [logoSekolah, setLogoSekolah] = useState('')
   
   // Data State
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   
-  // Search and Sort State
+  // Search and Sort State (Laporan)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortOrder, setSortOrder] = useState('newest') // 'newest' | 'oldest' | 'name-asc' | 'name-desc'
+  const [sortOrder, setSortOrder] = useState('newest')
+  
+  // Search and Sort State (Pegawai)
+  const [pegawaiSearch, setPegawaiSearch] = useState('')
+  const [pegawaiSort, setPegawaiSort] = useState('name-asc')
   
   const navigate = useNavigate()
 
@@ -27,7 +32,10 @@ export default function DashboardAdmin() {
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-    if (data && data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+    if (data) {
+      if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+      if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+    }
   }
 
   const fetchAdmin = async () => {
@@ -38,7 +46,7 @@ export default function DashboardAdmin() {
 
   const loadPegawai = async () => {
     setLoadingData(true)
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase.from('profiles').select('*')
     if (data) setPegawaiData(data)
     setLoadingData(false)
   }
@@ -80,7 +88,7 @@ export default function DashboardAdmin() {
     XLSX.writeFile(workbook, `Laporan_Kehadiran.xlsx`);
   }
 
-  // Filter and Sort Logic
+  // Filter and Sort Logic (Laporan)
   const getFilteredAndSortedData = () => {
     let result = absensiData.filter(a => {
       const name = (a.profiles?.full_name || a.profiles?.email || '').toLowerCase()
@@ -103,7 +111,27 @@ export default function DashboardAdmin() {
     return result
   }
 
+  // Filter and Sort Logic (Pegawai)
+  const getFilteredPegawai = () => {
+    let result = pegawaiData.filter(p => {
+      const name = (p.full_name || p.email || '').toLowerCase()
+      return name.includes(pegawaiSearch.toLowerCase())
+    })
+
+    result.sort((a, b) => {
+      const nameA = (a.full_name || a.email || '').toLowerCase()
+      const nameB = (b.full_name || b.email || '').toLowerCase()
+      if (pegawaiSort === 'name-asc') return nameA.localeCompare(nameB)
+      if (pegawaiSort === 'name-desc') return nameB.localeCompare(nameA)
+      if (pegawaiSort === 'newest') return new Date(b.created_at) - new Date(a.created_at)
+      return 0
+    })
+
+    return result
+  }
+
   const filteredAbsensi = getFilteredAndSortedData()
+  const filteredPegawai = getFilteredPegawai()
 
   return (
     <div className="container" style={{ paddingBottom: '90px', background: '#F8FAFC' }}>
@@ -112,8 +140,8 @@ export default function DashboardAdmin() {
         <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}></div>
         <div className="flex justify-between items-center position-relative">
           <div className="flex items-center gap-3">
-            <div style={{ width: '56px', height: '56px', borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShieldCheck size={32} color="white" />
+            <div style={{ width: '56px', height: '56px', borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ShieldCheck size={32} color="white" />}
             </div>
             <div>
               <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '500' }}>Administrator</p>
@@ -152,28 +180,57 @@ export default function DashboardAdmin() {
 
         {activeTab === 'pegawai' && (
           <div className="fade-in">
-             <div className="flex items-center gap-3 mb-6">
+             <div className="flex items-center gap-3 mb-4">
                 <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
                   <ArrowLeft size={20} />
                 </button>
                 <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Daftar Pegawai</h3>
              </div>
+             
+             {/* Search and Sort for Pegawai */}
+             <div className="flex flex-col gap-3 mb-4">
+                <div style={{ position: 'relative' }}>
+                   <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                   <input 
+                     type="text" 
+                     className="input" 
+                     placeholder="Cari nama guru/pegawai..." 
+                     value={pegawaiSearch}
+                     onChange={(e) => setPegawaiSearch(e.target.value)}
+                     style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }}
+                   />
+                </div>
+                <div style={{ position: 'relative' }}>
+                   <ArrowUpDown size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                   <select 
+                     className="input" 
+                     value={pegawaiSort}
+                     onChange={(e) => setPegawaiSort(e.target.value)}
+                     style={{ paddingLeft: '2.5rem', borderRadius: '12px', appearance: 'none', fontSize: '0.9rem' }}
+                   >
+                      <option value="name-asc">Nama (A - Z)</option>
+                      <option value="name-desc">Nama (Z - A)</option>
+                      <option value="newest">Terbaru Ditambahkan</option>
+                   </select>
+                </div>
+             </div>
+
              {loadingData ? <p className="text-center text-muted">Memuat data pegawai...</p> : (
                <div className="flex flex-col gap-2">
-                 {pegawaiData.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
-                 {pegawaiData.map(p => (
-                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-                     <div className="flex gap-3 items-center">
+                 {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai yang cocok.</p>}
+                 {filteredPegawai.map(p => (
+                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '0.75rem 1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
+                     <div className="flex gap-4 items-center">
                        {p.foto_profil ? (
-                          <img src={p.foto_profil} style={{ width:'48px', height:'48px', borderRadius:'50%', objectFit:'cover'}} />
+                          <img src={p.foto_profil} style={{ width:'36px', height:'36px', borderRadius:'50%', objectFit:'cover'}} />
                        ) : (
-                          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <UserCircle size={28} color="var(--text-muted)" />
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <UserCircle size={20} color="var(--text-muted)" />
                           </div>
                        )}
                        <div>
-                         <h4 style={{ margin: 0, fontSize: '1rem' }}>{p.full_name || p.email}</h4>
-                         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} • {p.nip || 'Tanpa NIP'}</p>
+                         <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{p.full_name || p.email}</h4>
+                         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• ${p.nip}`}</p>
                        </div>
                      </div>
                    </div>
@@ -207,7 +264,7 @@ export default function DashboardAdmin() {
                     placeholder="Cari nama pegawai..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{ paddingLeft: '2.5rem', borderRadius: '12px' }}
+                    style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }}
                   />
                </div>
                <div style={{ position: 'relative' }}>
@@ -216,7 +273,7 @@ export default function DashboardAdmin() {
                     className="input" 
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value)}
-                    style={{ paddingLeft: '2.5rem', borderRadius: '12px', appearance: 'none' }}
+                    style={{ paddingLeft: '2.5rem', borderRadius: '12px', appearance: 'none', fontSize: '0.9rem' }}
                   >
                      <option value="newest">Paling Baru</option>
                      <option value="oldest">Paling Lama</option>
@@ -237,10 +294,10 @@ export default function DashboardAdmin() {
                   <div key={a.id} className="card flex items-center justify-between" style={{ padding: '0.8rem 1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
                     <div className="flex gap-3 items-center">
                        {a.profiles?.foto_profil ? (
-                          <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                          <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Users size={24} color="var(--text-muted)" />
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Users size={20} color="var(--text-muted)" />
                           </div>
                        )}
                        <div>
@@ -288,12 +345,14 @@ export default function DashboardAdmin() {
                  e.preventDefault();
                  const formData = new FormData(e.target);
                  const newName = formData.get('nama_sekolah');
+                 const newLogo = formData.get('logo_sekolah');
                  
-                 const { error } = await supabase.from('settings').update({ nama_sekolah: newName }).eq('id', 1);
+                 const { error } = await supabase.from('settings').update({ nama_sekolah: newName, logo_sekolah: newLogo }).eq('id', 1);
                  if (error) {
                    alert('Gagal menyimpan! Error: ' + error.message);
                  } else {
                    setNamaSekolah(newName);
+                   setLogoSekolah(newLogo);
                    alert('Pengaturan berhasil disimpan permanen!');
                  }
                }}>
@@ -303,7 +362,7 @@ export default function DashboardAdmin() {
                  </div>
                  <div className="input-group">
                    <label className="input-label">URL Logo Sekolah (Opsional)</label>
-                   <input type="url" className="input" placeholder="https://..." />
+                   <input type="url" name="logo_sekolah" className="input" defaultValue={logoSekolah} placeholder="https://..." />
                  </div>
                  <div className="input-group">
                    <label className="input-label">Zona Waktu Default</label>
