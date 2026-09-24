@@ -20,6 +20,9 @@ export default function DashboardGuru() {
   const [todayStatus, setTodayStatus] = useState(null)
   const [pengumumanData, setPengumumanData] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+  
+  const [isHoliday, setIsHoliday] = useState(false)
+  const [holidayReason, setHolidayReason] = useState('')
 
   const navigate = useNavigate()
 
@@ -130,7 +133,34 @@ export default function DashboardGuru() {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (profile) setProfile(profile)
       
+      const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+      const hariKerja = settings?.hari_kerja || 5
+      
+      const dayOfWeek = new Date().getDay()
+      let holiday = false
+      let reason = ''
+      
+      if (hariKerja === 5 && (dayOfWeek === 0 || dayOfWeek === 6)) {
+         holiday = true
+         reason = 'Libur Akhir Pekan (Sabtu / Minggu)'
+      } else if (hariKerja === 6 && dayOfWeek === 0) {
+         holiday = true
+         reason = 'Libur Akhir Pekan (Minggu)'
+      }
+      
       const today = getLocalDateString()
+
+      if (!holiday) {
+         const { data: libur } = await supabase.from('hari_libur').select('*').eq('tanggal', today).maybeSingle()
+         if (libur) {
+            holiday = true
+            reason = libur.keterangan
+         }
+      }
+      
+      setIsHoliday(holiday)
+      setHolidayReason(reason)
+
       const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
         
       const absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null;
@@ -365,9 +395,16 @@ export default function DashboardGuru() {
 
         {activeTab === 'absensi' && (
           <div className="text-center">
-            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+            {!isHoliday && <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>}
 
-            {!hasCheckedIn ? (
+            {isHoliday ? (
+              <div className="card" style={{ padding: '2rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', marginTop: '1rem' }}>
+                <Calendar size={48} style={{ margin: '0 auto 1rem auto' }} />
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Hari Libur</h3>
+                <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>{holidayReason}</p>
+                <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
+              </div>
+            ) : !hasCheckedIn ? (
               <>
                 <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
                   <Fingerprint size={48} strokeWidth={1.5} />

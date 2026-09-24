@@ -9,6 +9,8 @@ export default function DashboardAdmin() {
   const [activeTab, setActiveTab] = useState('overview') 
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
+  const [hariKerja, setHariKerja] = useState(5)
+  const [hariLiburData, setHariLiburData] = useState([])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   
@@ -49,7 +51,13 @@ export default function DashboardAdmin() {
     if (data) {
       if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+      if (data.hari_kerja) setHariKerja(data.hari_kerja)
     }
+  }
+
+  const loadHariLibur = async () => {
+    const { data } = await supabase.from('hari_libur').select('*').order('tanggal', { ascending: false }).limit(20)
+    if (data) setHariLiburData(data)
   }
 
   const fetchAdmin = async () => {
@@ -153,6 +161,10 @@ export default function DashboardAdmin() {
     if (menu === 'pengumuman') {
        loadPengumuman()
        loadPegawai()
+    }
+    if (menu === 'pengaturan') {
+       fetchSettings()
+       loadHariLibur()
     }
   }
 
@@ -540,6 +552,71 @@ export default function DashboardAdmin() {
                  </div>
                  <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '1rem', background: '#F59E0B' }}>Simpan Pengaturan</button>
                </form>
+             </div>
+
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Sistem Hari Kerja</h4>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 setLoadingData(true);
+                 const val = parseInt(e.target.hari_kerja.value);
+                 const { error } = await supabase.from('settings').upsert({ id: 1, hari_kerja: val }, { onConflict: 'id' });
+                 if (!error) {
+                    setHariKerja(val);
+                    alert("Sistem Hari Kerja berhasil diperbarui!");
+                 } else {
+                    alert("Error update: " + error.message);
+                 }
+                 setLoadingData(false);
+               }}>
+                 <div className="input-group">
+                   <select name="hari_kerja" className="input" defaultValue={hariKerja}>
+                      <option value="5">5 Hari Kerja (Senin - Jumat)</option>
+                      <option value="6">6 Hari Kerja (Senin - Sabtu)</option>
+                   </select>
+                 </div>
+                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#4F46E5', color: 'white', width: '100%' }}>Simpan Hari Kerja</button>
+               </form>
+             </div>
+
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Daftar Hari Libur (Manual)</h4>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 const tanggal = e.target.tanggal.value;
+                 const keterangan = e.target.keterangan.value;
+                 if(!tanggal || !keterangan) return;
+                 
+                 const { data, error } = await supabase.from('hari_libur').insert({ tanggal, keterangan }).select();
+                 if(!error && data) {
+                    setHariLiburData([data[0], ...hariLiburData]);
+                    e.target.reset();
+                 } else {
+                    alert("Gagal menambahkan hari libur. Pastikan Anda telah membuat tabel 'hari_libur' di Supabase.");
+                 }
+               }}>
+                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.5rem' }}>
+                    <input type="date" name="tanggal" className="input" required />
+                    <input type="text" name="keterangan" className="input" placeholder="Misal: Idul Fitri" required />
+                 </div>
+                 <button type="submit" className="btn" style={{ padding: '0.8rem', marginTop: '0.5rem', background: '#10B981', color: 'white', width: '100%' }}>Tambah Hari Libur</button>
+               </form>
+               
+               <div style={{ marginTop: '1.5rem' }}>
+                  {hariLiburData.length === 0 ? <p className="text-muted" style={{ fontSize: '0.85rem' }}>Belum ada hari libur tersimpan.</p> : hariLiburData.map(h => (
+                     <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', borderBottom: '1px solid #F1F5F9' }}>
+                        <div>
+                           <div style={{ fontWeight: '600', color: '#1E293B', fontSize: '0.9rem' }}>{new Date(h.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                           <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{h.keterangan}</div>
+                        </div>
+                        <button onClick={async () => {
+                           if(!window.confirm('Hapus hari libur ini?')) return;
+                           const { error } = await supabase.from('hari_libur').delete().eq('id', h.id);
+                           if(!error) setHariLiburData(hariLiburData.filter(item => item.id !== h.id));
+                        }} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                     </div>
+                  ))}
+               </div>
              </div>
 
              <div className="card" style={{ border: 'none', background: 'white' }}>
