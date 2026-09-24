@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, X } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2 } from 'lucide-react'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -19,9 +19,27 @@ export default function DashboardGuru() {
   
   const [todayStatus, setTodayStatus] = useState(null)
   const [pengumumanData, setPengumumanData] = useState([])
-  const [showPengumuman, setShowPengumuman] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (activeTab === 'pengumuman' && unreadCount > 0 && user) {
+       const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
+       const allIds = pengumumanData.map(p => p.id)
+       localData.read = [...new Set([...localData.read, ...allIds])]
+       localStorage.setItem(`pengumuman_meta_${user.id}`, JSON.stringify(localData))
+       setUnreadCount(0)
+    }
+  }, [activeTab, pengumumanData, unreadCount, user])
+
+  const handleDeletePengumuman = (id) => {
+     if (!user) return
+     const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
+     localData.deleted.push(id)
+     localStorage.setItem(`pengumuman_meta_${user.id}`, JSON.stringify(localData))
+     setPengumumanData(pengumumanData.filter(p => p.id !== id))
+  }
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
@@ -138,8 +156,16 @@ export default function DashboardGuru() {
          .select('*')
          .or(`target_type.eq.all,target_users.ilike.%${user.id}%`)
          .order('created_at', { ascending: false })
-         .limit(10)
-      if (pData) setPengumumanData(pData)
+         .limit(20)
+         
+      if (pData) {
+         const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
+         const activePengumuman = pData.filter(p => !localData.deleted.includes(p.id))
+         setPengumumanData(activePengumuman)
+         
+         const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
+         setUnreadCount(unread)
+      }
     } catch (err) {
       console.error(err)
     }
@@ -270,28 +296,6 @@ export default function DashboardGuru() {
 
   return (
     <div className="container" style={{ paddingBottom: '90px' }}>
-      
-      {/* Pengumuman Modal */}
-      {showPengumuman && (
-        <div className="popup-overlay" onClick={() => setShowPengumuman(false)}>
-          <div className="card" style={{ background: 'white', width: '90%', maxWidth: '400px', padding: '1.5rem', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-               <h3 style={{ margin: 0, fontSize: '1.125rem' }}>Notifikasi</h3>
-               <button onClick={() => setShowPengumuman(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text-muted)" /></button>
-            </div>
-            {pengumumanData.length === 0 ? <p className="text-muted text-center">Belum ada pengumuman.</p> : (
-               <div className="flex flex-col gap-3">
-                 {pengumumanData.map(p => (
-                   <div key={p.id} style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                     <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginBottom: '0.25rem' }}>{new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                     <p style={{ margin: 0, fontSize: '0.9rem', color: '#1E293B', lineHeight: '1.4' }}>{p.pesan}</p>
-                   </div>
-                 ))}
-               </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Custom Popup Modal */}
       {popup.show && (
@@ -324,9 +328,9 @@ export default function DashboardGuru() {
               </h2>
             </div>
           </div>
-          <button onClick={() => setShowPengumuman(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer', position: 'relative' }}>
+          <button onClick={() => setActiveTab('pengumuman')} style={{ background: activeTab === 'pengumuman' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer', position: 'relative' }}>
             <Bell size={20} />
-            {pengumumanData.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
+            {unreadCount > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
           </button>
         </div>
         <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
@@ -487,6 +491,34 @@ export default function DashboardGuru() {
                 </button>
               </form>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'pengumuman' && (
+          <div className="fade-in">
+             <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Notifikasi</h3>
+             
+             {pengumumanData.length === 0 ? (
+                <div className="card text-center text-muted" style={{ padding: '2rem' }}>
+                   Belum ada pengumuman untuk Anda.
+                </div>
+             ) : (
+                <div className="flex flex-col gap-3">
+                  {pengumumanData.map(p => (
+                    <div key={p.id} className="card" style={{ padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '16px', background: 'white' }}>
+                      <div className="flex justify-between items-start mb-2">
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                          {new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <button onClick={() => handleDeletePengumuman(p.id)} style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#EF4444', cursor: 'pointer', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.95rem', color: '#1E293B', lineHeight: '1.5' }}>{p.pesan}</p>
+                    </div>
+                  ))}
+                </div>
+             )}
           </div>
         )}
       </div>
