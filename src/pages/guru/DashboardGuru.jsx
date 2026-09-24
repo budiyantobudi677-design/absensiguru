@@ -46,11 +46,13 @@ export default function DashboardGuru() {
       if (profile) setProfile(profile)
       
       const today = getLocalDateString()
-      const { data: absensi, error: absensiError } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).maybeSingle()
+      const { data: absensiList, error: absensiError } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
         
       if (absensiError) {
         showPopup("Debug Error", absensiError.message, "error")
       }
+
+      const absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null;
 
       if (absensi && absensi.waktu_masuk) {
         setHasCheckedIn(true)
