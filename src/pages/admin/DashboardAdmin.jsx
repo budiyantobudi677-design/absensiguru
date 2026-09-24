@@ -5,7 +5,7 @@ import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Se
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
@@ -435,7 +435,7 @@ export default function DashboardAdmin() {
           return content;
        }));
 
-       doc.autoTable({
+       autoTable(doc, {
          startY: startYPos,
          head: head,
          body: body,
