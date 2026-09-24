@@ -9,6 +9,7 @@ export default function DashboardAdmin() {
   const [activeTab, setActiveTab] = useState('overview') 
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   
   // Data State
   const [pegawaiData, setPegawaiData] = useState([])
@@ -67,6 +68,60 @@ export default function DashboardAdmin() {
     setActiveTab(menu)
     if (menu === 'pegawai') loadPegawai()
     if (menu === 'laporan') loadAbsensi()
+  }
+
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > 600) { height = Math.round((height *= 600 / width)); width = 600; }
+          } else {
+            if (height > 600) { width = Math.round((width *= 600 / height)); height = 600; }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            resolve(new File([blob], "logo_" + Date.now() + ".webp", { type: 'image/webp' }));
+          }, 'image/webp', 0.8);
+        };
+      };
+    });
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setUploadingLogo(true)
+    try {
+      const compressedFile = await compressImage(file)
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.webp`
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, compressedFile)
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+      
+      const { error: updateError } = await supabase.from('settings').upsert({ id: 1, logo_sekolah: publicUrl }, { onConflict: 'id' })
+      if (updateError) throw updateError
+      
+      setLogoSekolah(publicUrl)
+      alert("Logo berhasil diperbarui!")
+    } catch (err) {
+      alert("Gagal upload logo: " + err.message)
+    } finally {
+      setUploadingLogo(false)
+    }
   }
 
   const downloadExcel = () => {
@@ -345,14 +400,17 @@ export default function DashboardAdmin() {
                  e.preventDefault();
                  const formData = new FormData(e.target);
                  const newName = formData.get('nama_sekolah');
-                 const newLogo = formData.get('logo_sekolah');
                  
-                 const { error } = await supabase.from('settings').update({ nama_sekolah: newName, logo_sekolah: newLogo }).eq('id', 1);
+                 // Menggunakan upsert dengan onConflict untuk memastikan data tersimpan
+                 const { error } = await supabase.from('settings').upsert(
+                   { id: 1, nama_sekolah: newName, logo_sekolah: logoSekolah }, 
+                   { onConflict: 'id' }
+                 );
+                 
                  if (error) {
                    alert('Gagal menyimpan! Error: ' + error.message);
                  } else {
                    setNamaSekolah(newName);
-                   setLogoSekolah(newLogo);
                    alert('Pengaturan berhasil disimpan permanen!');
                  }
                }}>
@@ -361,8 +419,17 @@ export default function DashboardAdmin() {
                    <input type="text" name="nama_sekolah" className="input" defaultValue={namaSekolah} required />
                  </div>
                  <div className="input-group">
-                   <label className="input-label">URL Logo Sekolah (Opsional)</label>
-                   <input type="url" name="logo_sekolah" className="input" defaultValue={logoSekolah} placeholder="https://..." />
+                   <label className="input-label">Logo Sekolah</label>
+                   <div className="flex gap-4 items-center">
+                     <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                       {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <ShieldCheck size={24} color="var(--text-muted)" />}
+                     </div>
+                     <label className="btn" style={{ background: '#F1F5F9', color: '#1E293B', cursor: 'pointer', padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '12px' }}>
+                       {uploadingLogo ? 'Mengunggah...' : 'Upload Logo Baru'}
+                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} disabled={uploadingLogo} />
+                     </label>
+                   </div>
+                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>*Otomatis diubah ke WebP agar super ringan.</p>
                  </div>
                  <div className="input-group">
                    <label className="input-label">Zona Waktu Default</label>
