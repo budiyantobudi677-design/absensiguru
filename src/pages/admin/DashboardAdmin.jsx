@@ -12,6 +12,7 @@ export default function DashboardAdmin() {
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
+  const [rekapTampilJam, setRekapTampilJam] = useState(true)
   const [hariLiburData, setHariLiburData] = useState([])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -61,6 +62,7 @@ export default function DashboardAdmin() {
       if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
       if (data.hari_kerja) setHariKerja(data.hari_kerja)
+      if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
     }
   }
 
@@ -297,7 +299,7 @@ export default function DashboardAdmin() {
     worksheet.getColumn(2).width = 25;
     worksheet.getColumn(3).width = 15;
     if (laporanTipe === 'bulanan') {
-      for(let i=4; i<=exportPreviewData.columns.length; i++) worksheet.getColumn(i).width = 12;
+      for(let i=4; i<=exportPreviewData.columns.length; i++) worksheet.getColumn(i).width = rekapTampilJam ? 12 : 5;
     } else {
       for(let i=4; i<=7; i++) worksheet.getColumn(i).width = 18;
     }
@@ -308,7 +310,7 @@ export default function DashboardAdmin() {
          if (laporanTipe === 'bulanan' && col !== 'No' && col !== 'Nama' && col !== 'NIP') {
             const cellData = row[col];
             if (!cellData) rowData.push('-');
-            else if (cellData.status === 'hadir') rowData.push(`✓\nIn: ${cellData.in}\nOut: ${cellData.out}`);
+            else if (cellData.status === 'hadir') rowData.push(rekapTampilJam ? `✓\nIn: ${cellData.in}\nOut: ${cellData.out}` : '✓');
             else rowData.push(cellData.status.toUpperCase());
          } else {
             rowData.push(row[col]);
@@ -733,6 +735,32 @@ export default function DashboardAdmin() {
              </div>
 
              <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Format Rekapitulasi Bulanan</h4>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 setLoadingData(true);
+                 const val = e.target.rekap_tampil_jam.value === 'true';
+                 const { error } = await supabase.from('settings').upsert({ id: 1, rekap_tampil_jam: val }, { onConflict: 'id' });
+                 if (!error) {
+                    setRekapTampilJam(val);
+                    alert("Format Rekapitulasi berhasil diperbarui!");
+                 } else {
+                    alert("Error update: " + error.message);
+                 }
+                 setLoadingData(false);
+               }}>
+                 <div className="input-group">
+                   <select name="rekap_tampil_jam" className="input" defaultValue={rekapTampilJam.toString()}>
+                      <option value="false">Mode Ringkas: Hanya Tanda (✓ / S / I)</option>
+                      <option value="true">Mode Detail: Tanda + Jam Masuk & Pulang</option>
+                   </select>
+                   <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>Pilih Mode Ringkas agar tabel rekap bulanan berukuran lebih kecil dan mudah dimuat dalam 1 halaman cetak (PDF).</p>
+                 </div>
+                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#4F46E5', color: 'white', width: '100%' }}>Simpan Format Rekap</button>
+               </form>
+             </div>
+
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Daftar Hari Libur (Manual)</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
@@ -866,7 +894,7 @@ export default function DashboardAdmin() {
                         if (laporanTipe === 'bulanan' && cIdx > 2 && cellContent !== '-') {
                            if (cellContent.status === 'hadir') {
                               color = '#2563EB'; // Blue
-                              cellContent = `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}`;
+                              cellContent = rekapTampilJam ? `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}` : '✓';
                            } else if (cellContent.status === 'izin') {
                               bg = '#FBBF24'; // Yellow
                               color = 'white';
@@ -881,7 +909,7 @@ export default function DashboardAdmin() {
                         }
 
                         return (
-                          <td key={cIdx} style={{ padding: '0.4rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'pre-wrap', background: bg, color: color, fontWeight: bold ? 'bold' : 'normal', verticalAlign: 'middle' }}>
+                          <td key={cIdx} style={{ padding: laporanTipe === 'bulanan' ? (rekapTampilJam ? '0.4rem' : '0.2rem 0.1rem') : '0.4rem', border: '1px solid #E2E8F0', textAlign: 'center', whiteSpace: 'pre-wrap', background: bg, color: color, fontWeight: bold ? 'bold' : 'normal', verticalAlign: 'middle', fontSize: (laporanTipe === 'bulanan' && !rekapTampilJam) ? '0.7rem' : '0.8rem' }}>
                             {cellContent}
                           </td>
                         )
