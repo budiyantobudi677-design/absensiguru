@@ -30,6 +30,16 @@ export default function DashboardGuru() {
   const [popup, setPopup] = useState({ show: false, title: '', message: '', type: 'success' })
 
   useEffect(() => {
+    // Check auto logout (1 pekan = 7 hari * 24 jam * 60 menit * 60 detik * 1000 ms)
+    const lastActive = localStorage.getItem('lastActive_guru')
+    const now = Date.now()
+    if (lastActive && now - parseInt(lastActive) > 7 * 24 * 60 * 60 * 1000) {
+       localStorage.removeItem('lastActive_guru')
+       supabase.auth.signOut().then(() => navigate('/'))
+       return
+    }
+    localStorage.setItem('lastActive_guru', now.toString())
+
     fetchUser()
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     
@@ -274,9 +284,6 @@ export default function DashboardGuru() {
               </h2>
             </div>
           </div>
-          <button onClick={async () => { await supabase.auth.signOut(); navigate('/'); }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer' }}>
-            <LogOut size={20} />
-          </button>
         </div>
         <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
           <div className="flex items-center gap-3">

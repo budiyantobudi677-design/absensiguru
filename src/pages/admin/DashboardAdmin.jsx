@@ -10,6 +10,7 @@ export default function DashboardAdmin() {
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
@@ -22,7 +23,7 @@ export default function DashboardAdmin() {
   const [pegawaiSearch, setPegawaiSearch] = useState('')
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
 
-  const [overviewStats, setOverviewStats] = useState({ hadir: 0, terlambat: 0, tidakHadir: 0 })
+  const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   
   const navigate = useNavigate()
 
@@ -30,6 +31,8 @@ export default function DashboardAdmin() {
     fetchAdmin()
     fetchSettings()
     fetchOverviewStats()
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -57,18 +60,15 @@ export default function DashboardAdmin() {
     const { data } = await supabase.from('absensi').select('*').eq('tanggal', todayStr)
     if (data) {
        let hadir = 0
-       let terlambat = 0
        let tidakHadir = 0
        data.forEach(a => {
           if (a.status === 'hadir') {
-             const time = new Date(a.waktu_masuk)
-             if (time.getHours() >= 7 && time.getMinutes() > 0) terlambat++
-             else hadir++
+             hadir++
           } else {
              tidakHadir++
           }
        })
-       setOverviewStats({ hadir, terlambat, tidakHadir })
+       setOverviewStats({ hadir, tidakHadir })
     }
   }
 
@@ -212,18 +212,29 @@ export default function DashboardAdmin() {
 
   return (
     <div className="container" style={{ paddingBottom: '90px', background: '#F8FAFC', minHeight: '100vh' }}>
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', position: 'relative', overflow: 'hidden' }}>
+      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}></div>
-        <div className="flex justify-between items-center position-relative">
-          <div className="flex items-center gap-3">
-            <div style={{ width: '56px', height: '56px', borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <div className="flex justify-between items-center position-relative mb-6">
+          <div className="flex items-center gap-4">
+            <div style={{ width: '56px', height: '56px', borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ShieldCheck size={32} color="white" />}
             </div>
             <div>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '500' }}>Administrator</p>
-              <h2 style={{ fontSize: '1.4rem', marginTop: '0.1rem', color: 'white' }}>{namaSekolah}</h2>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.1rem' }}>Administrator,</p>
+              <h2 style={{ fontSize: '1.4rem', marginTop: 0, color: 'white', letterSpacing: '0.5px' }}>{namaSekolah}</h2>
             </div>
           </div>
+        </div>
+        <div className="flex items-center justify-between position-relative" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
+          <div className="flex items-center gap-3" style={{ color: 'white' }}>
+            <Clock size={20} />
+            <span style={{ fontSize: '1rem', fontWeight: '500', letterSpacing: '1px' }}>
+              {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          </div>
+          <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.9)' }}>
+            {currentTime.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </span>
         </div>
       </div>
 
@@ -233,16 +244,11 @@ export default function DashboardAdmin() {
             
             {/* Real-time Dashboard Metrics */}
             <h3 style={{ marginBottom: '1rem', fontSize: '1.125rem', color: '#1E293B' }}>Kehadiran Hari Ini</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
                <div className="card text-center" style={{ padding: '1.25rem 0.5rem', borderRadius: '20px', border: 'none', background: 'white', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.1)' }}>
                   <Activity size={24} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
                   <h2 style={{ fontSize: '1.5rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{overviewStats.hadir}</h2>
                   <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0, fontWeight: '600' }}>HADIR</p>
-               </div>
-               <div className="card text-center" style={{ padding: '1.25rem 0.5rem', borderRadius: '20px', border: 'none', background: 'white', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.1)' }}>
-                  <Clock size={24} color="#F59E0B" style={{ margin: '0 auto 0.5rem auto' }} />
-                  <h2 style={{ fontSize: '1.5rem', color: '#F59E0B', margin: '0 0 0.25rem 0' }}>{overviewStats.terlambat}</h2>
-                  <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0, fontWeight: '600' }}>TELAT</p>
                </div>
                <div className="card text-center" style={{ padding: '1.25rem 0.5rem', borderRadius: '20px', border: 'none', background: 'white', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.1)' }}>
                   <XCircle size={24} color="#EF4444" style={{ margin: '0 auto 0.5rem auto' }} />
@@ -386,7 +392,9 @@ export default function DashboardAdmin() {
                 </button>
                 <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Pengaturan</h3>
              </div>
-             <div className="card" style={{ border: 'none', background: 'white' }}>
+             
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Profil Sekolah</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
                  const formData = new FormData(e.target);
@@ -411,6 +419,31 @@ export default function DashboardAdmin() {
                    </div>
                  </div>
                  <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '1rem', background: '#F59E0B' }}>Simpan Pengaturan</button>
+               </form>
+             </div>
+
+             <div className="card" style={{ border: 'none', background: 'white' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Keamanan Akun</h4>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 const formData = new FormData(e.target);
+                 const newPassword = formData.get('new_password');
+                 
+                 const { error } = await supabase.auth.updateUser({ password: newPassword });
+                 if (!error) {
+                   alert("Password berhasil diperbarui!");
+                   e.target.reset();
+                 } else {
+                   alert("Gagal mengubah password: " + error.message);
+                 }
+               }}>
+                 <div className="input-group">
+                   <label className="input-label">Ubah Password Baru</label>
+                   <input type="password" name="new_password" className="input" placeholder="Minimal 6 karakter" required minLength="6" />
+                 </div>
+                 <button type="submit" className="btn" style={{ padding: '1rem', marginTop: '0.5rem', background: '#334E68', color: 'white' }}>
+                   Ubah Password
+                 </button>
                </form>
              </div>
           </div>

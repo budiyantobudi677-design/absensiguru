@@ -67,16 +67,16 @@ export default function Login() {
   return (
     <div className="container flex items-center justify-center" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F0F4F8 0%, #D9E2EC 100%)', padding: '1.5rem' }}>
       <div style={{ width: '100%', maxWidth: '420px' }}>
-        <div className="text-center mb-6">
+        <div className="text-center mb-10">
           <div style={{ 
             background: logoSekolah ? 'transparent' : 'linear-gradient(135deg, var(--primary) 0%, #312E81 100%)', 
             width: '100px', height: '100px', borderRadius: logoSekolah ? '0' : '28px', display: 'flex', 
-            alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.2rem auto', 
+            alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem auto', 
             boxShadow: logoSekolah ? 'none' : '0 15px 30px -5px rgba(79, 70, 229, 0.4)',
           }}>
             {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <UserCheck size={48} color="white" />}
           </div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#102A43', marginBottom: '0.4rem', lineHeight: '1.3', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#102A43', marginBottom: '1rem', lineHeight: '1.3', letterSpacing: '-0.02em' }}>
             {namaSekolah}
           </h1>
           <p style={{ fontSize: '0.95rem', color: '#627D98', fontWeight: '500' }}>Sistem Kehadiran Karyawan & Guru</p>
