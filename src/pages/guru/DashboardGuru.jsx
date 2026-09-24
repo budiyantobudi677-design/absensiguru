@@ -37,18 +37,28 @@ export default function DashboardGuru() {
   }
 
   const fetchUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return navigate('/')
-    setUser(user)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return navigate('/')
+      setUser(user)
 
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    setProfile(profile)
-    
-    const today = getLocalDateString()
-    const { data: absensi } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).single()
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (profile) setProfile(profile)
       
-    if (absensi?.waktu_masuk) {
-      setHasCheckedIn(true)
+      const today = getLocalDateString()
+      const { data: absensi, error: absensiError } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).maybeSingle()
+        
+      if (absensiError) {
+        showPopup("Debug Error", absensiError.message, "error")
+      }
+
+      if (absensi && absensi.waktu_masuk) {
+        setHasCheckedIn(true)
+      } else {
+        setHasCheckedIn(false)
+      }
+    } catch (err) {
+      console.error(err)
     }
   }
 
