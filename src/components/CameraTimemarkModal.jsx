@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User } from 'lucide-react'
+import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, Settings, CheckSquare, Square } from 'lucide-react'
 
 export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia' }) {
   const [stream, setStream] = useState(null)
@@ -10,6 +10,37 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [cameraError, setCameraError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Judul paling atas kustom yang tersimpan di localStorage
+  const [customTitle, setCustomTitle] = useState(() => {
+    return localStorage.getItem('timemark_custom_title') || schoolName || 'Presensia'
+  })
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+
+  // Pengaturan tampilkan/sembunyikan nama guru
+  const [showTeacherName, setShowTeacherName] = useState(() => {
+    const saved = localStorage.getItem('timemark_show_teacher_name')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  // Deteksi Zona Waktu Indonesia Otomatis (WIB / WITA / WIT)
+  const getTimeZoneLabel = () => {
+    const offset = -new Date().getTimezoneOffset() / 60
+    if (offset >= 8.5) return 'WIT'
+    if (offset >= 7.5) return 'WITA'
+    return 'WIB'
+  }
+
+  const handleTitleChange = (newVal) => {
+    setCustomTitle(newVal)
+    localStorage.setItem('timemark_custom_title', newVal)
+  }
+
+  const handleToggleTeacherName = () => {
+    const nextVal = !showTeacherName
+    setShowTeacherName(nextVal)
+    localStorage.setItem('timemark_show_teacher_name', nextVal.toString())
+  }
 
   const videoRef = useRef(null)
 
@@ -154,40 +185,50 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       month: 'long',
       year: 'numeric'
     })
-    const timeFormatted = currentDateTime.toLocaleTimeString('id-ID', {
+    const tzLabel = getTimeZoneLabel()
+    const timeFormatted = `${currentDateTime.toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
-    }) + ' WIB'
+    })} ${tzLabel}`
 
     ctx.fillStyle = '#FFFFFF'
     ctx.textBaseline = 'top'
 
-    // Baris 1: Nama Sekolah / Brand
+    let currentY = overlayY + 12
+
+    // Baris 1: Judul Kustom Paling Atas (Tersimpan)
     ctx.font = 'bold 22px Outfit, sans-serif'
     ctx.fillStyle = '#38BDF8'
-    ctx.fillText(schoolName.toUpperCase(), 36, overlayY + 12)
+    const displayTitle = (customTitle || schoolName || 'PRESENSIA').toUpperCase()
+    ctx.fillText(displayTitle, 36, currentY)
+    currentY += 28
 
-    // Baris 2: Nama Guru & NIP
-    ctx.font = 'bold 20px Outfit, sans-serif'
-    ctx.fillStyle = '#FFFFFF'
-    ctx.fillText(`${teacherName}${nipText}`, 36, overlayY + 40)
+    // Baris 2: Nama Guru & NIP (Opsional, jika diaktifkan)
+    if (showTeacherName) {
+      ctx.font = 'bold 20px Outfit, sans-serif'
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fillText(`${teacherName}${nipText}`, 36, currentY)
+      currentY += 28
+    }
 
-    // Baris 3: Tanggal & Waktu
+    // Baris 3: Tanggal & Waktu (WIB / WITA / WIT otomatis)
     ctx.font = '16px Outfit, sans-serif'
     ctx.fillStyle = '#E2E8F0'
-    ctx.fillText(`📅 ${dateFormatted} | ⏰ ${timeFormatted}`, 36, overlayY + 68)
+    ctx.fillText(`📅 ${dateFormatted} | ⏰ ${timeFormatted}`, 36, currentY)
+    currentY += 24
 
-    // Baris 4: Lokasi GPS
+    // Baris 4: Lokasi Daerah / Alamat
     ctx.font = '15px Outfit, sans-serif'
     ctx.fillStyle = '#94A3B8'
-    ctx.fillText(`📍 ${locationText}`, 36, overlayY + 92)
+    ctx.fillText(`📍 ${locationText}`, 36, currentY)
+    currentY += 24
 
     // Baris 5: Catatan kegiatan jika ada
     if (customNote.trim()) {
       ctx.font = 'italic 16px Outfit, sans-serif'
       ctx.fillStyle = '#FBBF24'
-      ctx.fillText(`📝 Kegiatan: ${customNote.trim()}`, 36, overlayY + 116)
+      ctx.fillText(`📝 Kegiatan: ${customNote.trim()}`, 36, currentY)
     }
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
@@ -253,24 +294,102 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           <Camera size={22} color="#38BDF8" />
           <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
         </div>
-        <button
-          onClick={onClose}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={() => setIsEditingTitle(!isEditingTitle)}
+            title="Pengaturan Watermark"
+            style={{
+              background: isEditingTitle ? '#38BDF8' : 'rgba(255,255,255,0.15)',
+              border: 'none',
+              color: 'white',
+              borderRadius: '50%',
+              width: '38px',
+              height: '38px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            <Settings size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.15)',
+              border: 'none',
+              color: 'white',
+              borderRadius: '50%',
+              width: '38px',
+              height: '38px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Settings Panel Drawer */}
+      {isEditingTitle && (
+        <div
           style={{
-            background: 'rgba(255,255,255,0.15)',
-            border: 'none',
+            width: '100%',
+            maxWidth: '480px',
+            background: 'rgba(30, 41, 59, 0.95)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '16px',
+            padding: '1rem',
+            boxSizing: 'border-box',
+            marginTop: '0.5rem',
             color: 'white',
-            borderRadius: '50%',
-            width: '38px',
-            height: '38px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
+            zIndex: 20
           }}
         >
-          <X size={20} />
-        </button>
-      </div>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.3rem' }}>
+              Judul Timemark Paling Atas (Tersimpan otomatis)
+            </label>
+            <input
+              type="text"
+              value={customTitle}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              placeholder="Contoh: SMKN 1 MAKASSAR / PRESENSIA"
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '8px',
+                border: '1px solid #475569',
+                background: '#0F172A',
+                color: 'white',
+                fontSize: '0.85rem',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div
+            onClick={handleToggleTeacherName}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              padding: '0.5rem 0'
+            }}
+          >
+            <span style={{ fontSize: '0.85rem' }}>Tampilkan Nama Guru di Foto</span>
+            {showTeacherName ? (
+              <CheckSquare size={20} color="#10B981" />
+            ) : (
+              <Square size={20} color="#94A3B8" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Camera Viewfinder / Preview */}
       <div
@@ -329,8 +448,15 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 pointerEvents: 'none'
               }}
             >
-              <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>{schoolName}</div>
-              <div>{profile?.full_name || 'Guru'} • {currentDateTime.toLocaleTimeString('id-ID')}</div>
+              <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>
+                {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+              </div>
+              {showTeacherName && (
+                <div>{profile?.full_name || 'Guru'}</div>
+              )}
+              <div style={{ color: '#E2E8F0' }}>
+                {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+              </div>
               <div style={{ color: '#94A3B8', fontSize: '0.7rem' }}>📍 {locationText}</div>
             </div>
           </>
