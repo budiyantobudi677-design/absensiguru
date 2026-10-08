@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import GeofenceMapPicker from '../../components/GeofenceMapPicker'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
@@ -995,20 +996,57 @@ export default function DashboardAdmin() {
                     </select>
                   </div>
 
+                  {/* Interactive Map Picker */}
+                  <GeofenceMapPicker
+                    lat={schoolLat}
+                    lng={schoolLng}
+                    radius={schoolRadius}
+                    onLocationChange={(newLat, newLng) => {
+                      setSchoolLat(newLat)
+                      setSchoolLng(newLng)
+                    }}
+                  />
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div className="input-group">
                       <label className="input-label" style={{ fontSize: '0.85rem' }}>Latitude Sekolah</label>
-                      <input type="number" step="any" name="school_lat" className="input" defaultValue={schoolLat} required />
+                      <input
+                        type="number"
+                        step="any"
+                        name="school_lat"
+                        className="input"
+                        value={schoolLat}
+                        onChange={(e) => setSchoolLat(parseFloat(e.target.value) || 0)}
+                        required
+                      />
                     </div>
                     <div className="input-group">
                       <label className="input-label" style={{ fontSize: '0.85rem' }}>Longitude Sekolah</label>
-                      <input type="number" step="any" name="school_lng" className="input" defaultValue={schoolLng} required />
+                      <input
+                        type="number"
+                        step="any"
+                        name="school_lng"
+                        className="input"
+                        value={schoolLng}
+                        onChange={(e) => setSchoolLng(parseFloat(e.target.value) || 0)}
+                        required
+                      />
                     </div>
                   </div>
 
                   <div className="input-group">
                     <label className="input-label" style={{ fontSize: '0.85rem' }}>Radius Toleransi (Meter)</label>
-                    <input type="number" name="school_radius" className="input" defaultValue={schoolRadius} min="10" max="2000" placeholder="Contoh: 100" required />
+                    <input
+                      type="number"
+                      name="school_radius"
+                      className="input"
+                      value={schoolRadius}
+                      onChange={(e) => setSchoolRadius(parseInt(e.target.value) || 50)}
+                      min="10"
+                      max="2000"
+                      placeholder="Contoh: 100"
+                      required
+                    />
                     <span className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.25rem' }}>Jarak maksimal dari titik pusat sekolah (misal: 100 meter).</span>
                   </div>
 
