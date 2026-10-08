@@ -632,7 +632,7 @@ export default function DashboardGuru() {
   }
 
   return (
-    <div className="container" style={{ paddingBottom: '90px' }}>
+    <div className="guru-container" style={{ paddingBottom: '90px' }}>
 
       {/* Custom Popup Modal */}
       {popup.show && (
@@ -1055,10 +1055,31 @@ export default function DashboardGuru() {
         )}
       </div>
 
-      {/* Corporate Style Bottom Navigation */}
+      {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
       <nav className="bottom-nav">
         <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('absensi')}>
           <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
+        </button>
+        <button
+          className="nav-item"
+          style={{ flex: 1, color: '#0284C7' }}
+          onClick={() => setShowCameraModal(true)}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+            color: 'white',
+            borderRadius: '50%',
+            width: '36px',
+            height: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: '-14px',
+            boxShadow: '0 4px 10px rgba(2, 132, 199, 0.4)'
+          }}>
+            <Camera size={18} />
+          </div>
+          <span style={{ fontSize: '0.7rem', fontWeight: '600' }}>Timemark</span>
         </button>
         <button
           className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}

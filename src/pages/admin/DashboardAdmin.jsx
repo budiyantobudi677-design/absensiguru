@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -26,8 +26,9 @@ export default function DashboardAdmin() {
   const [schoolLng, setSchoolLng] = useState(119.432732)
   const [schoolRadius, setSchoolRadius] = useState(100) // meters
   
-  // Theme Mode
+  // Theme Mode & Sidebar state
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
@@ -582,100 +583,185 @@ export default function DashboardAdmin() {
   const filteredPegawai = getFilteredPegawai()
 
   return (
-    <div className="container" style={{ paddingBottom: '90px', background: '#F8FAFC', minHeight: '100vh' }}>
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '2rem', background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', position: 'sticky', top: 0, zIndex: 50, overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}></div>
-        <div className="flex justify-between items-center position-relative mb-6">
-          <div className="flex items-center gap-4">
-            <div style={{ width: '56px', height: '56px', borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ShieldCheck size={32} color="white" />}
+    <div className="admin-desktop-layout">
+      {/* 💻 Desktop Fixed Sidebar Navigation */}
+      <aside className={`admin-sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div>
+          {/* Logo & Info Sekolah */}
+          <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: 'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0 }}>
+              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ShieldCheck size={26} />}
             </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>
+              <span style={{ fontSize: '0.72rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontWeight: '500' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span> Portal Admin Web
+              </span>
+            </div>
+          </div>
+
+          {/* Menu Items Vertikal */}
+          <nav className="admin-sidebar-nav">
+            <button className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => { setActiveTab('overview'); setIsSidebarOpen(false); }}>
+              <Activity size={18} />
+              <span>Ringkasan (Overview)</span>
+            </button>
+            <button className={`admin-nav-item ${activeTab === 'pegawai' ? 'active' : ''}`} onClick={() => { handleMenuClick('pegawai'); setIsSidebarOpen(false); }}>
+              <Users size={18} />
+              <span>Data Pegawai / Guru</span>
+            </button>
+            <button className={`admin-nav-item ${activeTab === 'laporan' ? 'active' : ''}`} onClick={() => { handleMenuClick('laporan'); setIsSidebarOpen(false); }}>
+              <FileText size={18} />
+              <span>Rekap Presensi & Ekspor</span>
+            </button>
+            <button className={`admin-nav-item ${activeTab === 'pengumuman' ? 'active' : ''}`} onClick={() => { handleMenuClick('pengumuman'); setIsSidebarOpen(false); }}>
+              <Bell size={18} />
+              <span>Pengumuman Sekolah</span>
+            </button>
+            <button className={`admin-nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} onClick={() => { handleMenuClick('pengaturan'); setIsSidebarOpen(false); }}>
+              <Settings size={18} />
+              <span>Pengaturan & Geofencing</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* Footer Sidebar (Akun Admin) */}
+        <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <UserCircle size={22} color="var(--primary)" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{admin?.email?.split('@')[0] || 'Administrator'}</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Admin Aktif</div>
+              </div>
+            </div>
+            <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <LogOut size={16} />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Backdrop saat sidebar drawer mobile aktif */}
+      {isSidebarOpen && (
+        <div onClick={() => setIsSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }} />
+      )}
+
+      {/* 🖥️ Main Desktop Content */}
+      <div className="admin-main">
+        {/* Topbar Header Desktop */}
+        <header className="admin-topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="mobile-toggle-btn" style={{ background: 'transparent', border: '1px solid var(--border)', padding: '0.45rem', borderRadius: '8px', cursor: 'pointer', display: 'none' }}>
+              <Menu size={20} />
+            </button>
             <div>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.1rem' }}>Administrator,</p>
-              <h2 style={{ fontSize: '1.4rem', marginTop: 0, color: 'white', letterSpacing: '0.5px' }}>{namaSekolah}</h2>
+              <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
+                {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
+                {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
+                {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
+                {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
+                {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Sistem Presensi Guru & Tenaga Kependidikan {namaSekolah}
+              </p>
             </div>
           </div>
-          <button
-            onClick={toggleTheme}
-            title={darkMode ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"}
-            style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: 'none',
-              width: '42px',
-              height: '42px',
-              borderRadius: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#E0E7FF" />}
-          </button>
-        </div>
-        <div className="flex items-center justify-between position-relative" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
-          <div className="flex items-center gap-3" style={{ color: 'white' }}>
-            <Clock size={20} />
-            <span style={{ fontSize: '1rem', fontWeight: '500', letterSpacing: '1px' }}>
-              {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </span>
-          </div>
-          <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.9)' }}>
-            {currentTime.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </span>
-        </div>
-      </div>
 
-      <div style={{ padding: '0 1.5rem' }}>
-        {activeTab === 'overview' && (
-          <div className="fade-in">
-            
-            {/* Real-time Dashboard Metrics */}
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.125rem', color: '#1E293B' }}>Kehadiran Hari Ini</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-               <div className="card text-center" style={{ padding: '1.25rem 0.5rem', borderRadius: '20px', border: 'none', background: 'white', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.1)' }}>
-                  <Activity size={24} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
-                  <h2 style={{ fontSize: '1.5rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{overviewStats.hadir}</h2>
-                  <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0, fontWeight: '600' }}>HADIR</p>
-               </div>
-               <div className="card text-center" style={{ padding: '1.25rem 0.5rem', borderRadius: '20px', border: 'none', background: 'white', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.1)' }}>
-                  <XCircle size={24} color="#EF4444" style={{ margin: '0 auto 0.5rem auto' }} />
-                  <h2 style={{ fontSize: '1.5rem', color: '#EF4444', margin: '0 0 0.25rem 0' }}>{overviewStats.tidakHadir}</h2>
-                  <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0, fontWeight: '600' }}>IZIN/SAKIT</p>
-               </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.45rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+              <Clock size={16} color="var(--primary)" />
+              <span style={{ fontWeight: '600' }}>{currentTime.toLocaleTimeString('id-ID')}</span>
+              <span style={{ color: 'var(--text-muted)' }}>•</span>
+              <span style={{ color: 'var(--text-muted)' }}>{currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
             </div>
 
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.125rem', color: '#1E293B' }}>Menu Navigasi</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <div onClick={() => handleMenuClick('pegawai')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                  <Users size={32} color="white" />
-                </div>
-                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Data Pegawai</h3>
+            <button
+              onClick={toggleTheme}
+              title={darkMode ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#4F46E5" />}
+            </button>
+          </div>
+        </header>
+
+        {/* Content Canvas */}
+        <main className="admin-content">
+          {activeTab === 'overview' && (
+            <div className="fade-in">
+              {/* Real-time Dashboard Metrics (Lega 4 Kolom di Monitor Laptop) */}
+              <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Kehadiran Hari Ini</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+                 <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.12)' }}>
+                    <Activity size={28} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{overviewStats.hadir}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>HADIR HARI INI</p>
+                 </div>
+                 <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.12)' }}>
+                    <XCircle size={28} color="#EF4444" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#EF4444', margin: '0 0 0.25rem 0' }}>{overviewStats.tidakHadir}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>IZIN / SAKIT</p>
+                 </div>
+                 <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(79, 70, 229, 0.12)' }}>
+                    <Users size={28} color="#4F46E5" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#4F46E5', margin: '0 0 0.25rem 0' }}>{pegawaiData.length}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>TOTAL PEGAWAI</p>
+                 </div>
+                 <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.12)' }}>
+                    <MapPin size={28} color={geofenceEnabled ? "#10B981" : "#F59E0B"} style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.3rem', color: geofenceEnabled ? "#10B981" : "#F59E0B", margin: '0.25rem 0' }}>{geofenceEnabled ? `${schoolRadius} Meter` : 'Non-Aktif'}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>GEOFENCING GPS</p>
+                 </div>
               </div>
-              <div onClick={() => handleMenuClick('laporan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                  <FileText size={32} color="white" />
+
+              <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Menu Akses Cepat</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                <div onClick={() => handleMenuClick('pegawai')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <Users size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Data Pegawai</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola profil & data guru</p>
                 </div>
-                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Laporan</h3>
-              </div>
-              <div onClick={() => handleMenuClick('pengumuman')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                  <Bell size={32} color="white" />
+                <div onClick={() => handleMenuClick('laporan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <FileText size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Laporan & Rekap</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Unduh berkas Excel, PDF, Word</p>
                 </div>
-                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Pengumuman</h3>
-              </div>
-              <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.5rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                  <Settings size={32} color="white" />
+                <div onClick={() => handleMenuClick('pengumuman')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <Bell size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Pengumuman Sekolah</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kirim broadcast pesan ke guru</p>
                 </div>
-                <h3 style={{ fontSize: '0.95rem', margin: 0, fontWeight: '600' }}>Pengaturan Sekolah</h3>
+                <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <Settings size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Pengaturan & GPS</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Lokasi peta radius & hari kerja</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
         {activeTab === 'pegawai' && (
           <div className="fade-in">
@@ -686,7 +772,7 @@ export default function DashboardAdmin() {
                 <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Daftar Pegawai</h3>
              </div>
              
-             <div className="flex flex-col gap-3 mb-4">
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div style={{ position: 'relative' }}>
                    <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
                    <input type="text" className="input" placeholder="Cari nama guru..." value={pegawaiSearch} onChange={(e) => setPegawaiSearch(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }} />
@@ -702,15 +788,15 @@ export default function DashboardAdmin() {
              </div>
 
              {loadingData ? <p className="text-center text-muted">Memuat data...</p> : (
-               <div className="flex flex-col gap-2">
+               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
                  {filteredPegawai.map(p => (
-                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '0.75rem 1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
+                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                      <div className="flex gap-4 items-center">
-                       {p.foto_profil ? <img src={p.foto_profil} style={{ width:'36px', height:'36px', borderRadius:'50%', objectFit:'cover'}} /> : <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserCircle size={20} color="var(--text-muted)" /></div>}
+                       {p.foto_profil ? <img src={p.foto_profil} style={{ width:'42px', height:'42px', borderRadius:'50%', objectFit:'cover'}} /> : <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserCircle size={24} color="var(--text-muted)" /></div>}
                        <div>
-                         <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{p.full_name || p.email}</h4>
-                         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• ${p.nip}`}</p>
+                         <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>{p.full_name || p.email}</h4>
+                         <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
                        </div>
                      </div>
                    </div>
@@ -1172,16 +1258,7 @@ export default function DashboardAdmin() {
              </div>
           </div>
         )}
-      </div>
-
-      <nav className="bottom-nav" style={{ paddingBottom: '1.5rem' }}>
-        <button className={`nav-item active`} onClick={() => setActiveTab('overview')}>
-          <Settings size={24} strokeWidth={2.5} /> Panel Utama
-        </button>
-        <button className={`nav-item`} onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>
-          <LogOut size={24} strokeWidth={1.5} /> Log Out
-        </button>
-      </nav>
+        </main>
       {showExportModal && (
         <div className="popup-overlay" style={{ zIndex: 1000, padding: '1rem' }}>
           <div className="popup-content" style={{ maxWidth: '900px', width: '100%', padding: '1.5rem', borderRadius: '24px', background: 'white' }}>
@@ -1273,6 +1350,7 @@ export default function DashboardAdmin() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }
