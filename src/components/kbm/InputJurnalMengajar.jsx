@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Sparkles, Clock, Compass, Tag } from 'lucide-react'
+import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter } from 'lucide-react'
 
 export default function InputJurnalMengajar({ selectedClass, classes, user, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
@@ -10,6 +10,7 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState(null)
+  const [viewTab, setViewTab] = useState('form') // 'form' | 'history'
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toLocaleDateString('en-CA'),
@@ -25,13 +26,14 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
     'Matematika',
     'Bahasa Indonesia',
     'Bahasa Inggris',
-    'IPA',
-    'IPS',
-    'Pendidikan Agama',
-    'Pendidikan Pancasila',
-    'Seni & Prakarya',
-    'PJOK',
-    'Informatika'
+    'IPA / Sains',
+    'IPS / Sosial',
+    'Pendidikan Agama & Budi Pekerti',
+    'Pendidikan Pancasila / PKn',
+    'Seni Budaya & Prakarya',
+    'Pendidikan Jasmani (PJOK)',
+    'Informatika / TIK',
+    'Muatan Lokal / Bahasa Daerah'
   ]
 
   useEffect(() => {
@@ -101,7 +103,8 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
         penilaian: '',
         catatan: ''
       }))
-      setMessage({ type: 'success', text: 'Jurnal pembelajaran berhasil dicatat ke sistem!' })
+      setMessage({ type: 'success', text: 'Jurnal mengajar berhasil disimpan!' })
+      setViewTab('history') // otomatis arahkan ke riwayat
       setTimeout(() => setMessage(null), 4000)
     } catch (err) {
       console.error(err)
@@ -112,7 +115,7 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Hapus riwayat jurnal ini?')) return
+    if (!window.confirm('Hapus riwayat agenda jurnal ini?')) return
     try {
       const { error } = await supabase.from('learning_journals').delete().eq('id', id)
       if (error) throw error
@@ -123,232 +126,337 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Form Input Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-          <div>
-            <span className="text-[11px] font-bold text-teal-600 uppercase tracking-wider bg-teal-50 px-2 py-0.5 rounded-full inline-block mb-1">
-              Catatan KBM Guru
-            </span>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">Form Jurnal Mengajar Harian</h2>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-            <BookOpen size={20} />
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+      {/* Top Segmented Control */}
+      <div className="card" style={{ padding: '0.5rem', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--border)', display: 'flex', gap: '6px' }}>
+        <button
+          onClick={() => setViewTab('form')}
+          type="button"
+          style={{
+            flex: 1,
+            padding: '0.65rem 1rem',
+            borderRadius: '12px',
+            border: 'none',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: viewTab === 'form' ? '#0D9488' : 'transparent',
+            color: viewTab === 'form' ? 'white' : 'var(--text-muted)',
+            boxShadow: viewTab === 'form' ? '0 2px 8px rgba(13, 148, 136, 0.3)' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          <PlusCircle size={16} />
+          <span>Tulis Jurnal Baru</span>
+        </button>
+        <button
+          onClick={() => setViewTab('history')}
+          type="button"
+          style={{
+            flex: 1,
+            padding: '0.65rem 1rem',
+            borderRadius: '12px',
+            border: 'none',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: viewTab === 'history' ? '#0D9488' : 'transparent',
+            color: viewTab === 'history' ? 'white' : 'var(--text-muted)',
+            boxShadow: viewTab === 'history' ? '0 2px 8px rgba(13, 148, 136, 0.3)' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          <BookOpen size={16} />
+          <span>Riwayat Jurnal ({journals.length})</span>
+        </button>
+      </div>
+
+      {/* Alert Notifikasi */}
+      {message && (
+        <div style={{
+          padding: '0.85rem 1.25rem',
+          borderRadius: '14px',
+          fontSize: '0.85rem',
+          fontWeight: '600',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: message.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+          color: message.type === 'success' ? '#065F46' : '#991B1B',
+          border: `1px solid ${message.type === 'success' ? '#A7F3D0' : '#FECACA'}`
+        }}>
+          <span>{message.text}</span>
+          <button onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
+            Tutup
+          </button>
         </div>
+      )}
 
-        {message && (
-          <div className={`p-3.5 rounded-xl text-xs font-semibold mb-4 flex items-center justify-between ${
-            message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}>
-            <span>{message.text}</span>
-            <button onClick={() => setMessage(null)} className="text-[11px] underline opacity-75">Tutup</button>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Rombel / Kelas</label>
-              <select
-                value={activeClassId}
-                onChange={(e) => setActiveClassId(e.target.value)}
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
-              >
-                {(classes || []).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Tanggal Mengajar</label>
-              <input
-                type="date"
-                name="tanggal"
-                value={formData.tanggal}
-                onChange={handleInputChange}
-                required
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Mata Pelajaran</label>
-              <select
-                name="mata_pelajaran"
-                value={formData.mata_pelajaran}
-                onChange={handleInputChange}
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
-              >
-                {standardSubjects.map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
-            </div>
+      {/* TAB 1: FORM TULIS JURNAL BARU */}
+      {viewTab === 'form' && (
+        <div className="card" style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+          <div style={{ marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Agenda Pembelajaran Guru
+            </span>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+              Catat Agenda & Evaluasi KBM
+            </h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Materi Pokok / Topik Bahasan</label>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Rombel / Kelas
+                </label>
+                <select
+                  value={activeClassId}
+                  onChange={(e) => setActiveClassId(e.target.value)}
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                >
+                  {(classes || []).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Tanggal KBM
+                </label>
+                <input
+                  type="date"
+                  name="tanggal"
+                  value={formData.tanggal}
+                  onChange={handleInputChange}
+                  required
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Mata Pelajaran
+                </label>
+                <select
+                  name="mata_pelajaran"
+                  value={formData.mata_pelajaran}
+                  onChange={handleInputChange}
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                >
+                  {standardSubjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Materi Pokok / Topik Pembelajaran *
+              </label>
               <input
                 type="text"
                 name="topik"
                 value={formData.topik}
                 onChange={handleInputChange}
-                placeholder="Contoh: Operasi Hitung Perkalian Bilangan Cacah..."
                 required
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                placeholder="Contoh: Operasi Hitung Perkalian Bilangan Cacah"
+                className="input"
+                style={{ padding: '0.75rem 1rem', fontSize: '0.9rem', borderRadius: '12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Metode / Teknik Pembelajaran
+                </label>
+                <select
+                  name="teknik"
+                  value={formData.teknik}
+                  onChange={handleInputChange}
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                >
+                  <option value="Tatap Muka (Luring)">Tatap Muka (Luring)</option>
+                  <option value="Diskusi Kelompok">Diskusi Kelompok</option>
+                  <option value="Praktikum / Eksperimen">Praktikum / Eksperimen</option>
+                  <option value="Pembelajaran Proyek (PBL)">Pembelajaran Proyek (PBL)</option>
+                  <option value="Daring / Online">Daring / Online</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Bentuk Penilaian / Tugas
+                </label>
+                <input
+                  type="text"
+                  name="penilaian"
+                  value={formData.penilaian}
+                  onChange={handleInputChange}
+                  placeholder="Contoh: Latihan Soal Mandiri Halaman 45"
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Ringkasan Kegiatan Belajar
+              </label>
+              <textarea
+                name="kegiatan"
+                rows="3"
+                value={formData.kegiatan}
+                onChange={handleInputChange}
+                placeholder="Rangkuman langkah kegiatan pembuka, inti, dan penutup pembelajaran..."
+                className="input"
+                style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', borderRadius: '12px', resize: 'vertical' }}
               />
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Metode Pembelajaran</label>
-              <select
-                name="teknik"
-                value={formData.teknik}
-                onChange={handleInputChange}
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
-              >
-                <option value="Tatap Muka (Luring)">Tatap Muka (Luring)</option>
-                <option value="Praktikum / Eksperimen">Praktikum / Eksperimen</option>
-                <option value="Diskusi & Presentasi Kelompok">Diskusi Kelompok</option>
-                <option value="Daring / Asynchronous">Daring / Hybrid</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Kegiatan & Ringkasan Pembelajaran</label>
-            <textarea
-              name="kegiatan"
-              rows={2}
-              value={formData.kegiatan}
-              onChange={handleInputChange}
-              placeholder="Deskripsi aktivitas belajar mengajar di kelas..."
-              className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl p-3 text-xs sm:text-sm font-normal text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Bentuk Penilaian / Tugas</label>
-              <input
-                type="text"
-                name="penilaian"
-                value={formData.penilaian}
-                onChange={handleInputChange}
-                placeholder="Contoh: Latihan Mandiri Hal 42, Kuis 5 Soal..."
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Catatan / Hambatan Siswa</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Catatan Khusus / Hambatan Siswa (Opsional)
+              </label>
               <input
                 type="text"
                 name="catatan"
                 value={formData.catatan}
                 onChange={handleInputChange}
-                placeholder="Catatan kendala materi atau siswa yang butuh remidi..."
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                placeholder="Contoh: 3 siswa membutuhkan bimbingan remedial pada konsep pembagian"
+                className="input"
+                style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
               />
             </div>
-          </div>
 
-          <div className="flex justify-end pt-2">
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="btn"
+              style={{
+                marginTop: '0.5rem',
+                background: 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)',
+                color: 'white',
+                borderRadius: '14px',
+                padding: '0.85rem 1.5rem',
+                fontWeight: 'bold',
+                boxShadow: '0 4px 14px rgba(13, 148, 136, 0.3)'
+              }}
             >
-              <Plus size={16} />
-              <span>{submitting ? 'Menyimpan...' : 'Simpan Jurnal KBM'}</span>
+              <BookOpen size={18} />
+              <span>{submitting ? 'Menyimpan...' : 'Simpan Jurnal Pembelajaran'}</span>
             </button>
-          </div>
-        </form>
-      </div>
-
-      {/* History Feed Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-6">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-          <div className="flex items-center gap-2">
-            <Clock size={16} className="text-slate-400" />
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Riwayat Jurnal Kelas ({journals.length})
-            </h3>
-          </div>
+          </form>
         </div>
+      )}
 
-        {loading ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full spin mx-auto mb-2"></div>
-            Memuat riwayat jurnal...
+      {/* TAB 2: RIWAYAT JURNAL MENGAJAR */}
+      {viewTab === 'history' && (
+        <div className="card" style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Arsip Pembelajaran
+              </span>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+                Daftar Jurnal Terisi
+              </h3>
+            </div>
+            <select
+              value={activeClassId}
+              onChange={(e) => setActiveClassId(e.target.value)}
+              className="input"
+              style={{ width: 'auto', padding: '0.45rem 0.85rem', fontSize: '0.8rem', borderRadius: '10px' }}
+            >
+              {(classes || []).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
-        ) : journals.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            Belum ada catatan jurnal pada kelas ini.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {journals.map(j => (
-              <div
-                key={j.id}
-                className="p-4 rounded-xl border border-slate-100 hover:border-teal-200 bg-slate-50/50 hover:bg-white transition-all shadow-sm flex flex-col gap-2 group"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 text-[10px] font-bold border border-teal-100">
+
+          {loading ? (
+            <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Memuat data riwayat jurnal...
+            </div>
+          ) : journals.length === 0 ? (
+            <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Belum ada jurnal yang dicatat pada kelas ini.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {journals.map((j) => (
+                <div
+                  key={j.id}
+                  style={{
+                    padding: '1.15rem',
+                    borderRadius: '16px',
+                    border: '1px solid var(--border)',
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '2px 8px', borderRadius: '8px' }}>
                         {j.mata_pelajaran}
                       </span>
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold">
-                        {j.teknik || 'Tatap Muka'}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        • {new Date(j.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#64748B', background: '#E2E8F0', padding: '2px 8px', borderRadius: '8px' }}>
+                        {j.classes?.name || 'Kelas'}
                       </span>
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
-                      {j.topik}
-                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>
+                        {new Date(j.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                      <button
+                        onClick={() => handleDelete(j.id)}
+                        style={{ background: '#FEE2E2', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '5px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                        title="Hapus Jurnal"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(j.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer opacity-0 group-hover:opacity-100"
-                    title="Hapus Jurnal"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>
+                    {j.topik}
+                  </h4>
+
+                  {j.kegiatan && (
+                    <p style={{ fontSize: '0.82rem', color: '#475569', margin: 0, lineHeight: '1.5', background: 'white', padding: '8px 12px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                      {j.kegiatan}
+                    </p>
+                  )}
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    {j.teknik && <span>Metode: <strong style={{ color: 'var(--text)' }}>{j.teknik}</strong></span>}
+                    {j.penilaian && <span>Penilaian: <strong style={{ color: 'var(--text)' }}>{j.penilaian}</strong></span>}
+                    {j.catatan && <span style={{ color: '#D97706' }}>Catatan: <strong>{j.catatan}</strong></span>}
+                  </div>
                 </div>
-
-                {j.kegiatan && (
-                  <p className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-100">
-                    {j.kegiatan}
-                  </p>
-                )}
-
-                {(j.penilaian || j.catatan) && (
-                  <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
-                    {j.penilaian && (
-                      <span className="text-slate-600">
-                        <strong className="text-slate-700">Tugas/Evaluasi:</strong> {j.penilaian}
-                      </span>
-                    )}
-                    {j.catatan && (
-                      <span className="text-slate-500">
-                        <strong className="text-slate-700">Catatan:</strong> {j.catatan}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

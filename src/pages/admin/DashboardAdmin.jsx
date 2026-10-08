@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -1155,147 +1155,97 @@ export default function DashboardAdmin() {
           <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {kbmAdminSubTab === 'menu' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                {/* Executive Header Hub */}
-                <div className="card" style={{ padding: '1.5rem', background: 'white', borderRadius: '20px', border: '1px solid var(--border)' }}>
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '3px 10px', borderRadius: '20px', display: 'inline-block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                        Portal Administrasi Akademik
-                      </span>
-                      <h2 style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--text)', margin: '0 0 4px 0' }}>Sistem Pembelajaran Terpadu</h2>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
-                        Pusat pemantauan kegiatan belajar mengajar: presensi siswa harian, jurnal mengajar guru, input nilai leger, rekapitulasi berkas, serta master rombel kelas.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div style={{ padding: '0.5rem 1rem', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0', textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#94A3B8', display: 'block', textTransform: 'uppercase' }}>Total Kelas</span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: '800', color: '#334155' }}>{kbmClasses.length} Rombel</span>
-                      </div>
-                      <div style={{ padding: '0.5rem 1rem', borderRadius: '12px', background: '#EEF2FF', border: '1px solid #E0E7FF', textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#6366F1', display: 'block', textTransform: 'uppercase' }}>Data Siswa</span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: '800', color: '#4338CA' }}>{kbmStudents.length} Siswa</span>
-                      </div>
-                    </div>
+                {/* Real-time Metric Badges */}
+                <h3 style={{ marginBottom: '0.25rem', fontSize: '1.15rem' }}>Statistik Akademik & KBM</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                  <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(79, 70, 229, 0.12)' }}>
+                    <School size={28} color="#4F46E5" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#4F46E5', margin: '0 0 0.25rem 0' }}>{kbmClasses.length}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>TOTAL KELAS / ROMBEL</p>
+                  </div>
+                  <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.12)' }}>
+                    <Users size={28} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{kbmStudents.length}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>TOTAL SISWA TERDAFTAR</p>
+                  </div>
+                  <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(147, 51, 234, 0.12)' }}>
+                    <Award size={28} color="#9333EA" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#9333EA', margin: '0 0 0.25rem 0' }}>{kbmGrades.length}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>DATA NILAI TERINPUT</p>
+                  </div>
+                  <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.12)' }}>
+                    <BookOpen size={28} color="#F59E0B" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h2 style={{ fontSize: '1.8rem', color: '#F59E0B', margin: '0 0 0.25rem 0' }}>{kbmJournals.length}</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>JURNAL PEMBELAJARAN</p>
                   </div>
                 </div>
 
-                {/* Grid Kotak-Kotak Modul Pembelajaran */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Grid Menu Cards: Sesuai Persis Tampilan Menu Akses Cepat App */}
+                <h3 style={{ margin: '0.5rem 0 0 0', fontSize: '1.15rem' }}>Menu Modul Pembelajaran</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
                   {/* Card 1: Presensi Siswa */}
                   <div
                     onClick={() => setKbmAdminSubTab('presensi')}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-                          <CheckCircle2 size={24} />
-                        </div>
-                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">Harian Kelas</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Presensi Siswa</h4>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Pencatatan dan pemantauan kehadiran murid (Hadir, Sakit, Izin, Alpha) seluruh rombel.</p>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.25)' }}>
+                      <CheckCircle2 size={32} color="white" />
                     </div>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-600">
-                      <span>Buka Presensi</span>
-                      <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={15} />
-                      </div>
-                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Presensi Siswa</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Monitoring & kontrol absensi kelas harian</p>
                   </div>
 
                   {/* Card 2: Jurnal Mengajar */}
                   <div
                     onClick={() => setKbmAdminSubTab('jurnal')}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-teal-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-500/20 group-hover:scale-105 transition-transform">
-                          <BookOpen size={24} />
-                        </div>
-                        <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2.5 py-0.5 rounded-full">Agenda Guru</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-600 transition-colors">Jurnal Mengajar Guru</h4>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Pemantauan catatan agenda materi, teknik pembelajaran, serta evaluasi harian guru.</p>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(13, 148, 136, 0.25)' }}>
+                      <BookOpen size={32} color="white" />
                     </div>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-teal-600">
-                      <span>Buka Jurnal</span>
-                      <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={15} />
-                      </div>
-                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Jurnal Mengajar Guru</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Pemantauan agenda materi & evaluasi KBM</p>
                   </div>
 
                   {/* Card 3: Penilaian & Leger */}
                   <div
                     onClick={() => setKbmAdminSubTab('nilai')}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-purple-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
-                          <Award size={24} />
-                        </div>
-                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2.5 py-0.5 rounded-full">Leger Nilai</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">Input & Leger Nilai</h4>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Input nilai tugas/kuis, STS, SAS serta kalkulasi predikat otomatis seluruh mata pelajaran.</p>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #9333EA 0%, #A855F7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(147, 51, 234, 0.25)' }}>
+                      <Award size={32} color="white" />
                     </div>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-600">
-                      <span>Buka Penilaian</span>
-                      <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={15} />
-                      </div>
-                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Input & Leger Nilai</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Nilai tugas, kuis, STS, SAS & predikat</p>
                   </div>
 
                   {/* Card 4: Rekapitulasi & Cetak */}
                   <div
                     onClick={() => setKbmAdminSubTab('rekap')}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-orange-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
-                          <FileSpreadsheet size={24} />
-                        </div>
-                        <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-full">Ekspor Excel / PDF</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-orange-600 transition-colors">Rekapitulasi & Laporan</h4>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Laporan komprehensif kehadiran, jurnal guru & leger nilai siap unduh Excel dan cetak.</p>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(245, 158, 11, 0.25)' }}>
+                      <FileSpreadsheet size={32} color="white" />
                     </div>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
-                      <span>Buka Rekapitulasi</span>
-                      <div className="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={15} />
-                      </div>
-                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Rekapitulasi & Cetak</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Unduh rekap berkas Excel & cetak laporan</p>
                   </div>
 
                   {/* Card 5: Master Siswa & Rombel */}
                   <div
                     onClick={() => setKbmAdminSubTab('master_siswa')}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98] md:col-span-2 lg:col-span-2"
+                    className="card"
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform">
-                          <Users size={24} />
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">Basis Data Sekolah</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-slate-700 transition-colors">Master Siswa & Rombongan Belajar</h4>
-                      <p className="text-xs text-slate-500 mt-1">Kelola rombongan belajar (kelas), registrasi data siswa baru, atau impor data massal melalui berkas template Excel.</p>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(79, 70, 229, 0.25)' }}>
+                      <Users size={32} color="white" />
                     </div>
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span>Kelola Master Siswa & Kelas</span>
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={15} />
-                      </div>
-                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Master Siswa & Rombel</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola rombel kelas & impor data Excel</p>
                   </div>
                 </div>
               </div>

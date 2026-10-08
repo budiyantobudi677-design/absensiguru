@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Filter, ChevronRight } from 'lucide-react'
+import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Search, CheckCheck } from 'lucide-react'
 
 export default function InputPresensiMurid({ selectedClass, classes, user, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
@@ -12,6 +12,7 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [isHoliday, setIsHoliday] = useState(false)
+  const [holidayReason, setHolidayReason] = useState('')
   const [message, setMessage] = useState(null)
   const [searchFilter, setSearchFilter] = useState('')
 
@@ -40,13 +41,21 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
       if (sErr) throw sErr
       setStudents(studentList || [])
 
+      // Cek Hari Libur
       const { data: holData } = await supabase
         .from('hari_libur')
         .select('*')
         .eq('tanggal', selectedDate)
         .maybeSingle()
-      setIsHoliday(!!holData)
+      if (holData) {
+        setIsHoliday(true)
+        setHolidayReason(holData.keterangan || 'Libur Nasional / Sekolah')
+      } else {
+        setIsHoliday(false)
+        setHolidayReason('')
+      }
 
+      // Ambil presensi yang sudah tercatat
       const { data: attList, error: aErr } = await supabase
         .from('student_attendance')
         .select('*')
@@ -64,7 +73,7 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
       setAttendanceMap(map)
     } catch (err) {
       console.error(err)
-      setMessage({ type: 'error', text: 'Gagal memuat data: ' + err.message })
+      setMessage({ type: 'error', text: 'Gagal memuat data presensi: ' + err.message })
     } finally {
       setLoading(false)
     }
@@ -77,10 +86,10 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
     }))
   }
 
-  const handleMarkAll = (status) => {
+  const handleMarkAllHadir = () => {
     const updated = { ...attendanceMap }
     students.forEach(st => {
-      updated[st.id] = status
+      updated[st.id] = 'hadir'
     })
     setAttendanceMap(updated)
   }
@@ -106,11 +115,11 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
 
       if (error) throw error
 
-      setMessage({ type: 'success', text: `Presensi ${students.length} siswa berhasil disimpan!` })
+      setMessage({ type: 'success', text: `Presensi ${students.length} siswa berhasil disimpan ke sistem!` })
       setTimeout(() => setMessage(null), 4000)
     } catch (err) {
       console.error(err)
-      setMessage({ type: 'error', text: 'Gagal menyimpan: ' + err.message })
+      setMessage({ type: 'error', text: 'Gagal menyimpan presensi: ' + err.message })
     } finally {
       setSaving(false)
     }
@@ -128,37 +137,38 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
   const attendanceRate = students.length > 0 ? ((countH / students.length) * 100).toFixed(0) : '100'
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero Control Bar */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+      {/* Control Card: Kelas & Tanggal */}
+      <div className="card" style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Modul Presensi Siswa</span>
-            </div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">Input Kehadiran Harian</h2>
+            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#10B981', background: '#ECFDF5', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Modul Presensi Siswa
+            </span>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>Input Presensi Harian</h3>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center gap-1">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '5px 12px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Sparkles size={13} /> {attendanceRate}% Kehadiran
             </span>
             {isHoliday && (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100">
-                Hari Libur
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#DC2626', background: '#FEF2F2', padding: '5px 12px', borderRadius: '12px' }}>
+                Libur: {holidayReason}
               </span>
             )}
           </div>
         </div>
 
-        {/* Filter Selection Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Rombel / Kelas</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+              Pilih Rombel / Kelas
+            </label>
             <select
               value={activeClassId}
               onChange={(e) => setActiveClassId(e.target.value)}
-              className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+              className="input"
+              style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
             >
               {(classes || []).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -166,173 +176,244 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Tanggal Pembelajaran</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+              Tanggal Presensi
+            </label>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+              className="input"
+              style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
             />
           </div>
         </div>
       </div>
 
+      {/* Alert Notifikasi */}
       {message && (
-        <div className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between shadow-sm animate-in fade-in transition-all ${
-          message.type === 'success'
-            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-            : 'bg-rose-50 text-rose-800 border border-rose-200'
-        }`}>
+        <div style={{
+          padding: '0.85rem 1.25rem',
+          borderRadius: '14px',
+          fontSize: '0.85rem',
+          fontWeight: '600',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: message.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+          color: message.type === 'success' ? '#065F46' : '#991B1B',
+          border: `1px solid ${message.type === 'success' ? '#A7F3D0' : '#FECACA'}`
+        }}>
           <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-[11px] underline opacity-75 hover:opacity-100">Tutup</button>
+          <button onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
+            Tutup
+          </button>
         </div>
       )}
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <div className="p-3.5 rounded-2xl bg-white border border-emerald-100/80 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
-            H
-          </div>
-          <div>
-            <div className="text-xl font-black text-slate-800 leading-none">{countH}</div>
-            <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mt-1">Hadir</div>
-          </div>
+      {/* KPI Ringkasan Status Kehadiran */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+        <div className="card text-center" style={{ padding: '0.75rem 0.25rem', borderRadius: '16px', border: '1px solid #D1FAE5', background: '#F0FDF4' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#059669', lineHeight: 1 }}>{countH}</div>
+          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#059669', marginTop: '4px' }}>HADIR (H)</div>
         </div>
-        <div className="p-3.5 rounded-2xl bg-white border border-amber-100/80 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm shrink-0">
-            S
-          </div>
-          <div>
-            <div className="text-xl font-black text-slate-800 leading-none">{countS}</div>
-            <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mt-1">Sakit</div>
-          </div>
+        <div className="card text-center" style={{ padding: '0.75rem 0.25rem', borderRadius: '16px', border: '1px solid #FEF3C7', background: '#FFFBEB' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#D97706', lineHeight: 1 }}>{countS}</div>
+          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#D97706', marginTop: '4px' }}>SAKIT (S)</div>
         </div>
-        <div className="p-3.5 rounded-2xl bg-white border border-blue-100/80 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
-            I
-          </div>
-          <div>
-            <div className="text-xl font-black text-slate-800 leading-none">{countI}</div>
-            <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-1">Izin</div>
-          </div>
+        <div className="card text-center" style={{ padding: '0.75rem 0.25rem', borderRadius: '16px', border: '1px solid #DBEAFE', background: '#EFF6FF' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#2563EB', lineHeight: 1 }}>{countI}</div>
+          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#2563EB', marginTop: '4px' }}>IZIN (I)</div>
         </div>
-        <div className="p-3.5 rounded-2xl bg-white border border-rose-100/80 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-sm shrink-0">
-            A
-          </div>
-          <div>
-            <div className="text-xl font-black text-slate-800 leading-none">{countA}</div>
-            <div className="text-[10px] font-bold text-rose-600 uppercase tracking-wide mt-1">Alpha</div>
-          </div>
+        <div className="card text-center" style={{ padding: '0.75rem 0.25rem', borderRadius: '16px', border: '1px solid #FEE2E2', background: '#FEF2F2' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#DC2626', lineHeight: 1 }}>{countA}</div>
+          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#DC2626', marginTop: '4px' }}>ALPHA (A)</div>
         </div>
       </div>
 
       {/* Main Student Attendance List Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {/* Header & Quick Action */}
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-slate-500" />
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-              Daftar Siswa ({filteredStudents.length} dari {students.length})
+      <div className="card" style={{ padding: 0, background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        {/* Header Toolbar */}
+        <div style={{ padding: '0.85rem 1.25rem', background: '#F8FAFC', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users size={16} color="var(--text-muted)" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Daftar Siswa ({filteredStudents.length} / {students.length})
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Cari nama siswa..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: '360px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Cari siswa..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="input"
+                style={{ padding: '0.45rem 0.75rem 0.45rem 2rem', fontSize: '0.8rem', borderRadius: '10px' }}
+              />
+            </div>
             <button
-              onClick={() => handleMarkAll('hadir')}
-              className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+              onClick={handleMarkAllHadir}
+              type="button"
+              style={{
+                padding: '0.45rem 0.75rem',
+                borderRadius: '10px',
+                background: '#ECFDF5',
+                color: '#059669',
+                border: '1px solid #A7F3D0',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
             >
-              ✓ Semua Hadir
+              <CheckCheck size={14} /> Semua H
             </button>
           </div>
         </div>
 
         {/* Content list */}
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full spin mx-auto mb-2"></div>
+          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             Memuat daftar kehadiran siswa...
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs px-4">
+          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             {students.length === 0
-              ? 'Belum ada siswa di kelas ini. Masukkan siswa lewat Master Siswa.'
+              ? 'Belum ada data siswa di kelas ini. Tambahkan siswa lewat menu Master Siswa.'
               : 'Tidak ditemukan siswa yang cocok dengan pencarian.'}
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {filteredStudents.map((student, idx) => {
               const currentStatus = attendanceMap[student.id] || 'hadir'
               return (
                 <div
                   key={student.id}
-                  className="p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors"
+                  style={{
+                    padding: '0.85rem 1.25rem',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)'
+                  }}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 text-center text-xs font-bold text-slate-300">{idx + 1}</span>
-                    <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200/60">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', width: '22px', textAlign: 'center', flexShrink: 0 }}>
+                      {idx + 1}
+                    </span>
+                    <div style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '50%',
+                      background: '#F1F5F9',
+                      color: '#475569',
+                      fontWeight: 'bold',
+                      fontSize: '0.8rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      border: '1px solid #E2E8F0'
+                    }}>
                       {student.name.charAt(0).toUpperCase()}
                     </div>
-                    <div>
-                      <div className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">{student.name}</div>
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        NISN: {student.nisn || '-'} • Gender: {student.gender === 'L' ? 'L' : 'P'}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {student.name}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                        {student.nisn ? `NISN: ${student.nisn} • ` : ''}{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}
                       </div>
                     </div>
                   </div>
 
-                  {/* Status Toggle Pills */}
-                  <div className="flex items-center gap-1.5 self-end sm:self-center bg-slate-100/80 p-1 rounded-xl">
+                  {/* Status Buttons [H] [S] [I] [A] */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, background: '#F1F5F9', padding: '3px', borderRadius: '12px' }}>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'hadir')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentStatus === 'hadir'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:text-emerald-700'
-                      }`}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '9px',
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: currentStatus === 'hadir' ? '#10B981' : 'transparent',
+                        color: currentStatus === 'hadir' ? 'white' : '#64748B',
+                        boxShadow: currentStatus === 'hadir' ? '0 2px 6px rgba(16, 185, 129, 0.4)' : 'none'
+                      }}
+                      title="Hadir"
                     >
                       H
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'sakit')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentStatus === 'sakit'
-                          ? 'bg-amber-500 text-white shadow-sm'
-                          : 'text-slate-600 hover:text-amber-700'
-                      }`}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '9px',
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: currentStatus === 'sakit' ? '#F59E0B' : 'transparent',
+                        color: currentStatus === 'sakit' ? 'white' : '#64748B',
+                        boxShadow: currentStatus === 'sakit' ? '0 2px 6px rgba(245, 158, 11, 0.4)' : 'none'
+                      }}
+                      title="Sakit"
                     >
                       S
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'izin')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentStatus === 'izin'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:text-blue-700'
-                      }`}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '9px',
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: currentStatus === 'izin' ? '#3B82F6' : 'transparent',
+                        color: currentStatus === 'izin' ? 'white' : '#64748B',
+                        boxShadow: currentStatus === 'izin' ? '0 2px 6px rgba(59, 130, 246, 0.4)' : 'none'
+                      }}
+                      title="Izin"
                     >
                       I
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'alpha')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentStatus === 'alpha'
-                          ? 'bg-rose-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:text-rose-700'
-                      }`}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '9px',
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: currentStatus === 'alpha' ? '#EF4444' : 'transparent',
+                        color: currentStatus === 'alpha' ? 'white' : '#64748B',
+                        boxShadow: currentStatus === 'alpha' ? '0 2px 6px rgba(239, 68, 68, 0.4)' : 'none'
+                      }}
+                      title="Alpha"
                     >
                       A
                     </button>
@@ -344,16 +425,26 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
         )}
 
         {/* Footer Submit Button */}
-        <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">
-            Pastikan status kehadiran telah sesuai sebelum menyimpan.
+        <div style={{ padding: '1rem 1.25rem', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            Pastikan data kehadiran telah dicek sebelum disimpan.
           </span>
           <button
             onClick={handleSaveAttendance}
             disabled={saving || students.length === 0}
-            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            className="btn btn-primary"
+            style={{
+              width: 'auto',
+              padding: '0.65rem 1.5rem',
+              borderRadius: '12px',
+              fontSize: '0.85rem',
+              fontWeight: 'bold',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
-            <Save size={15} />
+            <Save size={16} />
             <span>{saving ? 'Menyimpan...' : 'Simpan Presensi'}</span>
           </button>
         </div>

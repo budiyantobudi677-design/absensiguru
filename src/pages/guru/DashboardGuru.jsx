@@ -1073,188 +1073,296 @@ export default function DashboardGuru() {
         )}
         {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap) */}
         {activeTab === 'kbm' && (
-          <div className="flex flex-col gap-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {kbmSubTab === 'menu' ? (
-              <div className="flex flex-col gap-4">
-                {/* Banner Header KBM */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-md relative overflow-hidden">
-                  <div className="relative z-10">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full inline-block mb-1.5">
-                      Modul Pembelajaran Guru
-                    </span>
-                    <h3 className="text-lg font-bold text-white">Sistem Pembelajaran Terpadu</h3>
-                    <p className="text-xs text-blue-100 mt-1 max-w-sm">
-                      Kelola presensi siswa harian, jurnal mengajar KBM, penilaian berkala, serta unduh rekapitulasi format standar.
-                    </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {/* Header Title KBM */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Sistem Pembelajaran</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>Pilih modul kegiatan belajar mengajar</p>
                   </div>
-                  <div className="absolute right-2 -bottom-2 opacity-15 pointer-events-none">
-                    <BookOpen size={100} />
-                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '4px 10px', borderRadius: '12px' }}>
+                    {classesList.length} Rombel
+                  </span>
                 </div>
 
-                {/* Grid Menu Cards: Ultra Modern Executive SaaS Styling */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Grid Menu Cards: Desain Kotak Modern Mobile */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {/* Card 1: Presensi Siswa */}
                   <div
                     onClick={() => setKbmSubTab('presensi_siswa')}
-                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-blue-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{
+                      padding: '1.1rem 1.25rem',
+                      borderRadius: '20px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                      transition: 'all 0.2s'
+                    }}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(16, 185, 129, 0.3)' }}>
                         <CheckCircle2 size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">Presensi Siswa</h4>
-                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Harian</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Presensi Siswa</h4>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: '8px' }}>Harian</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Catat kehadiran kelas (Hadir, Sakit, Izin, Alpha)</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catat absensi hadir, sakit, izin & alpha kelas</p>
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-all shrink-0">
-                      <ChevronRight size={16} />
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                      <ChevronRight size={18} />
                     </div>
                   </div>
 
                   {/* Card 2: Jurnal Mengajar */}
                   <div
                     onClick={() => setKbmSubTab('jurnal')}
-                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-teal-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{
+                      padding: '1.1rem 1.25rem',
+                      borderRadius: '20px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                      transition: 'all 0.2s'
+                    }}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-500/20 group-hover:scale-105 transition-transform shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #0D9488 0%, #0284C7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(13, 148, 136, 0.3)' }}>
                         <BookOpen size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-600 transition-colors">Jurnal Mengajar</h4>
-                          <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">Agenda KBM</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Jurnal Mengajar</h4>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '2px 8px', borderRadius: '8px' }}>Agenda</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Catatan materi pelajaran, metode & evaluasi harian</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catatan materi pelajaran, metode & evaluasi harian</p>
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-teal-50 group-hover:text-teal-600 flex items-center justify-center transition-all shrink-0">
-                      <ChevronRight size={16} />
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                      <ChevronRight size={18} />
                     </div>
                   </div>
 
                   {/* Card 3: Input Nilai Siswa */}
                   <div
                     onClick={() => setKbmSubTab('nilai')}
-                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-purple-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{
+                      padding: '1.1rem 1.25rem',
+                      borderRadius: '20px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                      transition: 'all 0.2s'
+                    }}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #9333EA 0%, #6366F1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(147, 51, 234, 0.3)' }}>
                         <Award size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">Input Nilai Siswa</h4>
-                          <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">Formatif & Sumatif</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Input Nilai Siswa</h4>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#7E22CE', background: '#F3E8FF', padding: '2px 8px', borderRadius: '8px' }}>Leger</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Penilaian tugas, kuis, STS, SAS & predikat otomatis</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Penilaian tugas, kuis, STS, SAS & predikat nilai</p>
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-purple-50 group-hover:text-purple-600 flex items-center justify-center transition-all shrink-0">
-                      <ChevronRight size={16} />
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                      <ChevronRight size={18} />
                     </div>
                   </div>
 
                   {/* Card 4: Rekap & Laporan */}
                   <div
                     onClick={() => setKbmSubTab('rekap')}
-                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-orange-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
+                    className="card"
+                    style={{
+                      padding: '1.1rem 1.25rem',
+                      borderRadius: '20px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                      transition: 'all 0.2s'
+                    }}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)' }}>
                         <FileSpreadsheet size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-orange-600 transition-colors">Rekapitulasi & Cetak</h4>
-                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Excel / PDF</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Rekapitulasi & Cetak</h4>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#EA580C', background: '#FFEDD5', padding: '2px 8px', borderRadius: '8px' }}>Excel / PDF</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Ekspor berkas Excel dan cetak PDF rekap kehadiran & nilai</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Ekspor laporan presensi, rekap nilai & jurnal mengajar</p>
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-600 flex items-center justify-center transition-all shrink-0">
-                      <ChevronRight size={16} />
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                      <ChevronRight size={18} />
                     </div>
                   </div>
 
                   {/* Card 5: Master Siswa & Kelas */}
                   <div
                     onClick={() => setKbmSubTab('master_siswa')}
-                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98] sm:col-span-2"
+                    className="card"
+                    style={{
+                      padding: '1.1rem 1.25rem',
+                      borderRadius: '20px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                      transition: 'all 0.2s'
+                    }}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #334155 0%, #0F172A 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(15, 23, 42, 0.3)' }}>
                         <Users size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-slate-700 transition-colors">Master Siswa & Rombel</h4>
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">Basis Data</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Master Siswa & Rombel</h4>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', background: '#F1F5F9', padding: '2px 8px', borderRadius: '8px' }}>Basis Data</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Kelola rombel kelas, tambah siswa baru atau impor massal Excel</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Kelola rombel kelas, tambah siswa & impor file Excel</p>
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-800 flex items-center justify-center transition-all shrink-0">
-                      <ChevronRight size={16} />
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                      <ChevronRight size={18} />
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {/* Header Sub-Halaman dengan Tombol Kembali */}
-                <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                <div className="card" style={{ padding: '0.75rem 1rem', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                   <button
                     onClick={() => setKbmSubTab('menu')}
-                    className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg transition-all cursor-pointer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 'bold',
+                      color: '#4F46E5',
+                      background: '#EEF2FF',
+                      border: 'none',
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
                   >
-                    <ArrowLeft size={16} />
-                    <span>Kembali ke Menu KBM</span>
+                    <ArrowLeft size={15} />
+                    <span>Menu</span>
                   </button>
 
-                  <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', padding: '2px 0' }}>
                     <button
                       onClick={() => setKbmSubTab('presensi_siswa')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                        kbmSubTab === 'presensi_siswa' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                      }`}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmSubTab === 'presensi_siswa' ? '#10B981' : '#F1F5F9',
+                        color: kbmSubTab === 'presensi_siswa' ? 'white' : 'var(--text-muted)'
+                      }}
                     >
                       📝 Presensi
                     </button>
                     <button
                       onClick={() => setKbmSubTab('jurnal')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                        kbmSubTab === 'jurnal' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                      }`}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmSubTab === 'jurnal' ? '#0D9488' : '#F1F5F9',
+                        color: kbmSubTab === 'jurnal' ? 'white' : 'var(--text-muted)'
+                      }}
                     >
                       📓 Jurnal
                     </button>
                     <button
                       onClick={() => setKbmSubTab('nilai')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                        kbmSubTab === 'nilai' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                      }`}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmSubTab === 'nilai' ? '#9333EA' : '#F1F5F9',
+                        color: kbmSubTab === 'nilai' ? 'white' : 'var(--text-muted)'
+                      }}
                     >
                       ✍️ Nilai
                     </button>
                     <button
                       onClick={() => setKbmSubTab('rekap')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                        kbmSubTab === 'rekap' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                      }`}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmSubTab === 'rekap' ? '#EA580C' : '#F1F5F9',
+                        color: kbmSubTab === 'rekap' ? 'white' : 'var(--text-muted)'
+                      }}
                     >
                       📊 Rekap
                     </button>
                     <button
                       onClick={() => setKbmSubTab('master_siswa')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
-                        kbmSubTab === 'master_siswa' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                      }`}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmSubTab === 'master_siswa' ? '#1E293B' : '#F1F5F9',
+                        color: kbmSubTab === 'master_siswa' ? 'white' : 'var(--text-muted)'
+                      }}
                     >
                       👥 Siswa
                     </button>

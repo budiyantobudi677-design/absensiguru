@@ -44,17 +44,17 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
       setStudents(stList || [])
 
       if (rekapType === 'kehadiran') {
-        const startDate = `${month}-01`
-        const [y, m] = month.split('-').map(Number)
-        const lastDay = new Date(y, m, 0).getDate()
-        const endDate = `${month}-${String(lastDay).padStart(2, '0')}`
+        const [y, m] = (month || new Date().toISOString().slice(0, 7)).split('-')
+        const firstDay = `${y}-${m}-01`
+        const lastDateObj = new Date(Number(y), Number(m), 0)
+        const lastDay = `${lastDateObj.getFullYear()}-${String(lastDateObj.getMonth() + 1).padStart(2, '0')}-${String(lastDateObj.getDate()).padStart(2, '0')}`
 
         const { data: attList } = await supabase
           .from('student_attendance')
           .select('*')
           .eq('class_id', activeClassId)
-          .gte('tanggal', startDate)
-          .lte('tanggal', endDate)
+          .gte('tanggal', firstDay)
+          .lte('tanggal', lastDay)
         setAttendanceRecords(attList || [])
       } else if (rekapType === 'nilai') {
         let q = supabase
@@ -70,12 +70,12 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
         const { data: grList } = await q
         setGradeRecords(grList || [])
       } else if (rekapType === 'jurnal') {
-        const { data: jList } = await supabase
+        const { data: jrList } = await supabase
           .from('learning_journals')
-          .select('*, classes(name)')
+          .select('*')
           .eq('class_id', activeClassId)
           .order('tanggal', { ascending: false })
-        setJournalRecords(jList || [])
+        setJournalRecords(jrList || [])
       }
     } catch (err) {
       console.error(err)
@@ -101,7 +101,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
   const handleExportExcel = () => {
     const schoolInfoObj = {
-      schoolName: schoolInfo?.schoolName || 'SEKOLAH',
+      schoolName: schoolInfo?.schoolName || 'Presensia',
       principalName: schoolInfo?.principalName || '',
       principalNIP: schoolInfo?.principalNIP || '',
       teacherName: user?.full_name || user?.email || 'Guru',
@@ -166,28 +166,56 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Control Box */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3 mb-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+      {/* Control Card */}
+      <div className="card" style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider bg-orange-50 px-2.5 py-0.5 rounded-full inline-block mb-1">
+            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#EA580C', background: '#FFEDD5', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Pusat Pelaporan KBM
             </span>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">Rekapitulasi, Ekspor Excel & Cetak PDF</h2>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+              Rekapitulasi, Ekspor Excel & Cetak PDF
+            </h3>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', gap: '6px' }}>
             <button
               onClick={handleExportExcel}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              type="button"
+              className="btn"
+              style={{
+                width: 'auto',
+                padding: '0.55rem 1rem',
+                borderRadius: '12px',
+                background: '#10B981',
+                color: 'white',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
             >
               <FileSpreadsheet size={15} />
-              <span>Ekspor Excel</span>
+              <span>Unduh Excel</span>
             </button>
             <button
               onClick={() => window.print()}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              type="button"
+              className="btn"
+              style={{
+                width: 'auto',
+                padding: '0.55rem 1rem',
+                borderRadius: '12px',
+                background: '#1E293B',
+                color: 'white',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
             >
               <Printer size={15} />
               <span>Cetak / PDF</span>
@@ -195,42 +223,72 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           </div>
         </div>
 
-        {/* Tab Selection Segments */}
-        <div className="flex gap-2 p-1 bg-slate-100 rounded-xl mb-4 max-w-md">
+        {/* Segmented Switcher Modul Rekap */}
+        <div style={{ display: 'flex', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '14px', marginBottom: '1rem' }}>
           <button
             onClick={() => setRekapType('kehadiran')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              rekapType === 'kehadiran' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
+            style={{
+              flex: 1,
+              padding: '7px 10px',
+              borderRadius: '10px',
+              border: 'none',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              background: rekapType === 'kehadiran' ? 'white' : 'transparent',
+              color: rekapType === 'kehadiran' ? '#4F46E5' : '#64748B',
+              boxShadow: rekapType === 'kehadiran' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none'
+            }}
           >
             Presensi Siswa
           </button>
           <button
             onClick={() => setRekapType('nilai')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              rekapType === 'nilai' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
+            style={{
+              flex: 1,
+              padding: '7px 10px',
+              borderRadius: '10px',
+              border: 'none',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              background: rekapType === 'nilai' ? 'white' : 'transparent',
+              color: rekapType === 'nilai' ? '#4F46E5' : '#64748B',
+              boxShadow: rekapType === 'nilai' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none'
+            }}
           >
             Nilai Siswa
           </button>
           <button
             onClick={() => setRekapType('jurnal')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              rekapType === 'jurnal' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
+            style={{
+              flex: 1,
+              padding: '7px 10px',
+              borderRadius: '10px',
+              border: 'none',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              background: rekapType === 'jurnal' ? 'white' : 'transparent',
+              color: rekapType === 'jurnal' ? '#4F46E5' : '#64748B',
+              boxShadow: rekapType === 'jurnal' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none'
+            }}
           >
-            Jurnal KBM
+            Jurnal Mengajar
           </button>
         </div>
 
-        {/* Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Filter Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Kelas</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+              Pilih Rombel / Kelas
+            </label>
             <select
               value={activeClassId}
               onChange={(e) => setActiveClassId(e.target.value)}
-              className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+              className="input"
+              style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
             >
               {(classes || []).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -240,12 +298,15 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
           {rekapType === 'kehadiran' && (
             <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Bulan</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Periode Bulan
+              </label>
               <input
                 type="month"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                className="input"
+                style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
               />
             </div>
           )}
@@ -253,30 +314,39 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           {rekapType === 'nilai' && (
             <>
               <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Mata Pelajaran</label>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Mata Pelajaran
+                </label>
                 <select
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
                 >
-                  <option value="Semua">Semua Mapel</option>
+                  <option value="Semua">-- Semua Mata Pelajaran --</option>
                   <option value="Matematika">Matematika</option>
                   <option value="Bahasa Indonesia">Bahasa Indonesia</option>
                   <option value="Bahasa Inggris">Bahasa Inggris</option>
-                  <option value="IPA">IPA</option>
-                  <option value="IPS">IPS</option>
-                  <option value="Pendidikan Agama">Pendidikan Agama</option>
-                  <option value="Pendidikan Pancasila">Pendidikan Pancasila</option>
+                  <option value="IPA / Sains">IPA / Sains</option>
+                  <option value="IPS / Sosial">IPS / Sosial</option>
+                  <option value="Pendidikan Agama & Budi Pekerti">Pendidikan Agama</option>
+                  <option value="Pendidikan Pancasila / PKn">Pancasila / PKn</option>
+                  <option value="Seni Budaya & Prakarya">Seni Budaya</option>
+                  <option value="Pendidikan Jasmani (PJOK)">PJOK</option>
+                  <option value="Informatika / TIK">Informatika</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Semester</label>
-                <div className="flex gap-2">
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Semester & Tahun
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
                   <select
                     value={semester}
                     onChange={(e) => setSemester(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
+                    className="input"
+                    style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
                   >
                     <option value="ganjil">Ganjil</option>
                     <option value="genap">Genap</option>
@@ -284,7 +354,8 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                   <select
                     value={academicYear}
                     onChange={(e) => setAcademicYear(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
+                    className="input"
+                    style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
                   >
                     <option value="2026/2027">2026/2027</option>
                     <option value="2025/2026">2025/2026</option>
@@ -296,11 +367,14 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
           {rekapType === 'jurnal' && (
             <div>
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Tahun Ajaran</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Tahun Ajaran
+              </label>
               <select
                 value={academicYear}
                 onChange={(e) => setAcademicYear(e.target.value)}
-                className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                className="input"
+                style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
               >
                 <option value="2026/2027">2026/2027</option>
                 <option value="2025/2026">2025/2026</option>
@@ -310,107 +384,131 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
         </div>
       </div>
 
-      {/* Preview Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Preview Laporan {rekapType.toUpperCase()} ({activeClassName})
+      {/* Table Data Preview */}
+      <div className="card" style={{ padding: 0, background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <div style={{ padding: '0.85rem 1.25rem', background: '#F8FAFC', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Pratinjau Data Laporan ({rekapType.toUpperCase()})
           </span>
-          <span className="text-[11px] text-slate-400">Total data: {students.length} record</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            {rekapType === 'jurnal' ? `${journalRecords.length} Jurnal` : `${students.length} Siswa`}
+          </span>
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full spin mx-auto mb-2"></div>
-            Menyiapkan laporan rekapitulasi...
+          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Menyusun data laporan...
           </div>
         ) : rekapType === 'kehadiran' ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
-                  <th className="p-3 text-center w-12">No</th>
-                  <th className="p-3">Nama Siswa</th>
-                  <th className="p-3 text-center">L/P</th>
-                  <th className="p-3 text-center text-emerald-600">H</th>
-                  <th className="p-3 text-center text-amber-600">S</th>
-                  <th className="p-3 text-center text-blue-600">I</th>
-                  <th className="p-3 text-center text-rose-600">A</th>
-                  <th className="p-3 text-center">% Kehadiran</th>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.5px' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', width: '45px' }}>No</th>
+                  <th style={{ padding: '10px 14px' }}>Nama Siswa</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#10B981' }}>Hadir (H)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#F59E0B' }}>Sakit (S)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#3B82F6' }}>Izin (I)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#EF4444' }}>Alpha (A)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#4F46E5' }}>% Hadir</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {students.map((st, idx) => {
-                  const stats = getStudentAttStats(st.id)
-                  return (
-                    <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
-                      <td className="p-3 font-semibold text-slate-800">{st.name}</td>
-                      <td className="p-3 text-center text-slate-400">{st.gender || '-'}</td>
-                      <td className="p-3 text-center font-bold text-emerald-600 bg-emerald-50/30">{stats.h}</td>
-                      <td className="p-3 text-center font-bold text-amber-600">{stats.s}</td>
-                      <td className="p-3 text-center font-bold text-blue-600">{stats.i}</td>
-                      <td className="p-3 text-center font-bold text-rose-600">{stats.a}</td>
-                      <td className="p-3 text-center font-bold text-indigo-600">{stats.pct}%</td>
-                    </tr>
-                  )
-                })}
+              <tbody>
+                {students.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      Belum ada siswa di kelas ini.
+                    </td>
+                  </tr>
+                ) : (
+                  students.map((st, idx) => {
+                    const stats = getStudentAttStats(st.id)
+                    return (
+                      <tr key={st.id} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)' }}>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 'bold' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: '600', color: 'var(--text)' }}>
+                          <div>{st.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{st.nisn ? `NISN: ${st.nisn}` : ''}</div>
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#10B981', background: 'rgba(16, 185, 129, 0.05)' }}>{stats.h}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#F59E0B' }}>{stats.s}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#3B82F6' }}>{stats.i}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#EF4444' }}>{stats.a}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#4F46E5' }}>{stats.pct}%</td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
         ) : rekapType === 'nilai' ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
-                  <th className="p-3 text-center w-12">No</th>
-                  <th className="p-3">Nama Siswa</th>
-                  <th className="p-3 text-center">L/P</th>
-                  <th className="p-3 text-center">Rata-rata Nilai</th>
-                  <th className="p-3 text-center">Predikat</th>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.5px' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', width: '45px' }}>No</th>
+                  <th style={{ padding: '10px 14px' }}>Nama Siswa</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center' }}>Rata-rata Nilai</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center' }}>Predikat Kelulusan</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {students.map((st, idx) => {
-                  const stGrades = gradeRecords.filter(g => g.student_id === st.id)
-                  const avg = stGrades.length > 0 ? (stGrades.reduce((a, b) => a + Number(b.nilai), 0) / stGrades.length).toFixed(1) : '-'
-                  const predikat = avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg !== '-' ? 'D' : '-'
-                  return (
-                    <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
-                      <td className="p-3 font-semibold text-slate-800">{st.name}</td>
-                      <td className="p-3 text-center text-slate-400">{st.gender || '-'}</td>
-                      <td className="p-3 text-center font-bold text-purple-700">{avg}</td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          predikat === 'A' ? 'bg-emerald-100 text-emerald-800' :
-                          predikat === 'B' ? 'bg-blue-100 text-blue-800' :
-                          predikat === 'C' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {predikat}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
+              <tbody>
+                {students.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      Belum ada siswa di kelas ini.
+                    </td>
+                  </tr>
+                ) : (
+                  students.map((st, idx) => {
+                    const stGr = gradeRecords.filter(g => g.student_id === st.id)
+                    const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
+                    const predikat = avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg !== '-' ? 'D' : '-'
+                    return (
+                      <tr key={st.id} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)' }}>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 'bold' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: '600', color: 'var(--text)' }}>
+                          <div>{st.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{st.nisn ? `NISN: ${st.nisn}` : ''}</div>
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold', color: '#7C3AED' }}>{avg}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '3px 10px',
+                            borderRadius: '8px',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            background: predikat === 'A' ? '#D1FAE5' : predikat === 'B' ? '#DBEAFE' : predikat === 'C' ? '#FEF3C7' : predikat === 'D' ? '#FEE2E2' : '#F1F5F9',
+                            color: predikat === 'A' ? '#065F46' : predikat === 'B' ? '#1E40AF' : predikat === 'C' ? '#92400E' : predikat === 'D' ? '#991B1B' : '#64748B'
+                          }}>
+                            {predikat}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="p-4 flex flex-col gap-3">
+          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {journalRecords.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-400">Belum ada jurnal pembelajaran pada kelas ini.</div>
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Belum ada jurnal yang tercatat.
+              </div>
             ) : (
-              journalRecords.map(j => (
-                <div key={j.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/60 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs">{j.topik}</span>
-                    <span className="text-[11px] text-slate-400">{j.tanggal}</span>
+              journalRecords.map((j) => (
+                <div key={j.id} style={{ padding: '1rem', borderRadius: '14px', border: '1px solid var(--border)', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text)', fontSize: '0.9rem' }}>{j.topik}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{j.tanggal}</span>
                   </div>
-                  <div className="text-[11px] text-slate-500">
-                    Mapel: <strong className="text-slate-700">{j.mata_pelajaran}</strong> • Metode: {j.teknik || 'Luring'}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Mata Pelajaran: <strong style={{ color: '#4F46E5' }}>{j.mata_pelajaran}</strong> • Metode: {j.teknik || 'Luring'}
                   </div>
-                  {j.kegiatan && <p className="text-xs text-slate-600 mt-1">{j.kegiatan}</p>}
+                  {j.kegiatan && <p style={{ fontSize: '0.8rem', color: '#475569', background: 'white', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', margin: '4px 0 0 0' }}>{j.kegiatan}</p>}
                 </div>
               ))
             )}
