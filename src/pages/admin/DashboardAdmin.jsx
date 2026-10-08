@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import GeofenceMapPicker from '../../components/GeofenceMapPicker'
+import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
+import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
+
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState(null)
@@ -49,6 +52,22 @@ export default function DashboardAdmin() {
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
+  // KBM Pembelajaran States
+  const [kbmAdminSubTab, setKbmAdminSubTab] = useState('rekap') // 'rekap' | 'master_siswa'
+  const [kbmFilterMode, setKbmFilterMode] = useState('kelas') // 'kelas' | 'guru'
+  const [kbmClasses, setKbmClasses] = useState([])
+  const [kbmSelectedClassId, setKbmSelectedClassId] = useState('')
+  const [kbmSelectedTeacherId, setKbmSelectedTeacherId] = useState('')
+  const [kbmReportType, setKbmReportType] = useState('kehadiran') // 'kehadiran' | 'nilai' | 'jurnal'
+  const [kbmMonth, setKbmMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [kbmSemester, setKbmSemester] = useState('ganjil')
+  const [kbmYear, setKbmYear] = useState('2026/2027')
+  const [kbmStudents, setKbmStudents] = useState([])
+  const [kbmAttendance, setKbmAttendance] = useState([])
+  const [kbmGrades, setKbmGrades] = useState([])
+  const [kbmJournals, setKbmJournals] = useState([])
+  const [kbmLoading, setKbmLoading] = useState(false)
+
   
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportPreviewData, setExportPreviewData] = useState({ columns: [], rows: [] })
@@ -610,6 +629,11 @@ export default function DashboardAdmin() {
               <Users size={18} />
               <span>Data Pegawai / Guru</span>
             </button>
+            
+            <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { setActiveTab('kbm'); setIsSidebarOpen(false); }}>
+              <BookOpen size={18} />
+              <span>Sistem Pembelajaran (KBM)</span>
+            </button>
             <button className={`admin-nav-item ${activeTab === 'laporan' ? 'active' : ''}`} onClick={() => { handleMenuClick('laporan'); setIsSidebarOpen(false); }}>
               <FileText size={18} />
               <span>Rekap Presensi & Ekspor</span>
@@ -949,6 +973,208 @@ export default function DashboardAdmin() {
                  ))}
                </div>
              )}
+          </div>
+        )}
+
+        
+        {/* ============================================================== */}
+        {/* TAB BARU: SISTEM PEMBELAJARAN (KBM SISWA, JURNAL, NILAI, REKAP) */}
+        {/* ============================================================== */}
+        {activeTab === 'kbm' && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-2 border-b border-gray-200 pb-3">
+              <button
+                onClick={() => setKbmAdminSubTab('rekap')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  kbmAdminSubTab === 'rekap' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                📊 Pusat Rekap KBM (Per Kelas / Per Guru)
+              </button>
+              <button
+                onClick={() => setKbmAdminSubTab('master_siswa')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  kbmAdminSubTab === 'master_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                👥 Master Siswa & Kelas (Impor Excel 600+ Siswa)
+              </button>
+            </div>
+
+            {kbmAdminSubTab === 'master_siswa' ? (
+              <MasterSiswaDanKelas
+                user={admin}
+                schoolInfo={{ schoolName: namaSekolah }}
+                onRefresh={loadKbmClasses}
+              />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="card" style={{ padding: '1.25rem', borderRadius: '18px', background: 'white' }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: 'bold' }}>Filter & Unduh Rekapitulasi Pembelajaran</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Target Rekap</label>
+                      <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: '10px', padding: '3px' }}>
+                        <button
+                          onClick={() => setKbmFilterMode('kelas')}
+                          style={{ flex: 1, padding: '6px', border: 'none', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', background: kbmFilterMode === 'kelas' ? 'white' : 'transparent', color: kbmFilterMode === 'kelas' ? '#4F46E5' : '#64748B' }}
+                        >
+                          Per Kelas
+                        </button>
+                        <button
+                          onClick={() => setKbmFilterMode('guru')}
+                          style={{ flex: 1, padding: '6px', border: 'none', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', background: kbmFilterMode === 'guru' ? 'white' : 'transparent', color: kbmFilterMode === 'guru' ? '#4F46E5' : '#64748B' }}
+                        >
+                          Per Guru
+                        </button>
+                      </div>
+                    </div>
+
+                    {kbmFilterMode === 'kelas' ? (
+                      <div>
+                        <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Kelas</label>
+                        <select value={kbmSelectedClassId} onChange={(e) => setKbmSelectedClassId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
+                          {kbmClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Guru</label>
+                        <select value={kbmSelectedTeacherId} onChange={(e) => setKbmSelectedTeacherId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
+                          <option value="">-- Pilih Guru Pengampu --</option>
+                          {pegawaiData.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Jenis Laporan</label>
+                      <select value={kbmReportType} onChange={(e) => setKbmReportType(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
+                        <option value="kehadiran">Presensi Siswa</option>
+                        <option value="nilai">Nilai Siswa / Leger</option>
+                        <option value="jurnal">Jurnal Mengajar Guru</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Periode</label>
+                      {kbmReportType === 'kehadiran' ? (
+                        <input type="month" value={kbmMonth} onChange={(e) => setKbmMonth(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }} />
+                      ) : (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <select value={kbmSemester} onChange={(e) => setKbmSemester(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem', flex: 1 }}>
+                            <option value="ganjil">Ganjil</option>
+                            <option value="genap">Genap</option>
+                          </select>
+                          <select value={kbmYear} onChange={(e) => setKbmYear(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem', flex: 1 }}>
+                            <option value="2026/2027">2026/2027</option>
+                            <option value="2025/2026">2025/2026</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid #E2E8F0', paddingTop: '0.75rem' }}>
+                    <button onClick={handleExportKbmAdmin} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.65rem 1.25rem', fontSize: '0.85rem', width: 'auto' }}>
+                      Unduh Format Excel (.xlsx)
+                    </button>
+                    <button onClick={() => window.print()} className="btn" style={{ background: '#1E293B', color: 'white', padding: '0.65rem 1.25rem', fontSize: '0.85rem', width: 'auto' }}>
+                      Cetak / Print PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabel Data Rekap */}
+                <div className="card" style={{ padding: '1.25rem', borderRadius: '18px', background: 'white', overflowX: 'auto' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#64748B', marginBottom: '0.75rem', textTransform: 'uppercase' }}>
+                    Preview Data Rekap {kbmReportType}
+                  </div>
+                  {kbmLoading ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>Memuat rekap...</div>
+                  ) : kbmReportType === 'kehadiran' ? (
+                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>No</th>
+                          <th style={{ padding: '8px' }}>Nama Siswa</th>
+                          <th style={{ padding: '8px', textAlign: 'center', color: '#16A34A' }}>H</th>
+                          <th style={{ padding: '8px', textAlign: 'center', color: '#CA8A04' }}>S</th>
+                          <th style={{ padding: '8px', textAlign: 'center', color: '#2563EB' }}>I</th>
+                          <th style={{ padding: '8px', textAlign: 'center', color: '#DC2626' }}>A</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>% Kehadiran</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {kbmStudents.map((st, idx) => {
+                          let h = 0, s = 0, i = 0, a = 0
+                          kbmAttendance.forEach(att => {
+                            if (att.student_id === st.id) {
+                              if (att.status === 'hadir') h++
+                              else if (att.status === 'sakit') s++
+                              else if (att.status === 'izin') i++
+                              else if (att.status === 'alpha') a++
+                            }
+                          })
+                          const total = h + s + i + a
+                          const pct = total > 0 ? ((h / total) * 100).toFixed(1) : '100.0'
+                          return (
+                            <tr key={st.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#94A3B8' }}>{idx + 1}</td>
+                              <td style={{ padding: '8px', fontWeight: '600' }}>{st.name}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#16A34A', fontWeight: 'bold' }}>{h}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#CA8A04', fontWeight: 'bold' }}>{s}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#2563EB', fontWeight: 'bold' }}>{i}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#DC2626', fontWeight: 'bold' }}>{a}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#4F46E5', fontWeight: 'bold' }}>{pct}%</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  ) : kbmReportType === 'nilai' ? (
+                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>No</th>
+                          <th style={{ padding: '8px' }}>Nama Siswa</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>Rata-rata Nilai</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>Predikat</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {kbmStudents.map((st, idx) => {
+                          const stGr = kbmGrades.filter(g => g.student_id === st.id)
+                          const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
+                          return (
+                            <tr key={st.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '8px', textAlign: 'center', color: '#94A3B8' }}>{idx + 1}</td>
+                              <td style={{ padding: '8px', fontWeight: '600' }}>{st.name}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#4F46E5' }}>{avg}</td>
+                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{avg >= 90 ? 'A' : avg >= 75 ? 'B' : avg >= 60 ? 'C' : avg !== '-' ? 'D' : '-'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {kbmJournals.map(j => (
+                        <div key={j.id} style={{ padding: '0.75rem', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong style={{ fontSize: '0.85rem' }}>{j.topik}</strong>
+                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{j.tanggal}</span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
+                            Guru: <strong>{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: {j.mata_pelajaran}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

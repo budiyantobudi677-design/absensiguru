@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
+import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
+import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
+import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
+import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
+import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -13,6 +18,15 @@ export default function DashboardGuru() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('absensi') 
+  const [kbmSubTab, setKbmSubTab] = useState('presensi_siswa')
+  const [classesList, setClassesList] = useState([])
+  const [schoolInfoData, setSchoolInfoData] = useState({
+    schoolName: 'Presensia',
+    principalName: '',
+    principalNIP: '',
+    kkm: 75,
+    appMode: 'SD'
+  })
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
   const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
   const [keterangan, setKeterangan] = useState('')
@@ -168,10 +182,14 @@ export default function DashboardGuru() {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (profile) setProfile(profile)
       
+      const { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
+      if (cls) setClassesList(cls)
+
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
       const hariKerja = settings?.hari_kerja || 5
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
+        setSchoolInfoData(prev => ({ ...prev, schoolName: settings.nama_sekolah }))
       }
       if (settings) {
         setGeofenceSettings({
@@ -1080,6 +1098,13 @@ export default function DashboardGuru() {
             <Camera size={18} />
           </div>
           <span style={{ fontSize: '0.7rem', fontWeight: '600' }}>Timemark</span>
+        </button>
+        <button
+          className={`nav-item ${activeTab === 'kbm' ? 'active' : ''}`}
+          style={{ flex: 1 }}
+          onClick={() => setActiveTab('kbm')}
+        >
+          <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> Pembelajaran
         </button>
         <button
           className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}
