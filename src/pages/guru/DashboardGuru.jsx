@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -33,8 +33,33 @@ export default function DashboardGuru() {
   const [historyList, setHistoryList] = useState([])
   const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7))
   const [historyLoading, setHistoryLoading] = useState(false)
+  
+  // Geofencing settings from DB
+  const [geofenceSettings, setGeofenceSettings] = useState({
+    enabled: false,
+    lat: -5.147665,
+    lng: 119.432732,
+    radius: 100
+  })
+
+  // Theme mode
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
 
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark')
+      localStorage.setItem('theme_mode', 'dark')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
+      localStorage.setItem('theme_mode', 'light')
+    }
+  }, [darkMode])
+
+  const toggleTheme = () => {
+    setDarkMode(!darkMode)
+  }
 
   useEffect(() => {
     if (activeTab === 'pengumuman' && unreadCount > 0 && user) {
@@ -147,6 +172,14 @@ export default function DashboardGuru() {
       const hariKerja = settings?.hari_kerja || 5
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
+      }
+      if (settings) {
+        setGeofenceSettings({
+          enabled: settings.geofence_enabled || false,
+          lat: settings.school_lat || -5.147665,
+          lng: settings.school_lng || 119.432732,
+          radius: settings.school_radius || 100
+        })
       }
       
       const dayOfWeek = new Date().getDay()
@@ -460,13 +493,50 @@ export default function DashboardGuru() {
     setLoading(false)
   }
 
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3 // metres
+    const φ1 = (lat1 * Math.PI) / 180
+    const φ2 = (lat2 * Math.PI) / 180
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+    return Math.round(R * c) // distance in meters
+  }
+
   const handleAbsen = async (jenis) => {
     setLoading(true)
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (position) => {
-        const loc = `${position.coords.latitude}, ${position.coords.longitude}`
+        const userLat = position.coords.latitude
+        const userLng = position.coords.longitude
+        const loc = `${userLat}, ${userLng}`
         const today = getLocalDateString()
         const now = new Date().toISOString()
+
+        // Geofencing Validation (khusus absen masuk & pulang)
+        if (geofenceSettings.enabled && (jenis === 'masuk' || jenis === 'pulang')) {
+          const distance = calculateDistance(
+            userLat,
+            userLng,
+            geofenceSettings.lat,
+            geofenceSettings.lng
+          )
+
+          if (distance > geofenceSettings.radius) {
+            showPopup(
+              "Di Luar Radius Sekolah",
+              `Anda berada ${distance}m dari sekolah (maksimal ${geofenceSettings.radius}m). Mohon mendekat ke area sekolah.`,
+              "error"
+            )
+            setLoading(false)
+            return
+          }
+        }
         
         if (isOffline) {
            saveOffline(jenis, loc, now, today, keterangan)
@@ -596,6 +666,25 @@ export default function DashboardGuru() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              title={darkMode ? "Mode Terang" : "Mode Gelap"}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#E0E7FF" />}
+            </button>
             <button
               onClick={() => setShowCameraModal(true)}
               title="Kamera Timemark"

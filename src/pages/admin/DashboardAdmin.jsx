@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -18,6 +18,15 @@ export default function DashboardAdmin() {
   const [hariLiburData, setHariLiburData] = useState([])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  
+  // Geofencing states
+  const [geofenceEnabled, setGeofenceEnabled] = useState(false)
+  const [schoolLat, setSchoolLat] = useState(-5.147665)
+  const [schoolLng, setSchoolLng] = useState(119.432732)
+  const [schoolRadius, setSchoolRadius] = useState(100) // meters
+  
+  // Theme Mode
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
@@ -58,6 +67,20 @@ export default function DashboardAdmin() {
     }
   }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun])
 
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark')
+      localStorage.setItem('theme_mode', 'dark')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
+      localStorage.setItem('theme_mode', 'light')
+    }
+  }, [darkMode])
+
+  const toggleTheme = () => {
+    setDarkMode(!darkMode)
+  }
+
   const fetchSettings = async () => {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
     if (data) {
@@ -65,6 +88,10 @@ export default function DashboardAdmin() {
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
       if (data.hari_kerja) setHariKerja(data.hari_kerja)
       if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
+      if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
+      if (data.school_lat) setSchoolLat(data.school_lat)
+      if (data.school_lng) setSchoolLng(data.school_lng)
+      if (data.school_radius) setSchoolRadius(data.school_radius)
     }
   }
 
@@ -567,6 +594,25 @@ export default function DashboardAdmin() {
               <h2 style={{ fontSize: '1.4rem', marginTop: 0, color: 'white', letterSpacing: '0.5px' }}>{namaSekolah}</h2>
             </div>
           </div>
+          <button
+            onClick={toggleTheme}
+            title={darkMode ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"}
+            style={{
+              background: 'rgba(255,255,255,0.15)',
+              border: 'none',
+              width: '42px',
+              height: '42px',
+              borderRadius: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#E0E7FF" />}
+          </button>
         </div>
         <div className="flex items-center justify-between position-relative" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
           <div className="flex items-center gap-3" style={{ color: 'white' }}>
@@ -909,7 +955,94 @@ export default function DashboardAdmin() {
              </div>
 
              <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
-               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Daftar Hari Libur (Manual)</h4>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Validasi Lokasi GPS (Geofencing)</h4>
+                <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>
+                  Wajibkan guru berada di dalam radius area sekolah saat melakukan Clock In / Clock Out.
+                </p>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setLoadingData(true);
+                  const isEnabled = e.target.geofence_enabled.value === 'true';
+                  const lat = parseFloat(e.target.school_lat.value) || 0;
+                  const lng = parseFloat(e.target.school_lng.value) || 0;
+                  const radius = parseInt(e.target.school_radius.value) || 100;
+
+                  const payload = {
+                    id: 1,
+                    geofence_enabled: isEnabled,
+                    school_lat: lat,
+                    school_lng: lng,
+                    school_radius: radius
+                  };
+
+                  const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' });
+                  if (!error) {
+                    setGeofenceEnabled(isEnabled);
+                    setSchoolLat(lat);
+                    setSchoolLng(lng);
+                    setSchoolRadius(radius);
+                    alert("Pengaturan Geofencing berhasil disimpan!");
+                  } else {
+                    alert("Error: " + error.message);
+                  }
+                  setLoadingData(false);
+                }}>
+                  <div className="input-group">
+                    <label className="input-label" style={{ fontSize: '0.85rem' }}>Status Geofencing</label>
+                    <select name="geofence_enabled" className="input" defaultValue={geofenceEnabled.toString()}>
+                       <option value="false">Nonaktif (Bisa absen dari mana saja)</option>
+                       <option value="true">Aktif (Wajib di area sekolah)</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div className="input-group">
+                      <label className="input-label" style={{ fontSize: '0.85rem' }}>Latitude Sekolah</label>
+                      <input type="number" step="any" name="school_lat" className="input" defaultValue={schoolLat} required />
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label" style={{ fontSize: '0.85rem' }}>Longitude Sekolah</label>
+                      <input type="number" step="any" name="school_lng" className="input" defaultValue={schoolLng} required />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label" style={{ fontSize: '0.85rem' }}>Radius Toleransi (Meter)</label>
+                    <input type="number" name="school_radius" className="input" defaultValue={schoolRadius} min="10" max="2000" placeholder="Contoh: 100" required />
+                    <span className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.25rem' }}>Jarak maksimal dari titik pusat sekolah (misal: 100 meter).</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            setSchoolLat(pos.coords.latitude);
+                            setSchoolLng(pos.coords.longitude);
+                            alert("Lokasi GPS berhasil diambil:\nLat: " + pos.coords.latitude + "\nLng: " + pos.coords.longitude);
+                          },
+                          (err) => alert("Gagal mengambil GPS: " + err.message),
+                          { enableHighAccuracy: true }
+                        );
+                      } else {
+                        alert("Browser tidak mendukung geolokasi.");
+                      }
+                    }}
+                    className="btn"
+                    style={{ background: '#F1F5F9', color: '#1E293B', marginBottom: '0.75rem', fontSize: '0.85rem', padding: '0.75rem' }}
+                  >
+                    📍 Ambil Titik Lokasi Saya Sekarang
+                  </button>
+
+                  <button type="submit" className="btn" style={{ padding: '1rem', background: '#10B981', color: 'white', width: '100%' }}>
+                    Simpan Lokasi Geofencing
+                  </button>
+                </form>
+              </div>
+
+              <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Daftar Hari Libur (Manual)</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
                  const startDateStr = e.target.tanggal_mulai.value;

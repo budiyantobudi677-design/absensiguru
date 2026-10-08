@@ -17,6 +17,53 @@
   --radius: 20px;
 }
 
+[data-theme="dark"] {
+  --primary: #6366F1;
+  --primary-hover: #4F46E5;
+  --primary-light: rgba(99, 102, 241, 0.15);
+  --secondary: #10B981;
+  --secondary-hover: #059669;
+  --dark: #F8FAFC;
+  --text: #F1F5F9;
+  --text-muted: #94A3B8;
+  --background: #0B1120;
+  --surface: #1E293B;
+  --danger: #EF4444;
+  --warning: #F59E0B;
+  --border: #334155;
+}
+
+[data-theme="dark"] body {
+  background-color: #020617;
+  color: #F1F5F9;
+}
+
+[data-theme="dark"] .container {
+  background: var(--background);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .card {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .input {
+  background: #0F172A;
+  border-color: var(--border);
+  color: #F1F5F9;
+}
+
+[data-theme="dark"] .bottom-nav {
+  background: #0F172A;
+  border-color: #334155;
+}
+
+[data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3, [data-theme="dark"] h4 {
+  color: #F8FAFC;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: 'Outfit', sans-serif;
@@ -26,6 +73,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .container {
