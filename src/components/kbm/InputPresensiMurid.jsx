@@ -41,7 +41,7 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
       setStudents(studentList || [])
 
       const { data: holData } = await supabase
-        .from('school_holidays')
+        .from('hari_libur')
         .select('*')
         .eq('tanggal', selectedDate)
         .maybeSingle()

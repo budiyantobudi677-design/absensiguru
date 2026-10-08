@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import GeofenceMapPicker from '../../components/GeofenceMapPicker'
+import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
+import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
+import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
+import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 
@@ -53,7 +57,7 @@ export default function DashboardAdmin() {
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   // KBM Pembelajaran States
-  const [kbmAdminSubTab, setKbmAdminSubTab] = useState('rekap') // 'rekap' | 'master_siswa'
+  const [kbmAdminSubTab, setKbmAdminSubTab] = useState('menu') // 'menu' | 'presensi' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [kbmFilterMode, setKbmFilterMode] = useState('kelas') // 'kelas' | 'guru'
   const [kbmClasses, setKbmClasses] = useState([])
   const [kbmSelectedClassId, setKbmSelectedClassId] = useState('')
@@ -87,6 +91,8 @@ export default function DashboardAdmin() {
        loadAbsensi()
     }
     if (activeTab === 'kbm') {
+       loadKbmClasses()
+       loadPegawai()
        loadKbmData()
     }
   }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun, activeTab, kbmFilterMode, kbmSelectedClassId, kbmSelectedTeacherId, kbmMonth, kbmSemester, kbmYear])
@@ -1146,302 +1152,306 @@ export default function DashboardAdmin() {
         {/* TAB: SISTEM PEMBELAJARAN (ENTERPRISE ACADEMIC MANAGEMENT)      */}
         {/* ============================================================== */}
         {activeTab === 'kbm' && (
-          <div className="flex flex-col gap-5 fade-in">
-            {/* Header Hub Navigation */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2.5 py-0.5 rounded-full inline-block mb-1">
-                  Portal Administrasi Akademik
-                </span>
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Sistem Pembelajaran Terpadu</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Monitoring presensi kelas, leger nilai, jurnal harian guru, dan master data siswa seluruh rombel.
-                </p>
-              </div>
-
-              {/* Subtab Segmented Switcher */}
-              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl self-start sm:self-auto">
-                <button
-                  onClick={() => setKbmAdminSubTab('rekap')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    kbmAdminSubTab === 'rekap'
-                      ? 'bg-white text-indigo-600 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Activity size={14} />
-                  <span>Pusat Rekapitulasi</span>
-                </button>
-                <button
-                  onClick={() => setKbmAdminSubTab('master_siswa')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    kbmAdminSubTab === 'master_siswa'
-                      ? 'bg-white text-indigo-600 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Users size={14} />
-                  <span>Master Siswa & Rombel</span>
-                </button>
-              </div>
-            </div>
-
-            {kbmAdminSubTab === 'master_siswa' ? (
-              <MasterSiswaDanKelas
-                user={admin}
-                schoolInfo={{ schoolName: namaSekolah }}
-                onRefresh={loadKbmClasses}
-              />
-            ) : (
-              <div className="flex flex-col gap-4">
-                {/* Advanced Filter & Export Console */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                        Filter Rekapitulasi Akademik
-                      </h3>
+          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {kbmAdminSubTab === 'menu' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Executive Header Hub */}
+                <div className="card" style={{ padding: '1.5rem', background: 'white', borderRadius: '20px', border: '1px solid var(--border)' }}>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '3px 10px', borderRadius: '20px', display: 'inline-block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Portal Administrasi Akademik
+                      </span>
+                      <h2 style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--text)', margin: '0 0 4px 0' }}>Sistem Pembelajaran Terpadu</h2>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                        Pusat pemantauan kegiatan belajar mengajar: presensi siswa harian, jurnal mengajar guru, input nilai leger, rekapitulasi berkas, serta master rombel kelas.
+                      </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleExportKbmAdmin}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Download size={14} />
-                        <span>Unduh Excel (.xlsx)</span>
-                      </button>
-                      <button
-                        onClick={() => window.print()}
-                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <FileText size={14} />
-                        <span>Cetak Dokumen</span>
-                      </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div style={{ padding: '0.5rem 1rem', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#94A3B8', display: 'block', textTransform: 'uppercase' }}>Total Kelas</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: '800', color: '#334155' }}>{kbmClasses.length} Rombel</span>
+                      </div>
+                      <div style={{ padding: '0.5rem 1rem', borderRadius: '12px', background: '#EEF2FF', border: '1px solid #E0E7FF', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#6366F1', display: 'block', textTransform: 'uppercase' }}>Data Siswa</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: '800', color: '#4338CA' }}>{kbmStudents.length} Siswa</span>
+                      </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Grid Kotak-Kotak Modul Pembelajaran */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Card 1: Presensi Siswa */}
+                  <div
+                    onClick={() => setKbmAdminSubTab('presensi')}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                  >
                     <div>
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Metode Filter</label>
-                      <div className="flex bg-slate-100 p-1 rounded-xl">
-                        <button
-                          onClick={() => setKbmFilterMode('kelas')}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            kbmFilterMode === 'kelas' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
-                          }`}
-                        >
-                          Per Kelas
-                        </button>
-                        <button
-                          onClick={() => setKbmFilterMode('guru')}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            kbmFilterMode === 'guru' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
-                          }`}
-                        >
-                          Per Guru
-                        </button>
-                      </div>
-                    </div>
-
-                    {kbmFilterMode === 'kelas' ? (
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Rombel / Kelas</label>
-                        <select
-                          value={kbmSelectedClassId}
-                          onChange={(e) => setKbmSelectedClassId(e.target.value)}
-                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
-                        >
-                          <option value="">-- Semua Kelas --</option>
-                          {(kbmClasses || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Guru Pengampu</label>
-                        <select
-                          value={kbmSelectedTeacherId}
-                          onChange={(e) => setKbmSelectedTeacherId(e.target.value)}
-                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
-                        >
-                          <option value="">-- Pilih Guru --</option>
-                          {(pegawaiData || []).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
-                        </select>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Jenis Modul Laporan</label>
-                      <select
-                        value={kbmReportType}
-                        onChange={(e) => setKbmReportType(e.target.value)}
-                        className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
-                      >
-                        <option value="kehadiran">Presensi Siswa Harian</option>
-                        <option value="nilai">Leger / Rekap Nilai Siswa</option>
-                        <option value="jurnal">Jurnal Mengajar Guru</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Rentang Periode</label>
-                      {kbmReportType === 'kehadiran' ? (
-                        <input
-                          type="month"
-                          value={kbmMonth}
-                          onChange={(e) => setKbmMonth(e.target.value)}
-                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
-                        />
-                      ) : (
-                        <div className="flex gap-2">
-                          <select
-                            value={kbmSemester}
-                            onChange={(e) => setKbmSemester(e.target.value)}
-                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
-                          >
-                            <option value="ganjil">Ganjil</option>
-                            <option value="genap">Genap</option>
-                          </select>
-                          <select
-                            value={kbmYear}
-                            onChange={(e) => setKbmYear(e.target.value)}
-                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
-                          >
-                            <option value="2026/2027">2026/2027</option>
-                            <option value="2025/2026">2025/2026</option>
-                          </select>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                          <CheckCircle2 size={24} />
                         </div>
-                      )}
+                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">Harian Kelas</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Presensi Siswa</h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Pencatatan dan pemantauan kehadiran murid (Hadir, Sakit, Izin, Alpha) seluruh rombel.</p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-600">
+                      <span>Buka Presensi</span>
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={15} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Jurnal Mengajar */}
+                  <div
+                    onClick={() => setKbmAdminSubTab('jurnal')}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-teal-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-500/20 group-hover:scale-105 transition-transform">
+                          <BookOpen size={24} />
+                        </div>
+                        <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2.5 py-0.5 rounded-full">Agenda Guru</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-600 transition-colors">Jurnal Mengajar Guru</h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Pemantauan catatan agenda materi, teknik pembelajaran, serta evaluasi harian guru.</p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-teal-600">
+                      <span>Buka Jurnal</span>
+                      <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={15} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Penilaian & Leger */}
+                  <div
+                    onClick={() => setKbmAdminSubTab('nilai')}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-purple-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
+                          <Award size={24} />
+                        </div>
+                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2.5 py-0.5 rounded-full">Leger Nilai</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">Input & Leger Nilai</h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Input nilai tugas/kuis, STS, SAS serta kalkulasi predikat otomatis seluruh mata pelajaran.</p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-600">
+                      <span>Buka Penilaian</span>
+                      <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={15} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Rekapitulasi & Cetak */}
+                  <div
+                    onClick={() => setKbmAdminSubTab('rekap')}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-orange-400/80 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
+                          <FileSpreadsheet size={24} />
+                        </div>
+                        <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-full">Ekspor Excel / PDF</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-orange-600 transition-colors">Rekapitulasi & Laporan</h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">Laporan komprehensif kehadiran, jurnal guru & leger nilai siap unduh Excel dan cetak.</p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
+                      <span>Buka Rekapitulasi</span>
+                      <div className="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={15} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 5: Master Siswa & Rombel */}
+                  <div
+                    onClick={() => setKbmAdminSubTab('master_siswa')}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex flex-col justify-between group active:scale-[0.98] md:col-span-2 lg:col-span-2"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform">
+                          <Users size={24} />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">Basis Data Sekolah</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-slate-700 transition-colors">Master Siswa & Rombongan Belajar</h4>
+                      <p className="text-xs text-slate-500 mt-1">Kelola rombongan belajar (kelas), registrasi data siswa baru, atau impor data massal melalui berkas template Excel.</p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Kelola Master Siswa & Kelas</span>
+                      <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={15} />
+                      </div>
                     </div>
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Header Sub-Halaman dengan Navigasi Kembali & Switcher Pills */}
+                <div className="card" style={{ padding: '0.85rem 1.25rem', background: 'white', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => setKbmAdminSubTab('menu')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      color: '#4F46E5',
+                      background: '#EEF2FF',
+                      border: 'none',
+                      padding: '0.5rem 0.9rem',
+                      borderRadius: '10px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Kembali ke Menu KBM</span>
+                  </button>
 
-                {/* Data Table Section */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Pratinjau Data Laporan ({kbmReportType.toUpperCase()})
-                    </span>
-                    <span className="text-[11px] text-slate-400">Total: {(kbmStudents || []).length} Data Siswa</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', padding: '2px 0' }}>
+                    <button
+                      onClick={() => setKbmAdminSubTab('presensi')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmAdminSubTab === 'presensi' ? '#4F46E5' : '#F1F5F9',
+                        color: kbmAdminSubTab === 'presensi' ? 'white' : '#475569',
+                        boxShadow: kbmAdminSubTab === 'presensi' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
+                      }}
+                    >
+                      📝 Presensi
+                    </button>
+                    <button
+                      onClick={() => setKbmAdminSubTab('jurnal')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmAdminSubTab === 'jurnal' ? '#0D9488' : '#F1F5F9',
+                        color: kbmAdminSubTab === 'jurnal' ? 'white' : '#475569',
+                        boxShadow: kbmAdminSubTab === 'jurnal' ? '0 2px 5px rgba(13, 148, 136, 0.25)' : 'none'
+                      }}
+                    >
+                      📓 Jurnal
+                    </button>
+                    <button
+                      onClick={() => setKbmAdminSubTab('nilai')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmAdminSubTab === 'nilai' ? '#9333EA' : '#F1F5F9',
+                        color: kbmAdminSubTab === 'nilai' ? 'white' : '#475569',
+                        boxShadow: kbmAdminSubTab === 'nilai' ? '0 2px 5px rgba(147, 51, 234, 0.25)' : 'none'
+                      }}
+                    >
+                      ✍️ Nilai
+                    </button>
+                    <button
+                      onClick={() => setKbmAdminSubTab('rekap')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmAdminSubTab === 'rekap' ? '#EA580C' : '#F1F5F9',
+                        color: kbmAdminSubTab === 'rekap' ? 'white' : '#475569',
+                        boxShadow: kbmAdminSubTab === 'rekap' ? '0 2px 5px rgba(234, 88, 12, 0.25)' : 'none'
+                      }}
+                    >
+                      📊 Rekap
+                    </button>
+                    <button
+                      onClick={() => setKbmAdminSubTab('master_siswa')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: kbmAdminSubTab === 'master_siswa' ? '#1E293B' : '#F1F5F9',
+                        color: kbmAdminSubTab === 'master_siswa' ? 'white' : '#475569',
+                        boxShadow: kbmAdminSubTab === 'master_siswa' ? '0 2px 5px rgba(30, 41, 59, 0.25)' : 'none'
+                      }}
+                    >
+                      👥 Siswa
+                    </button>
                   </div>
-
-                  {kbmLoading ? (
-                    <div className="py-16 text-center text-slate-400 text-xs">
-                      <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full spin mx-auto mb-2"></div>
-                      Memuat data rekapitulasi KBM...
-                    </div>
-                  ) : kbmReportType === 'kehadiran' ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
-                            <th className="p-3 text-center w-12">No</th>
-                            <th className="p-3">Nama Siswa</th>
-                            <th className="p-3 text-center text-emerald-600">Hadir (H)</th>
-                            <th className="p-3 text-center text-amber-600">Sakit (S)</th>
-                            <th className="p-3 text-center text-blue-600">Izin (I)</th>
-                            <th className="p-3 text-center text-rose-600">Alpha (A)</th>
-                            <th className="p-3 text-center">% Kehadiran</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {(kbmStudents || []).length === 0 ? (
-                            <tr>
-                              <td colSpan="7" className="p-8 text-center text-slate-400">Belum ada data siswa ditemukan untuk kriteria ini.</td>
-                            </tr>
-                          ) : (
-                            (kbmStudents || []).map((st, idx) => {
-                              let h = 0, s = 0, i = 0, a = 0
-                              ;(kbmAttendance || []).forEach(att => {
-                                if (att.student_id === st.id) {
-                                  if (att.status === 'hadir') h++
-                                  else if (att.status === 'sakit') s++
-                                  else if (att.status === 'izin') i++
-                                  else if (att.status === 'alpha') a++
-                                }
-                              })
-                              const total = h + s + i + a
-                              const pct = total > 0 ? ((h / total) * 100).toFixed(1) : '100.0'
-                              return (
-                                <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
-                                  <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
-                                  <td className="p-3 font-semibold text-slate-800">{st.name}</td>
-                                  <td className="p-3 text-center font-bold text-emerald-600 bg-emerald-50/30">{h}</td>
-                                  <td className="p-3 text-center font-bold text-amber-600">{s}</td>
-                                  <td className="p-3 text-center font-bold text-blue-600">{i}</td>
-                                  <td className="p-3 text-center font-bold text-rose-600">{a}</td>
-                                  <td className="p-3 text-center font-bold text-indigo-600">{pct}%</td>
-                                </tr>
-                              )
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : kbmReportType === 'nilai' ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
-                            <th className="p-3 text-center w-12">No</th>
-                            <th className="p-3">Nama Siswa</th>
-                            <th className="p-3 text-center">Rata-rata Nilai</th>
-                            <th className="p-3 text-center">Predikat Kelulusan</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {(kbmStudents || []).length === 0 ? (
-                            <tr>
-                              <td colSpan="4" className="p-8 text-center text-slate-400">Belum ada data nilai pada periode ini.</td>
-                            </tr>
-                          ) : (
-                            (kbmStudents || []).map((st, idx) => {
-                              const stGr = (kbmGrades || []).filter(g => g.student_id === st.id)
-                              const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
-                              const predikat = avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg !== '-' ? 'D' : '-'
-                              return (
-                                <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
-                                  <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
-                                  <td className="p-3 font-semibold text-slate-800">{st.name}</td>
-                                  <td className="p-3 text-center font-bold text-purple-700">{avg}</td>
-                                  <td className="p-3 text-center">
-                                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                                      predikat === 'A' ? 'bg-emerald-100 text-emerald-800' :
-                                      predikat === 'B' ? 'bg-blue-100 text-blue-800' :
-                                      predikat === 'C' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                                    }`}>
-                                      {predikat}
-                                    </span>
-                                  </td>
-                                </tr>
-                              )
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-4 flex flex-col gap-3">
-                      {(kbmJournals || []).length === 0 ? (
-                        <div className="p-8 text-center text-slate-400 text-xs">Belum ada data jurnal yang dimasukkan oleh guru.</div>
-                      ) : (
-                        (kbmJournals || []).map(j => (
-                          <div key={j.id} className="p-3.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/60 flex flex-col gap-1.5 transition-all">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-slate-800 text-sm">{j.topik}</span>
-                              <span className="text-[11px] text-slate-400">{j.tanggal}</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              Guru: <strong className="text-slate-800">{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: <strong className="text-indigo-600">{j.mata_pelajaran}</strong>
-                            </div>
-                            {j.kegiatan && <p className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-100 mt-1">{j.kegiatan}</p>}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
                 </div>
+
+                {/* Sub-Modul Content */}
+                {kbmAdminSubTab === 'presensi' && (
+                  <InputPresensiMurid
+                    classes={kbmClasses}
+                    user={admin}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                  />
+                )}
+
+                {kbmAdminSubTab === 'jurnal' && (
+                  <InputJurnalMengajar
+                    classes={kbmClasses}
+                    user={admin}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                  />
+                )}
+
+                {kbmAdminSubTab === 'nilai' && (
+                  <InputNilaiSiswa
+                    classes={kbmClasses}
+                    user={admin}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                  />
+                )}
+
+                {kbmAdminSubTab === 'rekap' && (
+                  <RekapDanLaporan
+                    classes={kbmClasses}
+                    user={admin}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                  />
+                )}
+
+                {kbmAdminSubTab === 'master_siswa' && (
+                  <MasterSiswaDanKelas
+                    user={admin}
+                    schoolInfo={{ schoolName: namaSekolah }}
+                    onRefresh={loadKbmClasses}
+                  />
+                )}
               </div>
             )}
           </div>
