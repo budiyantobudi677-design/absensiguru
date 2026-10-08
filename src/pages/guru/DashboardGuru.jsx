@@ -1092,95 +1092,115 @@ export default function DashboardGuru() {
                   </div>
                 </div>
 
-                {/* Grid Menu Kotak-Kotak (Grid Cards Ala Absensi Super) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {/* Grid Menu Cards: Ultra Modern Executive SaaS Styling */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Card 1: Presensi Siswa */}
                   <div
                     onClick={() => setKbmSubTab('presensi_siswa')}
-                    className="p-4 rounded-2xl bg-white border border-blue-100 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-blue-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner mb-3">
-                      📝
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform shrink-0">
+                        <CheckCircle2 size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">Presensi Siswa</h4>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Harian</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Catat kehadiran kelas (Hadir, Sakit, Izin, Alpha)</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-blue-600 transition-colors">Presensi Siswa</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Absensi harian siswa (Hadir, Sakit, Izin, Alpha)</p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-blue-600">
-                      <span>Buka Modul</span>
-                      <ChevronRight size={14} />
+                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-all shrink-0">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
 
                   {/* Card 2: Jurnal Mengajar */}
                   <div
                     onClick={() => setKbmSubTab('jurnal')}
-                    className="p-4 rounded-2xl bg-white border border-teal-100 shadow-sm hover:shadow-md hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-teal-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-2xl group-hover:bg-teal-600 group-hover:text-white transition-all shadow-inner mb-3">
-                      📓
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-500/20 group-hover:scale-105 transition-transform shrink-0">
+                        <BookOpen size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-600 transition-colors">Jurnal Mengajar</h4>
+                          <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">Agenda KBM</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Catatan materi pelajaran, metode & evaluasi harian</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-teal-600 transition-colors">Jurnal Mengajar</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Catatan materi, topik KBM, hambatan & dokumentasi</p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-teal-600">
-                      <span>Buka Modul</span>
-                      <ChevronRight size={14} />
+                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-teal-50 group-hover:text-teal-600 flex items-center justify-center transition-all shrink-0">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
 
                   {/* Card 3: Input Nilai Siswa */}
                   <div
                     onClick={() => setKbmSubTab('nilai')}
-                    className="p-4 rounded-2xl bg-white border border-purple-100 shadow-sm hover:shadow-md hover:border-purple-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-purple-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-2xl group-hover:bg-purple-600 group-hover:text-white transition-all shadow-inner mb-3">
-                      ✍️
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform shrink-0">
+                        <Award size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">Input Nilai Siswa</h4>
+                          <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">Formatif & Sumatif</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Penilaian tugas, kuis, STS, SAS & predikat otomatis</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-purple-600 transition-colors">Input Nilai Siswa</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Nilai Tugas, UH, UTS, UAS, dan predikat otomatis</p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-purple-600">
-                      <span>Buka Modul</span>
-                      <ChevronRight size={14} />
+                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-purple-50 group-hover:text-purple-600 flex items-center justify-center transition-all shrink-0">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
 
                   {/* Card 4: Rekap & Laporan */}
                   <div
                     onClick={() => setKbmSubTab('rekap')}
-                    className="p-4 rounded-2xl bg-white border border-orange-100 shadow-sm hover:shadow-md hover:border-orange-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-orange-400/80 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98]"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl group-hover:bg-orange-600 group-hover:text-white transition-all shadow-inner mb-3">
-                      📊
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform shrink-0">
+                        <FileSpreadsheet size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-orange-600 transition-colors">Rekapitulasi & Cetak</h4>
+                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Excel / PDF</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Ekspor berkas Excel dan cetak PDF rekap kehadiran & nilai</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-orange-600 transition-colors">Rekapitulasi</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Unduh Excel & Cetak PDF Presensi, Nilai & Jurnal</p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-orange-600">
-                      <span>Buka Modul</span>
-                      <ChevronRight size={14} />
+                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-600 flex items-center justify-center transition-all shrink-0">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
 
                   {/* Card 5: Master Siswa & Kelas */}
                   <div
                     onClick={() => setKbmSubTab('master_siswa')}
-                    className="p-4 rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-400 transition-all cursor-pointer flex flex-col justify-between group active:scale-95 col-span-2 sm:col-span-1"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.98] sm:col-span-2"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 flex items-center justify-center text-2xl group-hover:bg-gray-700 group-hover:text-white transition-all shadow-inner mb-3">
-                      👥
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 group-hover:scale-105 transition-transform shrink-0">
+                        <Users size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-slate-700 transition-colors">Master Siswa & Rombel</h4>
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">Basis Data</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Kelola rombel kelas, tambah siswa baru atau impor massal Excel</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-gray-900 transition-colors">Master Siswa</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Kelola daftar siswa, rombel kelas & impor data Excel</p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-gray-700">
-                      <span>Buka Modul</span>
-                      <ChevronRight size={14} />
+                    <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-800 flex items-center justify-center transition-all shrink-0">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
                 </div>

@@ -1143,27 +1143,47 @@ export default function DashboardAdmin() {
 
         
         {/* ============================================================== */}
-        {/* TAB BARU: SISTEM PEMBELAJARAN (KBM SISWA, JURNAL, NILAI, REKAP) */}
+        {/* TAB: SISTEM PEMBELAJARAN (ENTERPRISE ACADEMIC MANAGEMENT)      */}
         {/* ============================================================== */}
         {activeTab === 'kbm' && (
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-2 border-b border-gray-200 pb-3">
-              <button
-                onClick={() => setKbmAdminSubTab('rekap')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  kbmAdminSubTab === 'rekap' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                📊 Pusat Rekap KBM (Per Kelas / Per Guru)
-              </button>
-              <button
-                onClick={() => setKbmAdminSubTab('master_siswa')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  kbmAdminSubTab === 'master_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                👥 Master Siswa & Kelas (Impor Excel 600+ Siswa)
-              </button>
+          <div className="flex flex-col gap-5 fade-in">
+            {/* Header Hub Navigation */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2.5 py-0.5 rounded-full inline-block mb-1">
+                  Portal Administrasi Akademik
+                </span>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Sistem Pembelajaran Terpadu</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Monitoring presensi kelas, leger nilai, jurnal harian guru, dan master data siswa seluruh rombel.
+                </p>
+              </div>
+
+              {/* Subtab Segmented Switcher */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl self-start sm:self-auto">
+                <button
+                  onClick={() => setKbmAdminSubTab('rekap')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    kbmAdminSubTab === 'rekap'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Activity size={14} />
+                  <span>Pusat Rekapitulasi</span>
+                </button>
+                <button
+                  onClick={() => setKbmAdminSubTab('master_siswa')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    kbmAdminSubTab === 'master_siswa'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users size={14} />
+                  <span>Master Siswa & Rombel</span>
+                </button>
+              </div>
             </div>
 
             {kbmAdminSubTab === 'master_siswa' ? (
@@ -1174,21 +1194,51 @@ export default function DashboardAdmin() {
               />
             ) : (
               <div className="flex flex-col gap-4">
-                <div className="card" style={{ padding: '1.25rem', borderRadius: '18px', background: 'white' }}>
-                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: 'bold' }}>Filter & Unduh Rekapitulasi Pembelajaran</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                {/* Advanced Filter & Export Console */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+                        Filter Rekapitulasi Akademik
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleExportKbmAdmin}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download size={14} />
+                        <span>Unduh Excel (.xlsx)</span>
+                      </button>
+                      <button
+                        onClick={() => window.print()}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileText size={14} />
+                        <span>Cetak Dokumen</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
-                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Target Rekap</label>
-                      <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: '10px', padding: '3px' }}>
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Metode Filter</label>
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
                         <button
                           onClick={() => setKbmFilterMode('kelas')}
-                          style={{ flex: 1, padding: '6px', border: 'none', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', background: kbmFilterMode === 'kelas' ? 'white' : 'transparent', color: kbmFilterMode === 'kelas' ? '#4F46E5' : '#64748B' }}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            kbmFilterMode === 'kelas' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
+                          }`}
                         >
                           Per Kelas
                         </button>
                         <button
                           onClick={() => setKbmFilterMode('guru')}
-                          style={{ flex: 1, padding: '6px', border: 'none', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', background: kbmFilterMode === 'guru' ? 'white' : 'transparent', color: kbmFilterMode === 'guru' ? '#4F46E5' : '#64748B' }}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            kbmFilterMode === 'guru' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
+                          }`}
                         >
                           Per Guru
                         </button>
@@ -1197,42 +1247,67 @@ export default function DashboardAdmin() {
 
                     {kbmFilterMode === 'kelas' ? (
                       <div>
-                        <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Kelas</label>
-                        <select value={kbmSelectedClassId} onChange={(e) => setKbmSelectedClassId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
-                          <option value="">-- Pilih Kelas --</option>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Rombel / Kelas</label>
+                        <select
+                          value={kbmSelectedClassId}
+                          onChange={(e) => setKbmSelectedClassId(e.target.value)}
+                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                        >
+                          <option value="">-- Semua Kelas --</option>
                           {(kbmClasses || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                     ) : (
                       <div>
-                        <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Guru</label>
-                        <select value={kbmSelectedTeacherId} onChange={(e) => setKbmSelectedTeacherId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
-                          <option value="">-- Pilih Guru Pengampu --</option>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Pilih Guru Pengampu</label>
+                        <select
+                          value={kbmSelectedTeacherId}
+                          onChange={(e) => setKbmSelectedTeacherId(e.target.value)}
+                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                        >
+                          <option value="">-- Pilih Guru --</option>
                           {(pegawaiData || []).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
                         </select>
                       </div>
                     )}
 
                     <div>
-                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Jenis Laporan</label>
-                      <select value={kbmReportType} onChange={(e) => setKbmReportType(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
-                        <option value="kehadiran">Presensi Siswa</option>
-                        <option value="nilai">Nilai Siswa / Leger</option>
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Jenis Modul Laporan</label>
+                      <select
+                        value={kbmReportType}
+                        onChange={(e) => setKbmReportType(e.target.value)}
+                        className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                      >
+                        <option value="kehadiran">Presensi Siswa Harian</option>
+                        <option value="nilai">Leger / Rekap Nilai Siswa</option>
                         <option value="jurnal">Jurnal Mengajar Guru</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Periode</label>
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Rentang Periode</label>
                       {kbmReportType === 'kehadiran' ? (
-                        <input type="month" value={kbmMonth} onChange={(e) => setKbmMonth(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }} />
+                        <input
+                          type="month"
+                          value={kbmMonth}
+                          onChange={(e) => setKbmMonth(e.target.value)}
+                          className="w-full bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 transition-all focus:outline-none cursor-pointer"
+                        />
                       ) : (
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <select value={kbmSemester} onChange={(e) => setKbmSemester(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem', flex: 1 }}>
+                        <div className="flex gap-2">
+                          <select
+                            value={kbmSemester}
+                            onChange={(e) => setKbmSemester(e.target.value)}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
+                          >
                             <option value="ganjil">Ganjil</option>
                             <option value="genap">Genap</option>
                           </select>
-                          <select value={kbmYear} onChange={(e) => setKbmYear(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem', flex: 1 }}>
+                          <select
+                            value={kbmYear}
+                            onChange={(e) => setKbmYear(e.target.value)}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs sm:text-sm font-semibold text-slate-800 cursor-pointer"
+                          >
                             <option value="2026/2027">2026/2027</option>
                             <option value="2025/2026">2025/2026</option>
                           </select>
@@ -1240,103 +1315,127 @@ export default function DashboardAdmin() {
                       )}
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid #E2E8F0', paddingTop: '0.75rem' }}>
-                    <button onClick={handleExportKbmAdmin} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.65rem 1.25rem', fontSize: '0.85rem', width: 'auto' }}>
-                      Unduh Format Excel (.xlsx)
-                    </button>
-                    <button onClick={() => window.print()} className="btn" style={{ background: '#1E293B', color: 'white', padding: '0.65rem 1.25rem', fontSize: '0.85rem', width: 'auto' }}>
-                      Cetak / Print PDF
-                    </button>
-                  </div>
                 </div>
 
-                {/* Tabel Data Rekap */}
-                <div className="card" style={{ padding: '1.25rem', borderRadius: '18px', background: 'white', overflowX: 'auto' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#64748B', marginBottom: '0.75rem', textTransform: 'uppercase' }}>
-                    Preview Data Rekap {kbmReportType}
+                {/* Data Table Section */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Pratinjau Data Laporan ({kbmReportType.toUpperCase()})
+                    </span>
+                    <span className="text-[11px] text-slate-400">Total: {(kbmStudents || []).length} Data Siswa</span>
                   </div>
+
                   {kbmLoading ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>Memuat rekap...</div>
+                    <div className="py-16 text-center text-slate-400 text-xs">
+                      <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full spin mx-auto mb-2"></div>
+                      Memuat data rekapitulasi KBM...
+                    </div>
                   ) : kbmReportType === 'kehadiran' ? (
-                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>No</th>
-                          <th style={{ padding: '8px' }}>Nama Siswa</th>
-                          <th style={{ padding: '8px', textAlign: 'center', color: '#16A34A' }}>H</th>
-                          <th style={{ padding: '8px', textAlign: 'center', color: '#CA8A04' }}>S</th>
-                          <th style={{ padding: '8px', textAlign: 'center', color: '#2563EB' }}>I</th>
-                          <th style={{ padding: '8px', textAlign: 'center', color: '#DC2626' }}>A</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>% Kehadiran</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(kbmStudents || []).map((st, idx) => {
-                          let h = 0, s = 0, i = 0, a = 0
-                          ;(kbmAttendance || []).forEach(att => {
-                            if (att.student_id === st.id) {
-                              if (att.status === 'hadir') h++
-                              else if (att.status === 'sakit') s++
-                              else if (att.status === 'izin') i++
-                              else if (att.status === 'alpha') a++
-                            }
-                          })
-                          const total = h + s + i + a
-                          const pct = total > 0 ? ((h / total) * 100).toFixed(1) : '100.0'
-                          return (
-                            <tr key={st.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#94A3B8' }}>{idx + 1}</td>
-                              <td style={{ padding: '8px', fontWeight: '600' }}>{st.name}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#16A34A', fontWeight: 'bold' }}>{h}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#CA8A04', fontWeight: 'bold' }}>{s}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#2563EB', fontWeight: 'bold' }}>{i}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#DC2626', fontWeight: 'bold' }}>{a}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#4F46E5', fontWeight: 'bold' }}>{pct}%</td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
+                            <th className="p-3 text-center w-12">No</th>
+                            <th className="p-3">Nama Siswa</th>
+                            <th className="p-3 text-center text-emerald-600">Hadir (H)</th>
+                            <th className="p-3 text-center text-amber-600">Sakit (S)</th>
+                            <th className="p-3 text-center text-blue-600">Izin (I)</th>
+                            <th className="p-3 text-center text-rose-600">Alpha (A)</th>
+                            <th className="p-3 text-center">% Kehadiran</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(kbmStudents || []).length === 0 ? (
+                            <tr>
+                              <td colSpan="7" className="p-8 text-center text-slate-400">Belum ada data siswa ditemukan untuk kriteria ini.</td>
                             </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                          ) : (
+                            (kbmStudents || []).map((st, idx) => {
+                              let h = 0, s = 0, i = 0, a = 0
+                              ;(kbmAttendance || []).forEach(att => {
+                                if (att.student_id === st.id) {
+                                  if (att.status === 'hadir') h++
+                                  else if (att.status === 'sakit') s++
+                                  else if (att.status === 'izin') i++
+                                  else if (att.status === 'alpha') a++
+                                }
+                              })
+                              const total = h + s + i + a
+                              const pct = total > 0 ? ((h / total) * 100).toFixed(1) : '100.0'
+                              return (
+                                <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
+                                  <td className="p-3 font-semibold text-slate-800">{st.name}</td>
+                                  <td className="p-3 text-center font-bold text-emerald-600 bg-emerald-50/30">{h}</td>
+                                  <td className="p-3 text-center font-bold text-amber-600">{s}</td>
+                                  <td className="p-3 text-center font-bold text-blue-600">{i}</td>
+                                  <td className="p-3 text-center font-bold text-rose-600">{a}</td>
+                                  <td className="p-3 text-center font-bold text-indigo-600">{pct}%</td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : kbmReportType === 'nilai' ? (
-                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>No</th>
-                          <th style={{ padding: '8px' }}>Nama Siswa</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Rata-rata Nilai</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Predikat</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(kbmStudents || []).map((st, idx) => {
-                          const stGr = (kbmGrades || []).filter(g => g.student_id === st.id)
-                          const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
-                          return (
-                            <tr key={st.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                              <td style={{ padding: '8px', textAlign: 'center', color: '#94A3B8' }}>{idx + 1}</td>
-                              <td style={{ padding: '8px', fontWeight: '600' }}>{st.name}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#4F46E5' }}>{avg}</td>
-                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{avg >= 90 ? 'A' : avg >= 75 ? 'B' : avg >= 60 ? 'C' : avg !== '-' ? 'D' : '-'}</td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 font-bold uppercase text-[10px]">
+                            <th className="p-3 text-center w-12">No</th>
+                            <th className="p-3">Nama Siswa</th>
+                            <th className="p-3 text-center">Rata-rata Nilai</th>
+                            <th className="p-3 text-center">Predikat Kelulusan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(kbmStudents || []).length === 0 ? (
+                            <tr>
+                              <td colSpan="4" className="p-8 text-center text-slate-400">Belum ada data nilai pada periode ini.</td>
                             </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                          ) : (
+                            (kbmStudents || []).map((st, idx) => {
+                              const stGr = (kbmGrades || []).filter(g => g.student_id === st.id)
+                              const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
+                              const predikat = avg >= 90 ? 'A' : avg >= 80 ? 'B' : avg >= 70 ? 'C' : avg !== '-' ? 'D' : '-'
+                              return (
+                                <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="p-3 text-center text-slate-300 font-bold">{idx + 1}</td>
+                                  <td className="p-3 font-semibold text-slate-800">{st.name}</td>
+                                  <td className="p-3 text-center font-bold text-purple-700">{avg}</td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                                      predikat === 'A' ? 'bg-emerald-100 text-emerald-800' :
+                                      predikat === 'B' ? 'bg-blue-100 text-blue-800' :
+                                      predikat === 'C' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                                    }`}>
+                                      {predikat}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="p-4 flex flex-col gap-3">
                       {(kbmJournals || []).length === 0 ? (
-                        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>Belum ada data jurnal.</div>
+                        <div className="p-8 text-center text-slate-400 text-xs">Belum ada data jurnal yang dimasukkan oleh guru.</div>
                       ) : (
                         (kbmJournals || []).map(j => (
-                          <div key={j.id} style={{ padding: '0.75rem', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <strong style={{ fontSize: '0.85rem' }}>{j.topik}</strong>
-                              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{j.tanggal}</span>
+                          <div key={j.id} className="p-3.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/60 flex flex-col gap-1.5 transition-all">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 text-sm">{j.topik}</span>
+                              <span className="text-[11px] text-slate-400">{j.tanggal}</span>
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                              Guru: <strong>{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: {j.mata_pelajaran}
+                            <div className="text-[11px] text-slate-500">
+                              Guru: <strong className="text-slate-800">{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: <strong className="text-indigo-600">{j.mata_pelajaran}</strong>
                             </div>
+                            {j.kegiatan && <p className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-100 mt-1">{j.kegiatan}</p>}
                           </div>
                         ))
                       )}
