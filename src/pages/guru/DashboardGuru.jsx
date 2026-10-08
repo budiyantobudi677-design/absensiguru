@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -262,31 +266,176 @@ export default function DashboardGuru() {
     }
   }
 
-  const downloadHistoryCSV = () => {
+  const downloadHistoryExcel = async () => {
     if (historyList.length === 0) {
       alert('Tidak ada riwayat absensi di bulan ini.')
       return
     }
 
+    const [year, month] = historyMonth.split('-')
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+    const monthLabel = `${monthNames[parseInt(month) - 1]} ${year}`
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Riwayat Presensi')
+
+    // Header Judul Laporan
+    worksheet.mergeCells('A1:F1')
+    worksheet.getCell('A1').value = 'REKAPITULASI KEHADIRAN GURU'
+    worksheet.getCell('A1').font = { bold: true, size: 14 }
+    worksheet.getCell('A1').alignment = { horizontal: 'center' }
+
+    worksheet.mergeCells('A2:F2')
+    worksheet.getCell('A2').value = schoolName.toUpperCase()
+    worksheet.getCell('A2').font = { bold: true, size: 12 }
+    worksheet.getCell('A2').alignment = { horizontal: 'center' }
+
+    worksheet.mergeCells('A3:F3')
+    worksheet.getCell('A3').value = `Nama: ${profile?.full_name || 'Guru'} ${profile?.nip ? ' | NIP: ' + profile.nip : ''}`
+    worksheet.getCell('A3').font = { size: 11 }
+    worksheet.getCell('A3').alignment = { horizontal: 'left' }
+
+    worksheet.mergeCells('A4:F4')
+    worksheet.getCell('A4').value = `Periode Bulan: ${monthLabel}`
+    worksheet.getCell('A4').font = { size: 11, bold: true }
+    worksheet.getCell('A4').alignment = { horizontal: 'left' }
+
+    // Table Headers
     const headers = ['No', 'Tanggal', 'Status', 'Jam Masuk', 'Jam Pulang', 'Keterangan']
-    const rows = historyList.map((item, idx) => {
-      const tgl = new Date(item.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-      const masuk = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
-      const pulang = item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
-      const status = (item.status || 'Hadir').toUpperCase()
-      const ket = item.keterangan || '-'
-      return [idx + 1, `"${tgl}"`, `"${status}"`, `"${masuk}"`, `"${pulang}"`, `"${ket}"`].join(',')
+    const headerRow = worksheet.addRow(headers)
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
     })
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
+    worksheet.getColumn(1).width = 6
+    worksheet.getColumn(2).width = 24
+    worksheet.getColumn(3).width = 14
+    worksheet.getColumn(4).width = 14
+    worksheet.getColumn(5).width = 14
+    worksheet.getColumn(6).width = 30
+
+    historyList.forEach((item, index) => {
+      const tgl = new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      const status = (item.status || 'Hadir').toUpperCase()
+      const masuk = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const pulang = item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const ket = item.keterangan || '-'
+
+      const row = worksheet.addRow([index + 1, tgl, status, masuk, pulang, ket])
+      row.eachCell((cell, colNumber) => {
+        cell.alignment = { vertical: 'middle', horizontal: colNumber === 2 || colNumber === 6 ? 'left' : 'center' }
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+
+        if (colNumber === 3) {
+          if (status === 'HADIR') {
+            cell.font = { color: { argb: 'FF059669' }, bold: true }
+          } else if (status === 'IZIN') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } }
+            cell.font = { color: { argb: 'FFD97706' }, bold: true }
+          } else if (status === 'SAKIT') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } }
+            cell.font = { color: { argb: 'FFDC2626' }, bold: true }
+          }
+        }
+      })
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
     const sanitizedName = (profile?.full_name || 'Guru').replace(/\s+/g, '_')
-    link.download = `Riwayat_Presensi_${sanitizedName}_${historyMonth}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    saveAs(new Blob([buffer]), `Riwayat_Presensi_${sanitizedName}_${historyMonth}.xlsx`)
+  }
+
+  const downloadHistoryPDF = () => {
+    if (historyList.length === 0) {
+      alert('Tidak ada riwayat absensi di bulan ini.')
+      return
+    }
+
+    const [year, month] = historyMonth.split('-')
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+    const monthLabel = `${monthNames[parseInt(month) - 1]} ${year}`
+
+    const doc = new jsPDF({ orientation: 'portrait', format: 'a4' })
+    const docWidth = doc.internal.pageSize.getWidth()
+
+    // Header PDF
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('REKAPITULASI KEHADIRAN GURU', docWidth / 2, 16, { align: 'center' })
+    doc.setFontSize(12)
+    doc.text(schoolName.toUpperCase(), docWidth / 2, 23, { align: 'center' })
+
+    doc.setLineWidth(0.5)
+    doc.line(14, 27, docWidth - 14, 27)
+
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Nama Pegawai : ${profile?.full_name || 'Guru'}`, 14, 34)
+    if (profile?.nip) {
+      doc.text(`NIP                 : ${profile.nip}`, 14, 40)
+    }
+    doc.text(`Bulan              : ${monthLabel}`, 14, profile?.nip ? 46 : 40)
+
+    const tableStartY = profile?.nip ? 52 : 46
+
+    const head = [['No', 'Tanggal', 'Status', 'Masuk', 'Pulang', 'Keterangan']]
+    const body = historyList.map((item, idx) => {
+      const tgl = new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
+      const status = (item.status || 'Hadir').toUpperCase()
+      const masuk = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const pulang = item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const ket = item.keterangan || '-'
+      return [idx + 1, tgl, status, masuk, pulang, ket]
+    })
+
+    autoTable(doc, {
+      startY: tableStartY,
+      head: head,
+      body: body,
+      theme: 'grid',
+      styles: {
+        fontSize: 9,
+        cellPadding: 2,
+        valign: 'middle'
+      },
+      headStyles: {
+        fillColor: [79, 70, 229],
+        textColor: [255, 255, 255],
+        halign: 'center',
+        fontStyle: 'bold'
+      },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        1: { halign: 'left', cellWidth: 35 },
+        2: { halign: 'center', cellWidth: 22 },
+        3: { halign: 'center', cellWidth: 22 },
+        4: { halign: 'center', cellWidth: 22 },
+        5: { halign: 'left' }
+      },
+      didParseCell: function (data) {
+        if (data.section === 'body' && data.column.index === 2) {
+          const val = data.cell.raw
+          if (val === 'HADIR') {
+            data.cell.styles.textColor = [5, 150, 105]
+            data.cell.styles.fontStyle = 'bold'
+          } else if (val === 'IZIN') {
+            data.cell.styles.fillColor = [254, 243, 199]
+            data.cell.styles.textColor = [217, 119, 6]
+            data.cell.styles.fontStyle = 'bold'
+          } else if (val === 'SAKIT') {
+            data.cell.styles.fillColor = [254, 226, 226]
+            data.cell.styles.textColor = [220, 38, 38]
+            data.cell.styles.fontStyle = 'bold'
+          }
+        }
+      }
+    })
+
+    const sanitizedName = (profile?.full_name || 'Guru').replace(/\s+/g, '_')
+    doc.save(`Riwayat_Presensi_${sanitizedName}_${historyMonth}.pdf`)
   }
 
   const showPopup = (title, message, type = 'success') => {
@@ -660,22 +809,42 @@ export default function DashboardGuru() {
           <div className="fade-in">
              <div className="flex justify-between items-center mb-4">
                 <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Riwayat Kehadiran</h3>
-                <button
-                  onClick={downloadHistoryCSV}
-                  disabled={historyLoading || historyList.length === 0}
-                  className="btn"
-                  style={{
-                    background: '#10B981',
-                    color: 'white',
-                    padding: '0.45rem 0.85rem',
-                    borderRadius: '10px',
-                    fontSize: '0.8rem',
-                    width: 'auto',
-                    opacity: historyList.length === 0 ? 0.6 : 1
-                  }}
-                >
-                  <Download size={14} /> Unduh CSV
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={downloadHistoryExcel}
+                    disabled={historyLoading || historyList.length === 0}
+                    className="btn"
+                    title="Unduh Excel (.xlsx)"
+                    style={{
+                      background: '#10B981',
+                      color: 'white',
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '10px',
+                      fontSize: '0.75rem',
+                      width: 'auto',
+                      opacity: historyList.length === 0 ? 0.6 : 1
+                    }}
+                  >
+                    <FileSpreadsheet size={14} /> Excel
+                  </button>
+                  <button
+                    onClick={downloadHistoryPDF}
+                    disabled={historyLoading || historyList.length === 0}
+                    className="btn"
+                    title="Unduh PDF (.pdf)"
+                    style={{
+                      background: '#EF4444',
+                      color: 'white',
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '10px',
+                      fontSize: '0.75rem',
+                      width: 'auto',
+                      opacity: historyList.length === 0 ? 0.6 : 1
+                    }}
+                  >
+                    <FileText size={14} /> PDF
+                  </button>
+                </div>
              </div>
 
              {/* Filter Bulan */}
