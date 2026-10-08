@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -18,7 +18,7 @@ export default function DashboardGuru() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('absensi') 
-  const [kbmSubTab, setKbmSubTab] = useState('presensi_siswa')
+  const [kbmSubTab, setKbmSubTab] = useState('menu') // 'menu' | 'presensi_siswa' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [classesList, setClassesList] = useState([])
   const [schoolInfoData, setSchoolInfoData] = useState({
     schoolName: 'Presensia',
@@ -1073,88 +1073,214 @@ export default function DashboardGuru() {
         )}
         {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap) */}
         {activeTab === 'kbm' && (
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-gray-200">
-              <button
-                onClick={() => setKbmSubTab('presensi_siswa')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  kbmSubTab === 'presensi_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                📝 Presensi Siswa
-              </button>
-              <button
-                onClick={() => setKbmSubTab('jurnal')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  kbmSubTab === 'jurnal' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                📓 Jurnal Mengajar
-              </button>
-              <button
-                onClick={() => setKbmSubTab('nilai')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  kbmSubTab === 'nilai' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                ✍️ Input Nilai
-              </button>
-              <button
-                onClick={() => setKbmSubTab('rekap')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  kbmSubTab === 'rekap' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                📊 Rekap & Download
-              </button>
-              <button
-                onClick={() => setKbmSubTab('master_siswa')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  kbmSubTab === 'master_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                👥 Master Siswa
-              </button>
-            </div>
+          <div className="flex flex-col gap-4">
+            {kbmSubTab === 'menu' ? (
+              <div className="flex flex-col gap-4">
+                {/* Banner Header KBM */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-md relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full inline-block mb-1.5">
+                      Modul Pembelajaran Guru
+                    </span>
+                    <h3 className="text-lg font-bold text-white">Sistem Pembelajaran Terpadu</h3>
+                    <p className="text-xs text-blue-100 mt-1 max-w-sm">
+                      Kelola presensi siswa harian, jurnal mengajar KBM, penilaian berkala, serta unduh rekapitulasi format standar.
+                    </p>
+                  </div>
+                  <div className="absolute right-2 -bottom-2 opacity-15 pointer-events-none">
+                    <BookOpen size={100} />
+                  </div>
+                </div>
 
-            {kbmSubTab === 'presensi_siswa' && (
-              <InputPresensiMurid
-                classes={classesList}
-                user={user}
-                schoolInfo={schoolInfoData}
-              />
-            )}
+                {/* Grid Menu Kotak-Kotak (Grid Cards Ala Absensi Super) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* Card 1: Presensi Siswa */}
+                  <div
+                    onClick={() => setKbmSubTab('presensi_siswa')}
+                    className="p-4 rounded-2xl bg-white border border-blue-100 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner mb-3">
+                      📝
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-blue-600 transition-colors">Presensi Siswa</h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Absensi harian siswa (Hadir, Sakit, Izin, Alpha)</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-blue-600">
+                      <span>Buka Modul</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
 
-            {kbmSubTab === 'jurnal' && (
-              <InputJurnalMengajar
-                classes={classesList}
-                user={user}
-                schoolInfo={schoolInfoData}
-              />
-            )}
+                  {/* Card 2: Jurnal Mengajar */}
+                  <div
+                    onClick={() => setKbmSubTab('jurnal')}
+                    className="p-4 rounded-2xl bg-white border border-teal-100 shadow-sm hover:shadow-md hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-2xl group-hover:bg-teal-600 group-hover:text-white transition-all shadow-inner mb-3">
+                      📓
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-teal-600 transition-colors">Jurnal Mengajar</h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Catatan materi, topik KBM, hambatan & dokumentasi</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-teal-600">
+                      <span>Buka Modul</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
 
-            {kbmSubTab === 'nilai' && (
-              <InputNilaiSiswa
-                classes={classesList}
-                user={user}
-                schoolInfo={schoolInfoData}
-              />
-            )}
+                  {/* Card 3: Input Nilai Siswa */}
+                  <div
+                    onClick={() => setKbmSubTab('nilai')}
+                    className="p-4 rounded-2xl bg-white border border-purple-100 shadow-sm hover:shadow-md hover:border-purple-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-2xl group-hover:bg-purple-600 group-hover:text-white transition-all shadow-inner mb-3">
+                      ✍️
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-purple-600 transition-colors">Input Nilai Siswa</h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Nilai Tugas, UH, UTS, UAS, dan predikat otomatis</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-purple-600">
+                      <span>Buka Modul</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
 
-            {kbmSubTab === 'rekap' && (
-              <RekapDanLaporan
-                classes={classesList}
-                user={user}
-                schoolInfo={schoolInfoData}
-              />
-            )}
+                  {/* Card 4: Rekap & Laporan */}
+                  <div
+                    onClick={() => setKbmSubTab('rekap')}
+                    className="p-4 rounded-2xl bg-white border border-orange-100 shadow-sm hover:shadow-md hover:border-orange-300 transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl group-hover:bg-orange-600 group-hover:text-white transition-all shadow-inner mb-3">
+                      📊
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-orange-600 transition-colors">Rekapitulasi</h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Unduh Excel & Cetak PDF Presensi, Nilai & Jurnal</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-orange-600">
+                      <span>Buka Modul</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
 
-            {kbmSubTab === 'master_siswa' && (
-              <MasterSiswaDanKelas
-                user={user}
-                schoolInfo={schoolInfoData}
-                onRefresh={fetchUser}
-              />
+                  {/* Card 5: Master Siswa & Kelas */}
+                  <div
+                    onClick={() => setKbmSubTab('master_siswa')}
+                    className="p-4 rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-400 transition-all cursor-pointer flex flex-col justify-between group active:scale-95 col-span-2 sm:col-span-1"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 flex items-center justify-center text-2xl group-hover:bg-gray-700 group-hover:text-white transition-all shadow-inner mb-3">
+                      👥
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-gray-900 transition-colors">Master Siswa</h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">Kelola daftar siswa, rombel kelas & impor data Excel</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] font-semibold text-gray-700">
+                      <span>Buka Modul</span>
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {/* Header Sub-Halaman dengan Tombol Kembali */}
+                <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                  <button
+                    onClick={() => setKbmSubTab('menu')}
+                    className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg transition-all cursor-pointer"
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Kembali ke Menu KBM</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto">
+                    <button
+                      onClick={() => setKbmSubTab('presensi_siswa')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        kbmSubTab === 'presensi_siswa' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      📝 Presensi
+                    </button>
+                    <button
+                      onClick={() => setKbmSubTab('jurnal')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        kbmSubTab === 'jurnal' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      📓 Jurnal
+                    </button>
+                    <button
+                      onClick={() => setKbmSubTab('nilai')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        kbmSubTab === 'nilai' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      ✍️ Nilai
+                    </button>
+                    <button
+                      onClick={() => setKbmSubTab('rekap')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        kbmSubTab === 'rekap' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      📊 Rekap
+                    </button>
+                    <button
+                      onClick={() => setKbmSubTab('master_siswa')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                        kbmSubTab === 'master_siswa' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      👥 Siswa
+                    </button>
+                  </div>
+                </div>
+
+                {kbmSubTab === 'presensi_siswa' && (
+                  <InputPresensiMurid
+                    classes={classesList}
+                    user={user}
+                    schoolInfo={schoolInfoData}
+                  />
+                )}
+
+                {kbmSubTab === 'jurnal' && (
+                  <InputJurnalMengajar
+                    classes={classesList}
+                    user={user}
+                    schoolInfo={schoolInfoData}
+                  />
+                )}
+
+                {kbmSubTab === 'nilai' && (
+                  <InputNilaiSiswa
+                    classes={classesList}
+                    user={user}
+                    schoolInfo={schoolInfoData}
+                  />
+                )}
+
+                {kbmSubTab === 'rekap' && (
+                  <RekapDanLaporan
+                    classes={classesList}
+                    user={user}
+                    schoolInfo={schoolInfoData}
+                  />
+                )}
+
+                {kbmSubTab === 'master_siswa' && (
+                  <MasterSiswaDanKelas
+                    user={user}
+                    schoolInfo={schoolInfoData}
+                    onRefresh={fetchUser}
+                  />
+                )}
+              </div>
             )}
           </div>
         )}

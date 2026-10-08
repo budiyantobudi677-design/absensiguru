@@ -86,7 +86,10 @@ export default function DashboardAdmin() {
     if (activeTab === 'laporan') {
        loadAbsensi()
     }
-  }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun])
+    if (activeTab === 'kbm') {
+       loadKbmData()
+    }
+  }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun, activeTab, kbmFilterMode, kbmSelectedClassId, kbmSelectedTeacherId, kbmMonth, kbmSemester, kbmYear])
 
   useEffect(() => {
     if (darkMode) {
@@ -214,6 +217,155 @@ export default function DashboardAdmin() {
        } else {
           alert("Gagal mengirim pengumuman: " + error?.message)
        }
+    }
+  }
+
+  const loadKbmClasses = async () => {
+    try {
+      const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
+      if (!error && data) {
+        setKbmClasses(data)
+        if (data.length > 0 && !kbmSelectedClassId) {
+          setKbmSelectedClassId(data[0].id)
+        }
+      }
+    } catch (err) {
+      console.error('Error loading KBM classes:', err)
+    }
+  }
+
+  const loadKbmData = async () => {
+    setKbmLoading(true)
+    try {
+      // 1. Ambil data siswa
+      let studentQuery = supabase.from('students').select('*').order('name', { ascending: true })
+      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
+        studentQuery = studentQuery.eq('class_id', kbmSelectedClassId)
+      }
+      const { data: stdData } = await studentQuery
+      setKbmStudents(stdData || [])
+
+      // 2. Ambil data presensi
+      const [year, month] = (kbmMonth || new Date().toISOString().slice(0, 7)).split('-')
+      const firstDay = `${year}-${month}-01`
+      const lastDay = new Date(year, parseInt(month), 0).toLocaleDateString('en-CA')
+
+      let attQuery = supabase.from('student_attendance').select('*').gte('tanggal', firstDay).lte('tanggal', lastDay)
+      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
+        attQuery = attQuery.eq('class_id', kbmSelectedClassId)
+      } else if (kbmFilterMode === 'guru' && kbmSelectedTeacherId) {
+        attQuery = attQuery.eq('teacher_id', kbmSelectedTeacherId)
+      }
+      const { data: attData } = await attQuery
+      setKbmAttendance(attData || [])
+
+      // 3. Ambil data nilai
+      let grQuery = supabase.from('student_grades').select('*').eq('semester', kbmSemester).eq('tahun_ajaran', kbmYear)
+      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
+        grQuery = grQuery.eq('class_id', kbmSelectedClassId)
+      } else if (kbmFilterMode === 'guru' && kbmSelectedTeacherId) {
+        grQuery = grQuery.eq('teacher_id', kbmSelectedTeacherId)
+      }
+      const { data: grData } = await grQuery
+      setKbmGrades(grData || [])
+
+      // 4. Ambil data jurnal
+      let jrnQuery = supabase.from('learning_journals').select('*, profiles(full_name, email), classes(name)').order('tanggal', { ascending: false }).limit(100)
+      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
+        jrnQuery = jrnQuery.eq('class_id', kbmSelectedClassId)
+      } else if (kbmFilterMode === 'guru' && kbmSelectedTeacherId) {
+        jrnQuery = jrnQuery.eq('teacher_id', kbmSelectedTeacherId)
+      }
+      const { data: jrnData } = await jrnQuery
+      setKbmJournals(jrnData || [])
+    } catch (err) {
+      console.error('Error loading KBM data:', err)
+    } finally {
+      setKbmLoading(false)
+    }
+  }
+
+  const handleExportKbmAdmin = () => {
+    const activeClass = kbmClasses.find(c => c.id === kbmSelectedClassId)
+    const activeClassName = activeClass ? activeClass.name : 'Semua Kelas'
+    const schoolInfoObj = {
+      schoolName: namaSekolah,
+      principalName: '',
+      teacherName: 'Administrator',
+      principalNIP: '-',
+      teacherNIP: '-'
+    }
+
+    if (kbmReportType === 'kehadiran') {
+      const rows = (kbmStudents || []).map((st, idx) => {
+        let h = 0, s = 0, i = 0, a = 0
+        ;(kbmAttendance || []).forEach(att => {
+          if (att.student_id === st.id) {
+            if (att.status === 'hadir') h++
+            else if (att.status === 'sakit') s++
+            else if (att.status === 'izin') i++
+            else if (att.status === 'alpha') a++
+          }
+        })
+        const total = h + s + i + a
+        const pct = total > 0 ? ((h / total) * 100).toFixed(1) + '%' : '100%'
+        return [idx + 1, st.nis || '-', st.name, st.gender || '-', h, s, i, a, pct]
+      })
+
+      exportAttendanceRecapExcel({
+        title: 'REKAPITULASI PRESENSI SISWA',
+        className: activeClassName,
+        periodText: kbmMonth,
+        schoolInfo: schoolInfoObj,
+        dataGrid: {
+          headers: ['No', 'NIS', 'Nama Siswa', 'L/P', 'Hadir (H)', 'Sakit (S)', 'Izin (I)', 'Alpha (A)', '% Kehadiran'],
+          rows: rows,
+          summary: [
+            ['Total Siswa:', (kbmStudents || []).length, '', 'Bulan:', kbmMonth]
+          ]
+        }
+      })
+    } else if (kbmReportType === 'nilai') {
+      const rows = (kbmStudents || []).map((st, idx) => {
+        const stGr = (kbmGrades || []).filter(g => g.student_id === st.id)
+        const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
+        const predikat = avg >= 90 ? 'A' : avg >= 75 ? 'B' : avg >= 60 ? 'C' : avg !== '-' ? 'D' : '-'
+        return [idx + 1, st.nis || '-', st.name, st.gender || '-', avg, predikat]
+      })
+
+      exportGradesRecapExcel({
+        title: 'REKAPITULASI NILAI SISWA',
+        className: activeClassName,
+        subjectName: 'Semua Mata Pelajaran',
+        periodText: `Semester ${kbmSemester} ${kbmYear}`,
+        schoolInfo: schoolInfoObj,
+        dataGrid: {
+          headers: ['No', 'NIS', 'Nama Siswa', 'L/P', 'Rata-rata Nilai', 'Predikat'],
+          rows: rows
+        }
+      })
+    } else if (kbmReportType === 'jurnal') {
+      const rows = (kbmJournals || []).map((j, idx) => [
+        idx + 1,
+        j.tanggal,
+        j.classes?.name || activeClassName,
+        j.profiles?.full_name || 'Guru',
+        j.mata_pelajaran,
+        j.topik,
+        j.kegiatan || '-',
+        j.catatan || '-'
+      ])
+
+      exportJournalsRecapExcel({
+        title: 'REKAPITULASI JURNAL PEMBELAJARAN (ADMIN)',
+        className: activeClassName,
+        periodText: `Tahun Ajaran ${kbmYear}`,
+        schoolInfo: schoolInfoObj,
+        dataGrid: {
+          headers: ['No', 'Tanggal', 'Kelas', 'Guru Pengampu', 'Mata Pelajaran', 'Materi/Topik', 'Kegiatan KBM', 'Catatan/Hambatan'],
+          rows: rows
+        }
+      })
     }
   }
 
@@ -782,6 +934,13 @@ export default function DashboardAdmin() {
                   <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Pengumuman Sekolah</h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kirim broadcast pesan ke guru</p>
                 </div>
+                <div onClick={() => handleMenuClick('kbm')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <BookOpen size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Sistem Pembelajaran</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Jurnal, Nilai, Presensi Siswa & Rekap</p>
+                </div>
                 <div onClick={() => handleMenuClick('pengaturan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
                     <Settings size={32} color="white" />
@@ -1040,7 +1199,8 @@ export default function DashboardAdmin() {
                       <div>
                         <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Kelas</label>
                         <select value={kbmSelectedClassId} onChange={(e) => setKbmSelectedClassId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
-                          {kbmClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          <option value="">-- Pilih Kelas --</option>
+                          {(kbmClasses || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                     ) : (
@@ -1048,7 +1208,7 @@ export default function DashboardAdmin() {
                         <label className="text-muted" style={{ fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>Pilih Guru</label>
                         <select value={kbmSelectedTeacherId} onChange={(e) => setKbmSelectedTeacherId(e.target.value)} className="input" style={{ padding: '0.55rem', fontSize: '0.85rem' }}>
                           <option value="">-- Pilih Guru Pengampu --</option>
-                          {pegawaiData.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                          {(pegawaiData || []).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
                         </select>
                       </div>
                     )}
@@ -1112,9 +1272,9 @@ export default function DashboardAdmin() {
                         </tr>
                       </thead>
                       <tbody>
-                        {kbmStudents.map((st, idx) => {
+                        {(kbmStudents || []).map((st, idx) => {
                           let h = 0, s = 0, i = 0, a = 0
-                          kbmAttendance.forEach(att => {
+                          ;(kbmAttendance || []).forEach(att => {
                             if (att.student_id === st.id) {
                               if (att.status === 'hadir') h++
                               else if (att.status === 'sakit') s++
@@ -1149,8 +1309,8 @@ export default function DashboardAdmin() {
                         </tr>
                       </thead>
                       <tbody>
-                        {kbmStudents.map((st, idx) => {
-                          const stGr = kbmGrades.filter(g => g.student_id === st.id)
+                        {(kbmStudents || []).map((st, idx) => {
+                          const stGr = (kbmGrades || []).filter(g => g.student_id === st.id)
                           const avg = stGr.length > 0 ? (stGr.reduce((a, b) => a + Number(b.nilai), 0) / stGr.length).toFixed(1) : '-'
                           return (
                             <tr key={st.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
@@ -1165,17 +1325,21 @@ export default function DashboardAdmin() {
                     </table>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {kbmJournals.map(j => (
-                        <div key={j.id} style={{ padding: '0.75rem', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ fontSize: '0.85rem' }}>{j.topik}</strong>
-                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{j.tanggal}</span>
+                      {(kbmJournals || []).length === 0 ? (
+                        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>Belum ada data jurnal.</div>
+                      ) : (
+                        (kbmJournals || []).map(j => (
+                          <div key={j.id} style={{ padding: '0.75rem', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <strong style={{ fontSize: '0.85rem' }}>{j.topik}</strong>
+                              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{j.tanggal}</span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
+                              Guru: <strong>{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: {j.mata_pelajaran}
+                            </div>
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                            Guru: <strong>{j.profiles?.full_name || 'Guru'}</strong> • Kelas: {j.classes?.name || '-'} • Mapel: {j.mata_pelajaran}
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
