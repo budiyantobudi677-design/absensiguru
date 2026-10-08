@@ -30,13 +30,42 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }, [isOpen, facingMode])
 
+  const fetchAddressName = async (latitude, longitude) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=id`,
+        { headers: { 'User-Agent': 'PresensiaAbsensiApp/1.0' } }
+      )
+      if (!response.ok) throw new Error('Network error')
+      const data = await response.json()
+      if (data && data.address) {
+        const addr = data.address
+        const road = addr.road || addr.pedestrian || addr.suburb || ''
+        const district = addr.city_district || addr.subdistrict || addr.county || ''
+        const city = addr.city || addr.town || addr.municipality || ''
+        
+        const parts = [road, district, city].filter(Boolean)
+        if (parts.length > 0) {
+          return parts.join(', ')
+        } else if (data.display_name) {
+          return data.display_name.split(',').slice(0, 3).join(',')
+        }
+      }
+    } catch (e) {
+      console.warn('Reverse geocoding failed, fallback to lat/long:', e)
+    }
+    return `Lat: ${latitude.toFixed(5)}, Long: ${longitude.toFixed(5)}`
+  }
+
   const fetchLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude.toFixed(6)
-          const lng = pos.coords.longitude.toFixed(6)
-          setLocationText(`Lat: ${lat}, Long: ${lng}`)
+        async (pos) => {
+          const lat = pos.coords.latitude
+          const lng = pos.coords.longitude
+          setLocationText('Mendeteksi nama lokasi...')
+          const address = await fetchAddressName(lat, lng)
+          setLocationText(address)
         },
         () => {
           setLocationText('GPS tidak aktif / Izin lokasi ditolak')
