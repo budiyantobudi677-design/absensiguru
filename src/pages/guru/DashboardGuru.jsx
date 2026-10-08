@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2 } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet } from 'lucide-react'
+import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -23,6 +24,11 @@ export default function DashboardGuru() {
   
   const [isHoliday, setIsHoliday] = useState(false)
   const [holidayReason, setHolidayReason] = useState('')
+  const [showCameraModal, setShowCameraModal] = useState(false)
+  const [schoolName, setSchoolName] = useState('Presensia')
+  const [historyList, setHistoryList] = useState([])
+  const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const navigate = useNavigate()
 
@@ -135,6 +141,9 @@ export default function DashboardGuru() {
       
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
       const hariKerja = settings?.hari_kerja || 5
+      if (settings?.nama_sekolah) {
+        setSchoolName(settings.nama_sekolah)
+      }
       
       const dayOfWeek = new Date().getDay()
       let holiday = false
@@ -195,10 +204,89 @@ export default function DashboardGuru() {
          
          const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
          setUnreadCount(unread)
+
+         // Trigger push notification for new announcement if granted
+         if (unread > 0 && 'Notification' in window && Notification.permission === 'granted') {
+           const latestMsg = activePengumuman[0]?.pesan || 'Anda memiliki pengumuman baru.'
+           try {
+             new Notification('Presensia - Pengumuman Sekolah', {
+               body: latestMsg,
+               icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png'
+             })
+           } catch (e) {
+             console.log(e)
+           }
+         }
       }
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const perm = await Notification.requestPermission()
+      if (perm === 'granted') {
+        showPopup('Notifikasi Aktif', 'Izin notifikasi push berhasil diaktifkan.', 'success')
+      } else {
+        showPopup('Notifikasi Ditolak', 'Izin notifikasi tidak diberikan oleh browser.', 'error')
+      }
+    } else {
+      showPopup('Tidak Didukung', 'Browser ini tidak mendukung notifikasi Web.', 'error')
+    }
+  }
+
+  const loadHistory = async (targetMonth = historyMonth) => {
+    if (!user) return
+    setHistoryLoading(true)
+    try {
+      const [year, month] = targetMonth.split('-')
+      const firstDay = new Date(year, month - 1, 1).toLocaleDateString('en-CA')
+      const lastDay = new Date(year, month, 0).toLocaleDateString('en-CA')
+
+      const { data, error } = await supabase
+        .from('absensi')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('tanggal', firstDay)
+        .lte('tanggal', lastDay)
+        .order('tanggal', { ascending: false })
+
+      if (!error && data) {
+        setHistoryList(data)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const downloadHistoryCSV = () => {
+    if (historyList.length === 0) {
+      alert('Tidak ada riwayat absensi di bulan ini.')
+      return
+    }
+
+    const headers = ['No', 'Tanggal', 'Status', 'Jam Masuk', 'Jam Pulang', 'Keterangan']
+    const rows = historyList.map((item, idx) => {
+      const tgl = new Date(item.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+      const masuk = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const pulang = item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+      const status = (item.status || 'Hadir').toUpperCase()
+      const ket = item.keterangan || '-'
+      return [idx + 1, `"${tgl}"`, `"${status}"`, `"${masuk}"`, `"${pulang}"`, `"${ket}"`].join(',')
+    })
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    const sanitizedName = (profile?.full_name || 'Guru').replace(/\s+/g, '_')
+    link.download = `Riwayat_Presensi_${sanitizedName}_${historyMonth}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const showPopup = (title, message, type = 'success') => {
@@ -358,10 +446,47 @@ export default function DashboardGuru() {
               </h2>
             </div>
           </div>
-          <button onClick={() => setActiveTab('pengumuman')} style={{ background: activeTab === 'pengumuman' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', border: 'none', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', cursor: 'pointer', position: 'relative' }}>
-            <Bell size={20} />
-            {unreadCount > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCameraModal(true)}
+              title="Kamera Timemark"
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <Camera size={20} />
+            </button>
+            <button
+              onClick={() => setActiveTab('pengumuman')}
+              title="Pengumuman"
+              style={{
+                background: activeTab === 'pengumuman' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                border: 'none',
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                cursor: 'pointer',
+                position: 'relative'
+              }}
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
+            </button>
+          </div>
         </div>
         <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
           <div className="flex items-center gap-3">
@@ -531,9 +656,121 @@ export default function DashboardGuru() {
           </div>
         )}
 
+        {activeTab === 'riwayat' && (
+          <div className="fade-in">
+             <div className="flex justify-between items-center mb-4">
+                <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Riwayat Kehadiran</h3>
+                <button
+                  onClick={downloadHistoryCSV}
+                  disabled={historyLoading || historyList.length === 0}
+                  className="btn"
+                  style={{
+                    background: '#10B981',
+                    color: 'white',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '10px',
+                    fontSize: '0.8rem',
+                    width: 'auto',
+                    opacity: historyList.length === 0 ? 0.6 : 1
+                  }}
+                >
+                  <Download size={14} /> Unduh CSV
+                </button>
+             </div>
+
+             {/* Filter Bulan */}
+             <div className="card" style={{ padding: '0.85rem 1rem', border: 'none', background: 'white', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Calendar size={18} color="var(--primary)" />
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginBottom: '0.2rem' }}>Pilih Bulan</label>
+                  <input
+                    type="month"
+                    value={historyMonth}
+                    onChange={(e) => {
+                      setHistoryMonth(e.target.value)
+                      loadHistory(e.target.value)
+                    }}
+                    className="input"
+                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px' }}
+                  />
+                </div>
+             </div>
+
+             {historyLoading ? (
+                <div className="card text-center text-muted" style={{ padding: '2rem' }}>
+                   <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
+                   Memuat data riwayat...
+                </div>
+             ) : historyList.length === 0 ? (
+                <div className="card text-center text-muted" style={{ padding: '2rem' }}>
+                   Tidak ada data kehadiran di bulan {historyMonth}.
+                </div>
+             ) : (
+                <div className="flex flex-col gap-2">
+                   {historyList.map((item) => {
+                     const isHadir = !item.status || item.status === 'hadir'
+                     const statusColor = isHadir ? '#10B981' : item.status === 'izin' ? '#F59E0B' : '#EF4444'
+                     const statusBg = isHadir ? '#ECFDF5' : item.status === 'izin' ? '#FFFBEB' : '#FEF2F2'
+                     
+                     return (
+                       <div key={item.id} className="card flex items-center justify-between" style={{ padding: '0.85rem 1rem', border: 'none', borderRadius: '16px', background: 'white' }}>
+                         <div>
+                           <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#1E293B', marginBottom: '0.2rem' }}>
+                             {new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                           </div>
+                           <span style={{ fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.5rem', borderRadius: '6px', background: statusBg, color: statusColor, textTransform: 'uppercase' }}>
+                             {item.status || 'HADIR'}
+                           </span>
+                           {item.keterangan && (
+                             <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
+                               Ket: {item.keterangan}
+                             </p>
+                           )}
+                         </div>
+
+                         <div className="flex gap-3 text-center">
+                           <div>
+                             <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>MASUK</div>
+                             <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#10B981' }}>
+                               {item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                             </div>
+                           </div>
+                           <div>
+                             <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>PULANG</div>
+                             <div style={{ fontWeight: '700', fontSize: '0.85rem', color: item.waktu_pulang ? '#F59E0B' : '#CBD5E1' }}>
+                               {item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+                     )
+                   })}
+                </div>
+             )}
+          </div>
+        )}
+
         {activeTab === 'pengumuman' && (
           <div className="fade-in">
-             <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Notifikasi</h3>
+             <div className="flex justify-between items-center mb-4">
+                <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Notifikasi</h3>
+                {'Notification' in window && Notification.permission !== 'granted' && (
+                   <button
+                     onClick={requestNotificationPermission}
+                     className="btn"
+                     style={{
+                       background: '#38BDF8',
+                       color: 'white',
+                       padding: '0.35rem 0.75rem',
+                       borderRadius: '8px',
+                       fontSize: '0.75rem',
+                       width: 'auto'
+                     }}
+                   >
+                     🔔 Izinkan Push
+                   </button>
+                )}
+             </div>
              
              {pengumumanData.length === 0 ? (
                 <div className="card text-center text-muted" style={{ padding: '2rem' }}>
@@ -563,12 +800,31 @@ export default function DashboardGuru() {
       {/* Corporate Style Bottom Navigation */}
       <nav className="bottom-nav">
         <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('absensi')}>
-          <Clock size={24} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
+          <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
+        </button>
+        <button
+          className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}
+          style={{ flex: 1 }}
+          onClick={() => {
+            setActiveTab('riwayat')
+            loadHistory()
+          }}
+        >
+          <History size={20} strokeWidth={activeTab === 'riwayat' ? 2.5 : 1.5} /> Riwayat
         </button>
         <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('pengaturan')}>
-          <UserCircle size={24} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
+          <UserCircle size={20} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
         </button>
       </nav>
+
+      {/* Camera Timemark Modal */}
+      <CameraTimemarkModal
+        isOpen={showCameraModal}
+        onClose={() => setShowCameraModal(false)}
+        profile={profile}
+        user={user}
+        schoolName={schoolName}
+      />
       
       <style>{`
         .spin { animation: spin 1s linear infinite; }
