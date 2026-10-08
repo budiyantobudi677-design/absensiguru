@@ -1071,6 +1071,93 @@ export default function DashboardGuru() {
              )}
           </div>
         )}
+        {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap) */}
+        {activeTab === 'kbm' && (
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-gray-200">
+              <button
+                onClick={() => setKbmSubTab('presensi_siswa')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  kbmSubTab === 'presensi_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                📝 Presensi Siswa
+              </button>
+              <button
+                onClick={() => setKbmSubTab('jurnal')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  kbmSubTab === 'jurnal' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                📓 Jurnal Mengajar
+              </button>
+              <button
+                onClick={() => setKbmSubTab('nilai')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  kbmSubTab === 'nilai' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                ✍️ Input Nilai
+              </button>
+              <button
+                onClick={() => setKbmSubTab('rekap')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  kbmSubTab === 'rekap' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                📊 Rekap & Download
+              </button>
+              <button
+                onClick={() => setKbmSubTab('master_siswa')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  kbmSubTab === 'master_siswa' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                👥 Master Siswa
+              </button>
+            </div>
+
+            {kbmSubTab === 'presensi_siswa' && (
+              <InputPresensiMurid
+                classes={classesList}
+                user={user}
+                schoolInfo={schoolInfoData}
+              />
+            )}
+
+            {kbmSubTab === 'jurnal' && (
+              <InputJurnalMengajar
+                classes={classesList}
+                user={user}
+                schoolInfo={schoolInfoData}
+              />
+            )}
+
+            {kbmSubTab === 'nilai' && (
+              <InputNilaiSiswa
+                classes={classesList}
+                user={user}
+                schoolInfo={schoolInfoData}
+              />
+            )}
+
+            {kbmSubTab === 'rekap' && (
+              <RekapDanLaporan
+                classes={classesList}
+                user={user}
+                schoolInfo={schoolInfoData}
+              />
+            )}
+
+            {kbmSubTab === 'master_siswa' && (
+              <MasterSiswaDanKelas
+                user={user}
+                schoolInfo={schoolInfoData}
+                onRefresh={fetchUser}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Corporate Style Bottom Navigation (Mobile App Shell) */}

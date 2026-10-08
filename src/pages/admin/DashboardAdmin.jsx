@@ -220,6 +220,11 @@ export default function DashboardAdmin() {
   const handleMenuClick = (menu) => {
     setActiveTab(menu)
     if (menu === 'pegawai') loadPegawai()
+    if (menu === 'kbm') {
+       loadKbmClasses()
+       loadPegawai()
+       loadKbmData()
+    }
     if (menu === 'laporan') {
        loadPegawai()
        loadAbsensi()
@@ -630,7 +635,7 @@ export default function DashboardAdmin() {
               <span>Data Pegawai / Guru</span>
             </button>
             
-            <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { setActiveTab('kbm'); setIsSidebarOpen(false); }}>
+            <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { handleMenuClick('kbm'); setIsSidebarOpen(false); }}>
               <BookOpen size={18} />
               <span>Sistem Pembelajaran (KBM)</span>
             </button>
@@ -685,6 +690,7 @@ export default function DashboardAdmin() {
               <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
                 {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
                 {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
+                {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                 {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
                 {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
                 {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
