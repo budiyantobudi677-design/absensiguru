@@ -204,16 +204,17 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
                 className="input"
                 style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
               >
-                <option value="tp">Tugas / UH (Formatif)</option>
-                <option value="sts">STS (Tengah Semester)</option>
-                <option value="sas">SAS (Akhir Semester)</option>
+                <option value="tp">TP (Tujuan Pembelajaran)</option>
+                <option value="lm">LM (Lingkup Materi)</option>
+                <option value="asts">ASTS (Asesmen Sumatif Tengah Semester)</option>
+                <option value="sts">STS / SAS (Sumatif Akhir)</option>
               </select>
-              {assessmentType === 'tp' && (
+              {(assessmentType === 'tp' || assessmentType === 'lm') && (
                 <select
                   value={assessmentNumber}
                   onChange={(e) => setAssessmentNumber(Number(e.target.value))}
                   className="input"
-                  style={{ width: '70px', padding: '0.65rem 0.4rem', fontSize: '0.875rem', borderRadius: '12px', textAlign: 'center', fontWeight: 'bold' }}
+                  style={{ width: '75px', padding: '0.65rem 0.4rem', fontSize: '0.875rem', borderRadius: '12px', textAlign: 'center', fontWeight: 'bold' }}
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                     <option key={n} value={n}>Ke-{n}</option>

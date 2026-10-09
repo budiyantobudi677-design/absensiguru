@@ -65,30 +65,36 @@ export function exportAttendanceRecapExcel({ title, className, periodText, dataG
 }
 
 // Helper function to export grades / leger to Excel
-export function exportGradesRecapExcel({ title, className, subject, semester, academicYear, headers, rows, schoolInfo }) {
+export function exportGradesRecapExcel(props) {
+  const { title, className, subjectName, subject, periodText, semester, academicYear, headers, rows, dataGrid, schoolInfo } = props
   const data = []
+
+  const finalHeaders = (dataGrid && dataGrid.headers) ? dataGrid.headers : (headers || [])
+  const finalRows = (dataGrid && dataGrid.rows) ? dataGrid.rows : (rows || [])
+  const subjectLabel = subjectName || subject || 'Semua Mapel'
+  const periodLabel = periodText || `Semester ${semester?.toUpperCase() || ''} ${academicYear || ''}`
 
   data.push([schoolInfo?.schoolName?.toUpperCase() || 'SEKOLAH'])
   data.push([`REKAPITULASI NILAI SISWA - KELAS ${className?.toUpperCase() || ''}`])
-  data.push([`Mata Pelajaran: ${subject || 'Semua Mapel'} | Semester: ${semester?.toUpperCase() || ''} ${academicYear || ''}`])
+  data.push([`Mata Pelajaran: ${subjectLabel} | Periode: ${periodLabel}`])
   data.push([])
 
-  if (headers) data.push(headers)
-  if (rows) rows.forEach(r => data.push(r))
+  if (finalHeaders.length > 0) data.push(finalHeaders)
+  if (finalRows.length > 0) finalRows.forEach(r => data.push(r))
 
   data.push([])
   data.push([])
-  data.push(['Mengetahui,', '', '', '', '', 'Dicetak pada: ' + new Date().toLocaleDateString('id-ID')])
-  data.push(['Kepala Sekolah', '', '', '', '', 'Guru Pengampu'])
+  data.push(['Mengetahui,', '', '', '', '', '', 'Dicetak pada: ' + new Date().toLocaleDateString('id-ID')])
+  data.push(['Kepala Sekolah', '', '', '', '', '', 'Guru Pengampu'])
   data.push([])
   data.push([])
-  data.push([schoolInfo?.principalName || '(__________________)', '', '', '', '', schoolInfo?.teacherName || '(__________________)'])
-  data.push([`NIP. ${schoolInfo?.principalNIP || '-'}`, '', '', '', '', `NIP. ${schoolInfo?.teacherNIP || '-'}`])
+  data.push([schoolInfo?.principalName || '(__________________)', '', '', '', '', '', schoolInfo?.teacherName || '(__________________)'])
+  data.push([`NIP. ${schoolInfo?.principalNIP || '-'}`, '', '', '', '', '', `NIP. ${schoolInfo?.teacherNIP || '-'}`])
 
   const wb = XLSX.utils.book_new()
   const ws = XLSX.utils.aoa_to_sheet(data)
 
-  ws['!cols'] = (headers || []).map((_, i) => {
+  ws['!cols'] = (finalHeaders || []).map((_, i) => {
     let maxLen = 8
     data.forEach(r => {
       if (r[i]) {
