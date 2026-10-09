@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -75,7 +75,41 @@ export default function DashboardAdmin() {
   
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportPreviewData, setExportPreviewData] = useState({ columns: [], rows: [] })
+  const [selectedDetailPhoto, setSelectedDetailPhoto] = useState(null)
   
+  const isTugasLuar = (item) => {
+    return Boolean(
+      item?.keterangan?.includes('Tugas Luar') || 
+      item?.keterangan?.includes('Pelatihan') ||
+      item?.status === 'tugas_luar'
+    )
+  }
+
+  const extractPhoto = (item) => {
+    if (!item) return null
+    if (item.foto || item.foto_masuk) return item.foto || item.foto_masuk
+    if (item.keterangan) {
+      const matchUrl = item.keterangan.match(/Foto:\s*(https?:\/\/[^\s|]+)/i)
+      if (matchUrl && matchUrl[1]) return matchUrl[1]
+      const matchWebp = item.keterangan.match(/\[FOTO_WEBP:([^\]]+)\]/i)
+      if (matchWebp && matchWebp[1]) return matchWebp[1]
+      const matchData = item.keterangan.match(/(data:image\/[a-zA-Z]+;base64,[^\s|]+)/i)
+      if (matchData && matchData[1]) return matchData[1]
+    }
+    const local = localStorage.getItem(`tugas_luar_foto_${item.tanggal}_${item.user_id}`)
+    if (local) return local
+    return null
+  }
+
+  const cleanKeterangan = (ket) => {
+    if (!ket) return ''
+    return ket
+      .replace(/\|?\s*Foto:\s*https?:\/\/[^\s|]+/gi, '')
+      .replace(/\[FOTO_WEBP:[^\]]+\]/gi, '')
+      .replace(/data:image\/[a-zA-Z]+;base64,[^\s|]+/gi, '')
+      .trim()
+  }
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -1052,30 +1086,108 @@ export default function DashboardAdmin() {
             {loadingData ? <p className="text-center text-muted mt-8">Memuat data...</p> : (
               <div className="flex flex-col gap-2">
                 {filteredAbsensi.length === 0 && <p className="text-center text-muted">Data tidak ditemukan pada periode ini.</p>}
-                {filteredAbsensi.map(a => (
-                  <div key={a.id} className="card flex items-center justify-between" style={{ padding: '0.8rem 1rem', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-                    <div className="flex gap-3 items-center">
-                       {a.profiles?.foto_profil ? <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} /> : <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={20} color="var(--text-muted)" /></div>}
-                       <div>
-                         <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{a.profiles?.full_name || a.profiles?.email?.split('@')[0]}</h4>
-                         <p style={{ margin: 0, fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : (a.keterangan ? '#2563EB' : 'var(--text-muted)') }}>
-                           {new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                           {a.status && a.status !== 'hadir' ? ` • ${a.status.toUpperCase()}: ${a.keterangan || '-'}` : (a.keterangan ? ` • ${a.keterangan}` : '')}
-                         </p>
-                       </div>
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="text-center">
-                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>IN</div>
-                         <div style={{ fontWeight: '700', color: '#059669', fontSize: '0.9rem' }}>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                {filteredAbsensi.map(a => {
+                  const tugasLuar = isTugasLuar(a)
+                  const photoUrl = extractPhoto(a)
+                  const note = cleanKeterangan(a.keterangan)
+
+                  return (
+                    <div
+                      key={a.id}
+                      className="card flex items-center justify-between"
+                      style={{
+                        padding: '0.85rem 1rem',
+                        border: tugasLuar ? '1.5px solid #93C5FD' : 'none',
+                        background: tugasLuar ? '#F8FAFC' : 'white',
+                        borderRadius: '16px',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)',
+                        gap: '0.75rem',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <div className="flex gap-3 items-center" style={{ flex: '1 1 240px', minWidth: '220px' }}>
+                        {a.profiles?.foto_profil ? (
+                          <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Users size={20} color="var(--text-muted)" />
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{a.profiles?.full_name || a.profiles?.email?.split('@')[0]}</h4>
+                            {tugasLuar && (
+                              <span
+                                style={{
+                                  background: '#EFF6FF',
+                                  color: '#1D4ED8',
+                                  border: '1px solid #93C5FD',
+                                  fontSize: '0.68rem',
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '6px',
+                                  fontWeight: '700',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                <Briefcase size={11} /> Tugas Luar
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : (tugasLuar ? '#1E40AF' : 'var(--text-muted)') }}>
+                            {new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                            {a.status && a.status !== 'hadir' ? ` • ${a.status.toUpperCase()}: ${note || '-'}` : (note ? ` • ${note}` : '')}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-center">
-                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>OUT</div>
-                         <div style={{ fontWeight: '700', color: a.waktu_pulang ? '#D97706' : '#CBD5E1', fontSize: '0.9rem' }}>{a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+                        {/* Tombol Lampiran Foto Jika Ada */}
+                        {photoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDetailPhoto({ photo: photoUrl, absensi: a })}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem',
+                              background: '#EFF6FF',
+                              border: '1px solid #BFDBFE',
+                              color: '#1D4ED8',
+                              padding: '0.35rem 0.65rem',
+                              borderRadius: '10px',
+                              fontSize: '0.75rem',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              boxShadow: '0 1px 3px rgba(37, 99, 235, 0.1)'
+                            }}
+                            title="Klik untuk melihat detail dan foto dokumentasi"
+                          >
+                            <img
+                              src={photoUrl}
+                              alt="Thumbnail"
+                              style={{ width: '22px', height: '22px', borderRadius: '4px', objectFit: 'cover' }}
+                            />
+                            <span>Lihat Foto</span>
+                          </button>
+                        )}
+
+                        <div className="flex gap-4">
+                          <div className="text-center">
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>IN</div>
+                            <div style={{ fontWeight: '700', color: '#059669', fontSize: '0.9rem' }}>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                          </div>
+                          <div className="text-center">
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>OUT</div>
+                            <div style={{ fontWeight: '700', color: a.waktu_pulang ? '#D97706' : '#CBD5E1', fontSize: '0.9rem' }}>{a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1801,6 +1913,159 @@ export default function DashboardAdmin() {
                <button onClick={exportToWord} className="btn" style={{ background: '#2563EB', color: 'white', padding: '0.8rem', fontSize: '0.9rem' }}>
                   Download Word
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail & Dokumentasi Foto Tugas Luar */}
+      {selectedDetailPhoto && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={() => setSelectedDetailPhoto(null)}
+        >
+          <div
+            className="card"
+            style={{
+              width: '100%',
+              maxWidth: '540px',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              background: 'white',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ background: '#EFF6FF', color: '#2563EB', padding: '0.5rem', borderRadius: '10px' }}>
+                  <Briefcase size={20} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 'bold', color: '#0F172A' }}>
+                    Dokumentasi Presensi Tugas Luar
+                  </h4>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                    Format WebP Ringan • Bukti Kehadiran
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDetailPhoto(null)}
+                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Foto WebP Pratinjau Detail */}
+            <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', background: '#0F172A', textAlign: 'center', marginBottom: '1rem', border: '1px solid #E2E8F0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+              <img
+                src={selectedDetailPhoto.photo}
+                alt="Dokumentasi Tugas Luar"
+                style={{
+                  maxHeight: '380px',
+                  width: 'auto',
+                  maxWidth: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                  margin: '0 auto'
+                }}
+              />
+              <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                WebP High Efficiency
+              </div>
+            </div>
+
+            {/* Data Detail Presensi Pegawai */}
+            <div style={{ background: '#F8FAFC', borderRadius: '12px', padding: '0.85rem 1rem', marginBottom: '1rem', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.4rem' }}>
+                <span style={{ color: '#64748B' }}>Nama Guru:</span>
+                <strong style={{ color: '#0F172A' }}>{selectedDetailPhoto.absensi?.profiles?.full_name || selectedDetailPhoto.absensi?.profiles?.email}</strong>
+              </div>
+              {selectedDetailPhoto.absensi?.profiles?.nip && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.4rem' }}>
+                  <span style={{ color: '#64748B' }}>NIP / ID:</span>
+                  <span style={{ color: '#334155' }}>{selectedDetailPhoto.absensi.profiles.nip}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.4rem' }}>
+                <span style={{ color: '#64748B' }}>Tanggal:</span>
+                <span style={{ color: '#334155' }}>{new Date(selectedDetailPhoto.absensi?.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.4rem' }}>
+                <span style={{ color: '#64748B' }}>Jam Masuk & Pulang:</span>
+                <span style={{ color: '#059669', fontWeight: 'bold' }}>
+                  {new Date(selectedDetailPhoto.absensi?.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                  <span style={{ color: '#64748B', fontWeight: 'normal' }}> s/d </span>
+                  <span style={{ color: '#D97706' }}>{selectedDetailPhoto.absensi?.waktu_pulang ? new Date(selectedDetailPhoto.absensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14:00'}</span>
+                </span>
+              </div>
+              <div>
+                <div style={{ color: '#64748B', marginBottom: '0.2rem' }}>Catatan / Rincian Tugas:</div>
+                <div style={{ color: '#1E293B', background: 'white', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #E2E8F0', lineHeight: '1.4' }}>
+                  {cleanKeterangan(selectedDetailPhoto.absensi?.keterangan) || 'Tugas Luar / Pelatihan'}
+                </div>
+              </div>
+            </div>
+
+            {/* Aksi Modal: Unduh & Tutup */}
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <a
+                href={selectedDetailPhoto.photo}
+                download={`Bukti_TugasLuar_${selectedDetailPhoto.absensi?.profiles?.full_name || 'Guru'}_${selectedDetailPhoto.absensi?.tanggal}.webp`}
+                className="btn"
+                style={{
+                  background: '#10B981',
+                  color: 'white',
+                  flex: 1,
+                  padding: '0.75rem',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  textDecoration: 'none'
+                }}
+              >
+                <Download size={16} /> Unduh Foto (.webp)
+              </a>
+              <button
+                type="button"
+                onClick={() => setSelectedDetailPhoto(null)}
+                className="btn"
+                style={{
+                  background: '#F1F5F9',
+                  color: '#475569',
+                  flex: 1,
+                  padding: '0.75rem',
+                  borderRadius: '12px',
+                  fontWeight: '600',
+                  fontSize: '0.85rem'
+                }}
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

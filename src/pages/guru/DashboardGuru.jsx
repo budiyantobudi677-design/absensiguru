@@ -620,6 +620,30 @@ export default function DashboardGuru() {
     }
   }
 
+  const convertToWebP = (imageSrc, quality = 0.75, maxWidth = 1024) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        let width = img.width
+        let height = img.height
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width)
+          width = maxWidth
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const webpDataUrl = canvas.toDataURL('image/webp', quality)
+        resolve(webpDataUrl)
+      }
+      img.onerror = () => resolve(imageSrc)
+      img.src = imageSrc
+    })
+  }
+
   const getStoredPhotoForToday = () => {
     if (tugasLuarFoto) return tugasLuarFoto
     const today = getLocalDateString()
@@ -659,23 +683,33 @@ export default function DashboardGuru() {
     const loc = await getCoordinates()
     const finalCatatan = `[Tugas Luar/Pelatihan] ${tugasLuarCatatan.trim()}`
 
-    // Simpan foto dokumentasi ke localStorage agar selalu dapat ditampilkan di kartu absensi
+    // Pastikan foto terkonversi ke WebP ringan
+    let webpPhoto = tugasLuarFoto
     if (tugasLuarFoto) {
       try {
-        localStorage.setItem(`tugas_luar_foto_${today}_${user.id}`, tugasLuarFoto)
+        webpPhoto = await convertToWebP(tugasLuarFoto, 0.75, 1024)
+      } catch (err) {
+        console.warn("Convert webp error:", err)
+      }
+    }
+
+    // Simpan foto dokumentasi WebP ke localStorage agar selalu dapat ditampilkan di kartu absensi
+    if (webpPhoto) {
+      try {
+        localStorage.setItem(`tugas_luar_foto_${today}_${user.id}`, webpPhoto)
       } catch (err) {
         console.warn("Storage quota exceeded for local preview photo:", err)
       }
     }
 
-    // Unggah foto ke storage jika memungkinkan
+    // Unggah foto ke storage dalam format WebP yang sangat ringan (30-60 KB)
     let uploadedPhotoUrl = null
-    if (tugasLuarFoto && !isOffline) {
+    if (webpPhoto && !isOffline) {
       try {
-        const res = await fetch(tugasLuarFoto)
+        const res = await fetch(webpPhoto)
         const blob = await res.blob()
-        const fileName = `tugas_luar-${user.id}-${Date.now()}.jpg`
-        const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/jpeg' })
+        const fileName = `tugas_luar-${user.id}-${Date.now()}.webp`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/webp' })
         if (!upErr) {
           const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
           uploadedPhotoUrl = publicUrl
@@ -685,9 +719,10 @@ export default function DashboardGuru() {
       }
     }
 
+    // Jika upload storage sukses, simpan URL. Jika storage dibatasi RLS, simpan data WebP ringkas di keterangan
     const keteranganLengkap = uploadedPhotoUrl 
       ? `${finalCatatan} | Foto: ${uploadedPhotoUrl}` 
-      : finalCatatan
+      : (webpPhoto ? `${finalCatatan} [FOTO_WEBP:${webpPhoto}]` : finalCatatan)
 
     if (isOffline) {
       const record = {
@@ -1169,12 +1204,12 @@ export default function DashboardGuru() {
                             const file = e.target.files?.[0]
                             if (file) {
                               try {
-                                const compressed = await compressImage(file)
                                 const reader = new FileReader()
-                                reader.onload = (ev) => {
-                                  setTugasLuarFoto(ev.target.result)
+                                reader.onload = async (ev) => {
+                                  const webp = await convertToWebP(ev.target.result, 0.75, 1024)
+                                  setTugasLuarFoto(webp)
                                 }
-                                reader.readAsDataURL(compressed)
+                                reader.readAsDataURL(file)
                               } catch (err) {
                                 console.error(err)
                               }
@@ -1902,8 +1937,9 @@ export default function DashboardGuru() {
         profile={profile}
         user={user}
         schoolName={schoolName}
-        onSelectPhoto={cameraModeForTugasLuar ? (photoUrl) => {
-          setTugasLuarFoto(photoUrl)
+        onSelectPhoto={cameraModeForTugasLuar ? async (photoUrl) => {
+          const webp = await convertToWebP(photoUrl, 0.75, 1024)
+          setTugasLuarFoto(webp)
           setShowCameraModal(false)
           setCameraModeForTugasLuar(false)
           setShowTugasLuarModal(true)
