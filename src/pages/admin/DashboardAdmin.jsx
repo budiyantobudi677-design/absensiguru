@@ -805,8 +805,8 @@ export default function DashboardAdmin() {
         <div>
           {/* Logo & Info Sekolah */}
           <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: 'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0 }}>
-              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ShieldCheck size={26} />}
+            <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: logoSekolah ? 'transparent' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src="/panrita_logo.webp" alt="PanritaEdu" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>

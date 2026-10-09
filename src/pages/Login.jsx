@@ -1,26 +1,37 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogIn, UserCheck, Mail, Lock, UserPlus, KeyRound, ArrowLeft } from 'lucide-react'
+import { 
+  LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
+  ShieldCheck, BookOpen, SlidersHorizontal, Briefcase, 
+  QrCode, X, Check
+} from 'lucide-react'
+
+const ROLES = [
+  { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
+  { id: 'guru', label: 'Guru', icon: BookOpen, placeholder: 'guru@sekolah.edu / NIP' },
+  { id: 'admin', label: 'Admin', icon: SlidersHorizontal, placeholder: 'admin@sekolah.edu' },
+  { id: 'vendor', label: 'Vendor', icon: Briefcase, placeholder: 'vendor@mitra.com' },
+]
 
 export default function Login() {
   const [mode, setMode] = useState('login') // 'login' | 'register' | 'forgot'
+  const [selectedRole, setSelectedRole] = useState('guru')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [showQrModal, setShowQrModal] = useState(false)
   
   const [namaSekolah, setNamaSekolah] = useState('Sistem Kehadiran')
-  const [logoSekolah, setLogoSekolah] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
     const fetchSettings = async () => {
       const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-      if (data) {
-        if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
-        if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+      if (data && data.nama_sekolah) {
+        setNamaSekolah(data.nama_sekolah)
       }
     }
     fetchSettings()
@@ -38,7 +49,7 @@ export default function Login() {
         if (error) throw error
         
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
-        if (profile?.role === 'admin') navigate('/admin')
+        if (profile?.role === 'admin' || selectedRole === 'admin') navigate('/admin')
         else navigate('/guru')
         
       } else if (mode === 'register') {
@@ -64,115 +75,498 @@ export default function Login() {
     }
   }
 
-  return (
-    <div className="container flex items-center justify-center" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F0F4F8 0%, #D9E2EC 100%)', padding: '1.5rem', position: 'relative' }}>
-      {/* Brand Header Kanan Atas */}
-      <div className="login-header-brand brand" title="PanritaEdu">
-        <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
-      </div>
+  const handleGoogleLogin = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      })
+      if (error) throw error
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
 
-      <div style={{ width: '100%', maxWidth: '420px', marginTop: '1rem' }}>
-        <div className="text-center mb-10">
-          <div style={{ 
-            background: logoSekolah ? 'transparent' : 'linear-gradient(135deg, #0B2545 0%, #00B4D8 100%)', 
-            width: '100px', height: '100px', borderRadius: logoSekolah ? '0' : '28px', display: 'flex', 
-            alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem auto', 
-            boxShadow: logoSekolah ? 'none' : '0 15px 30px -5px rgba(0, 180, 216, 0.4)',
-          }}>
-            {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <UserCheck size={48} color="white" />}
-          </div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: '800', color: '#102A43', marginBottom: '1rem', lineHeight: '1.3', letterSpacing: '-0.02em' }}>
-            {namaSekolah}
-          </h1>
-          <p style={{ fontSize: '0.95rem', color: '#627D98', fontWeight: '500' }}>Sistem Kehadiran Karyawan & Guru</p>
-        </div>
+  const currentRoleObj = ROLES.find(r => r.id === selectedRole) || ROLES[1]
+
+  return (
+    <div 
+      style={{ 
+        minHeight: '100vh', 
+        background: 'linear-gradient(180deg, #071C35 0%, #0B2545 35%, #05162A 100%)', 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        padding: '2rem 1.25rem',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      {/* Subtle Glow Background Elements */}
+      <div 
+        style={{
+          position: 'absolute',
+          top: '-15%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '550px',
+          height: '550px',
+          background: 'radial-gradient(circle, rgba(0, 180, 216, 0.18) 0%, transparent 65%)',
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      />
+
+      <div style={{ width: '100%', maxWidth: '440px', position: 'relative', zIndex: 1 }}>
         
-        <div className="card" style={{ padding: '2rem', background: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.08)' }}>
-          
+        {/* Header Logo & Brand PanritaEdu */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem', marginBottom: '1.75rem' }}>
+          <img 
+            src="/panrita_logo.webp" 
+            alt="PanritaEdu Logo" 
+            style={{ 
+              width: '58px', 
+              height: '58px', 
+              borderRadius: '16px', 
+              objectFit: 'contain',
+              boxShadow: '0 10px 25px -5px rgba(0, 180, 216, 0.45)',
+              border: '2px solid rgba(0, 180, 216, 0.3)'
+            }} 
+          />
+          <div style={{ textAlign: 'left' }}>
+            <div className="brand" style={{ fontSize: '1.75rem', lineHeight: '1.05', letterSpacing: '-0.5px' }}>
+              <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Panrita</span>
+              <span className="brand-edu" style={{ fontSize: '1.75rem' }}>Edu</span>
+            </div>
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#90E0EF', fontWeight: 500, letterSpacing: '-0.2px' }}>
+              Sistem Presensi & Manajemen Pembelajaran Terpadu
+            </p>
+          </div>
+        </div>
+
+        {/* Card Putih Utama */}
+        <div 
+          style={{ 
+            background: '#FFFFFF', 
+            borderRadius: '32px', 
+            padding: '2rem 1.75rem', 
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.45)',
+            border: '1px solid rgba(255, 255, 255, 0.8)'
+          }}
+        >
           {mode !== 'login' && (
-             <button onClick={() => { setMode('login'); setError(null); setSuccess(null); }} style={{ background: 'transparent', border: 'none', color: '#627D98', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600' }}>
-               <ArrowLeft size={16} /> Kembali ke Login
-             </button>
+            <button 
+              onClick={() => { setMode('login'); setError(null); setSuccess(null); }} 
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                color: '#64748B', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                marginBottom: '1rem', 
+                cursor: 'pointer', 
+                fontSize: '0.9rem', 
+                fontWeight: 600,
+                padding: 0
+              }}
+            >
+              <ArrowLeft size={16} /> Kembali ke Pilihan Login
+            </button>
           )}
 
-          {mode === 'register' && <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', color: '#102A43' }}>Daftar Akun Baru</h3>}
-          {mode === 'forgot' && <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', color: '#102A43' }}>Lupa Password?</h3>}
+          {/* Heading Form */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0B2545', margin: '0 0 0.35rem 0', letterSpacing: '-0.3px' }}>
+              {mode === 'register' ? 'Daftar Akun Baru' : mode === 'forgot' ? 'Lupa Password?' : 'Masuk ke PanritaEdu'}
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: '#64748B', margin: 0, lineHeight: '1.4' }}>
+              {mode === 'register' 
+                ? 'Lengkapi email dan kata sandi untuk mendaftar akun pendidik.' 
+                : mode === 'forgot' 
+                ? 'Masukkan email instansi untuk menerima tautan pemulihan.' 
+                : 'Sudah punya akun? Pilih tipe login di bawah.'}
+            </p>
+          </div>
 
+          {/* Alert Error / Success */}
           {error && (
-            <div style={{ padding: '0.875rem', background: '#FEE2E2', color: '#B91C1C', borderRadius: '16px', marginBottom: '1.5rem', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center', border: '1px solid #FECACA' }}>
+            <div style={{ padding: '0.8rem', background: '#FEE2E2', color: '#B91C1C', borderRadius: '14px', marginBottom: '1.25rem', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center', border: '1px solid #FECACA' }}>
               {error}
             </div>
           )}
           {success && (
-            <div style={{ padding: '0.875rem', background: '#D1FAE5', color: '#065F46', borderRadius: '16px', marginBottom: '1.5rem', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center', border: '1px solid #A7F3D0' }}>
+            <div style={{ padding: '0.8rem', background: '#D1FAE5', color: '#065F46', borderRadius: '14px', marginBottom: '1.25rem', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center', border: '1px solid #A7F3D0' }}>
               {success}
             </div>
           )}
 
+          {/* Selector Tipe Login (Kepala Sekolah, Guru, Admin, Vendor) */}
+          {mode === 'login' && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <span style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.65rem' }}>
+                TIPE LOGIN
+              </span>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem' }}>
+                {ROLES.map((role) => {
+                  const Icon = role.icon
+                  const isSelected = selectedRole === role.id
+                  return (
+                    <button
+                      key={role.id}
+                      type="button"
+                      onClick={() => setSelectedRole(role.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0.9rem 0.6rem',
+                        borderRadius: '18px',
+                        border: isSelected ? '2px solid #00B4D8' : '1.5px solid #E2E8F0',
+                        background: isSelected ? 'rgba(0, 180, 216, 0.08)' : '#FAFCFF',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: isSelected ? '0 4px 14px rgba(0, 180, 216, 0.2)' : 'none',
+                        position: 'relative'
+                      }}
+                    >
+                      <div style={{ 
+                        color: isSelected ? '#0096C7' : '#64748B', 
+                        marginBottom: '0.35rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Icon size={24} strokeWidth={isSelected ? 2.3 : 1.8} />
+                      </div>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: isSelected ? 800 : 600, 
+                        color: isSelected ? '#0B2545' : '#475569',
+                        textAlign: 'center'
+                      }}>
+                        {role.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Form Login / Register / Forgot */}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334E68', marginBottom: '0.5rem', marginLeft: '0.25rem' }}>Email Instansi</label>
+            <div style={{ marginBottom: '1.15rem' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334E68', marginBottom: '0.4rem', marginLeft: '0.2rem' }}>
+                Email Instansi ({currentRoleObj.label})
+              </label>
               <div style={{ position: 'relative' }}>
-                <Mail size={18} color="#829AB1" style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)' }} />
+                <Mail size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
                 <input 
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nama@sekolah.edu"
-                  style={{ width: '100%', padding: '0.9rem 1rem 0.9rem 3rem', borderRadius: '16px', border: '2px solid #D9E2EC', background: '#F0F4F8', fontSize: '0.95rem', color: '#102A43', outline: 'none', transition: 'all 0.25s' }}
-                  onFocus={(e) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.background = '#FFFFFF'; e.target.style.boxShadow = '0 0 0 4px rgba(79,70,229,0.1)'; }}
-                  onBlur={(e) => { e.target.style.borderColor = '#D9E2EC'; e.target.style.background = '#F0F4F8'; e.target.style.boxShadow = 'none'; }}
+                  placeholder={currentRoleObj.placeholder}
+                  style={{ 
+                    width: '100%', 
+                    padding: '0.85rem 1rem 0.85rem 2.85rem', 
+                    borderRadius: '16px', 
+                    border: '1.5px solid #D9E2EC', 
+                    background: '#F8FAFC', 
+                    fontSize: '0.92rem', 
+                    color: '#102A43', 
+                    outline: 'none', 
+                    transition: 'all 0.2s' 
+                  }}
+                  onFocus={(e) => { 
+                    e.target.style.borderColor = '#00B4D8'
+                    e.target.style.background = '#FFFFFF'
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                  }}
+                  onBlur={(e) => { 
+                    e.target.style.borderColor = '#D9E2EC'
+                    e.target.style.background = '#F8FAFC'
+                    e.target.style.boxShadow = 'none'
+                  }}
                   required 
                 />
               </div>
             </div>
             
             {mode !== 'forgot' && (
-              <div style={{ marginBottom: '1.75rem' }}>
-                <div className="flex justify-between items-center" style={{ marginBottom: '0.5rem', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>
-                   <label style={{ fontSize: '0.85rem', fontWeight: '700', color: '#334E68' }}>Password</label>
-                   {mode === 'login' && (
-                      <span onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }} style={{ fontSize: '0.8rem', color: 'var(--primary)', cursor: 'pointer', fontWeight: '600' }}>Lupa Password?</span>
-                   )}
+              <div style={{ marginBottom: '1.4rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', paddingLeft: '0.2rem', paddingRight: '0.2rem' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334E68' }}>Password</label>
+                  {mode === 'login' && (
+                    <span 
+                      onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }} 
+                      style={{ fontSize: '0.78rem', color: '#0096C7', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Lupa Password?
+                    </span>
+                  )}
                 </div>
                 <div style={{ position: 'relative' }}>
-                  <Lock size={18} color="#829AB1" style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)' }} />
+                  <Lock size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
                   <input 
                     type="password" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={mode === 'register' ? "Minimal 6 karakter" : "••••••••"}
-                    minLength={mode === 'register' ? "6" : "1"}
-                    style={{ width: '100%', padding: '0.9rem 1rem 0.9rem 3rem', borderRadius: '16px', border: '2px solid #D9E2EC', background: '#F0F4F8', fontSize: '0.95rem', color: '#102A43', outline: 'none', transition: 'all 0.25s' }}
-                    onFocus={(e) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.background = '#FFFFFF'; e.target.style.boxShadow = '0 0 0 4px rgba(79,70,229,0.1)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#D9E2EC'; e.target.style.background = '#F0F4F8'; e.target.style.boxShadow = 'none'; }}
+                    minLength={mode === 'register' ? 6 : 1}
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.85rem 1rem 0.85rem 2.85rem', 
+                      borderRadius: '16px', 
+                      border: '1.5px solid #D9E2EC', 
+                      background: '#F8FAFC', 
+                      fontSize: '0.92rem', 
+                      color: '#102A43', 
+                      outline: 'none', 
+                      transition: 'all 0.2s' 
+                    }}
+                    onFocus={(e) => { 
+                      e.target.style.borderColor = '#00B4D8'
+                      e.target.style.background = '#FFFFFF'
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                    }}
+                    onBlur={(e) => { 
+                      e.target.style.borderColor = '#D9E2EC'
+                      e.target.style.background = '#F8FAFC'
+                      e.target.style.boxShadow = 'none'
+                    }}
                     required 
                   />
                 </div>
               </div>
             )}
             
-            <button type="submit" style={{ width: '100%', padding: '1rem', background: 'linear-gradient(135deg, var(--primary) 0%, #4338CA 100%)', color: 'white', border: 'none', borderRadius: '16px', fontSize: '1rem', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 10px 20px -5px rgba(79, 70, 229, 0.4)', transition: 'transform 0.1s, box-shadow 0.2s' }} disabled={loading} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-              {mode === 'login' ? <LogIn size={20} /> : mode === 'register' ? <UserPlus size={20} /> : <KeyRound size={20} />}
-              {loading ? 'Memproses...' : mode === 'login' ? 'Masuk ke Sistem' : mode === 'register' ? 'Daftar Sekarang' : 'Kirim Link Reset'}
+            {/* Tombol Submit Utama */}
+            <button 
+              type="submit" 
+              disabled={loading}
+              style={{ 
+                width: '100%', 
+                padding: '0.95rem', 
+                background: 'linear-gradient(135deg, #0B2545 0%, #0077B6 60%, #00B4D8 100%)', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '16px', 
+                fontSize: '0.95rem', 
+                fontWeight: 700, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                gap: '0.5rem', 
+                cursor: loading ? 'not-allowed' : 'pointer', 
+                boxShadow: '0 8px 20px -4px rgba(0, 119, 182, 0.45)', 
+                transition: 'all 0.2s'
+              }}
+            >
+              {mode === 'login' ? <LogIn size={18} /> : mode === 'register' ? <UserPlus size={18} /> : <KeyRound size={18} />}
+              {loading ? 'Memproses...' : mode === 'login' ? `Masuk sebagai ${currentRoleObj.label}` : mode === 'register' ? 'Daftar Sekarang' : 'Kirim Link Reset'}
             </button>
-            
-            {mode === 'login' && (
-              <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.85rem', color: '#627D98', fontWeight: '500' }}>
-                Belum punya akun? <span onClick={() => { setMode('register'); setError(null); setSuccess(null); }} style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }}>Daftar di sini</span>
-              </p>
-            )}
           </form>
+
+          {/* Opsi Login Google & QR Scanner (Sesuai Referensi) */}
+          {mode === 'login' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', margin: '1.25rem 0', color: '#94A3B8' }}>
+                <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
+                <span style={{ padding: '0 0.75rem', fontSize: '0.78rem', fontWeight: 600, color: '#94A3B8' }}>atau</span>
+                <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.65rem' }}>
+                {/* Tombol Google OAuth */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.65rem',
+                    padding: '0.85rem 1rem',
+                    background: '#FFFFFF',
+                    border: '1.5px solid #E2E8F0',
+                    borderRadius: '16px',
+                    color: '#0B2545',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00B4D8'; e.currentTarget.style.background = '#F8FAFC' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = '#FFFFFF' }}
+                >
+                  {/* Google SVG Icon */}
+                  <svg width="20" height="20" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                  </svg>
+                  <span>Daftar / Masuk dengan Google</span>
+                </button>
+
+                {/* Tombol QR Code Quick Presensi */}
+                <button
+                  type="button"
+                  title="Presensi Cepat via QR Code"
+                  onClick={() => setShowQrModal(true)}
+                  style={{
+                    width: '50px',
+                    height: '50px',
+                    borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(0, 180, 216, 0.35)',
+                    transition: 'transform 0.15s ease',
+                    flexShrink: 0
+                  }}
+                  onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
+                  onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  <QrCode size={22} />
+                </button>
+              </div>
+
+              {/* Tautan Daftar Baru */}
+              <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.85rem', color: '#64748B', fontWeight: 500, margin: '1.25rem 0 0 0' }}>
+                Belum punya akun?{' '}
+                <span 
+                  onClick={() => { setMode('register'); setError(null); setSuccess(null); }} 
+                  style={{ color: '#0096C7', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Daftar di sini
+                </span>
+              </p>
+            </>
+          )}
         </div>
-        <div className="text-center" style={{ marginTop: '2.5rem' }}>
-          <p className="brand" style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-            &copy; {new Date().getFullYear()} <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
+
+        {/* Footer Tagline & Copyright */}
+        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+          <p className="brand" style={{ fontSize: '0.88rem', margin: '0 0 0.25rem 0', color: '#E2E8F0' }}>
+            &copy; {new Date().getFullYear()} <span style={{ fontWeight: 800, color: '#FFFFFF' }}>Panrita</span><span className="brand-edu" style={{ fontSize: '0.88rem' }}>Edu</span>
           </p>
-          <p className="brand-tagline" style={{ fontSize: '0.8rem', margin: 0 }}>
+          <p className="brand-tagline" style={{ fontSize: '0.78rem', margin: 0, color: '#90E0EF', opacity: 0.9 }}>
             Sistem Presensi & Manajemen Pembelajaran Terpadu
           </p>
         </div>
+
       </div>
+
+      {/* Modal QR Code Quick Presensi */}
+      {showQrModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(7, 28, 53, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1.5rem'
+          }}
+          onClick={() => setShowQrModal(false)}
+        >
+          <div 
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '28px',
+              padding: '2rem 1.75rem',
+              maxWidth: '380px',
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowQrModal(false)}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: '#F1F5F9',
+                border: 'none',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: '#64748B'
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{
+              width: '70px',
+              height: '70px',
+              borderRadius: '22px',
+              background: 'linear-gradient(135deg, rgba(0, 180, 216, 0.15) 0%, rgba(11, 37, 69, 0.1) 100%)',
+              color: '#0096C7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.25rem auto'
+            }}>
+              <QrCode size={36} />
+            </div>
+
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0B2545', margin: '0 0 0.5rem 0' }}>
+              Presensi Cepat via QR Code
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748B', lineHeight: '1.5', margin: '0 0 1.5rem 0' }}>
+              Fitur pemindaian QR Code memungkinkan Bapak/Ibu guru atau pegawai melakukan absensi instan menggunakan kartu ID resmi sekolah di mesin pemindai gerbang.
+            </p>
+
+            <button
+              onClick={() => setShowQrModal(false)}
+              style={{
+                width: '100%',
+                padding: '0.85rem',
+                background: '#0B2545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '14px',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

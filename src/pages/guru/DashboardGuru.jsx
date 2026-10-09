@@ -877,12 +877,10 @@ export default function DashboardGuru() {
 
       {/* Header ID Card */}
       <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', position: 'sticky', top: 0, zIndex: 50 }}>
-        {schoolLogo && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.18)', padding: '0.35rem 0.8rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
-            <img src={schoolLogo} alt="Logo Sekolah" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolName}</span>
-          </div>
-        )}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.18)', padding: '0.35rem 0.8rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
+          <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+          <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</span>
+        </div>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             {profile?.foto_profil ? (
