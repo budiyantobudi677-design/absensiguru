@@ -12,13 +12,33 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
       if (session) {
-        supabase.from('profiles').select('role').eq('id', session.user.id).single().then(({data}) => {
-          setRole(data?.role || 'guru')
-          setLoading(false)
-        })
+        const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+        const userRole = data?.role || 'guru'
+        const intended = localStorage.getItem('intended_login_role')
+        if (intended) {
+          localStorage.removeItem('intended_login_role')
+          if (intended === 'guru' && userRole !== 'guru') {
+            await supabase.auth.signOut()
+            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
+            setSession(null)
+            setRole(null)
+            setLoading(false)
+            return
+          }
+          if (intended === 'admin' && userRole !== 'admin') {
+            await supabase.auth.signOut()
+            alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
+            setSession(null)
+            setRole(null)
+            setLoading(false)
+            return
+          }
+        }
+        setRole(userRole)
+        setLoading(false)
       } else {
         setLoading(false)
       }
@@ -26,12 +46,30 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session)
       if (session) {
-        supabase.from('profiles').select('role').eq('id', session.user.id).single().then(({data}) => {
-          setRole(data?.role || 'guru')
-        })
+        const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+        const userRole = data?.role || 'guru'
+        const intended = localStorage.getItem('intended_login_role')
+        if (intended) {
+          localStorage.removeItem('intended_login_role')
+          if (intended === 'guru' && userRole !== 'guru') {
+            await supabase.auth.signOut()
+            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
+            setSession(null)
+            setRole(null)
+            return
+          }
+          if (intended === 'admin' && userRole !== 'admin') {
+            await supabase.auth.signOut()
+            alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
+            setSession(null)
+            setRole(null)
+            return
+          }
+        }
+        setRole(userRole)
       }
     })
 

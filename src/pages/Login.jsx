@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
-  ShieldCheck, BookOpen, SlidersHorizontal, Briefcase, 
+  ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
   QrCode, X, Check
 } from 'lucide-react'
 
@@ -11,7 +11,7 @@ const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
   { id: 'guru', label: 'Guru', icon: BookOpen, placeholder: 'guru@sekolah.edu / NIP' },
   { id: 'admin', label: 'Admin', icon: SlidersHorizontal, placeholder: 'admin@sekolah.edu' },
-  { id: 'vendor', label: 'Vendor', icon: Briefcase, placeholder: 'vendor@mitra.com' },
+  { id: 'pengembang', label: 'Pengembang', icon: Code2, placeholder: 'developer@panrita.edu' },
 ]
 
 export default function Login() {
@@ -49,7 +49,30 @@ export default function Login() {
         if (error) throw error
         
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
-        if (profile?.role === 'admin' || selectedRole === 'admin') navigate('/admin')
+        const userRole = profile?.role || 'guru'
+
+        // Validasi ketat kecocokan role yang dipilih dengan role di database
+        if (selectedRole === 'guru' && userRole !== 'guru') {
+          await supabase.auth.signOut()
+          throw new Error('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
+        }
+
+        if (selectedRole === 'admin' && userRole !== 'admin') {
+          await supabase.auth.signOut()
+          throw new Error('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
+        }
+
+        if (selectedRole === 'kepsek' && userRole !== 'kepsek') {
+          await supabase.auth.signOut()
+          throw new Error(`Akses ditolak: Akun Anda terdaftar sebagai ${userRole === 'admin' ? 'Admin' : 'Guru'}, bukan Kepala Sekolah. Silakan pilih tipe login "${userRole === 'admin' ? 'Admin' : 'Guru'}".`)
+        }
+
+        if (selectedRole === 'pengembang' && userRole !== 'pengembang' && userRole !== 'developer') {
+          await supabase.auth.signOut()
+          throw new Error(`Akses ditolak: Akun Anda terdaftar sebagai ${userRole === 'admin' ? 'Admin' : 'Guru'}, bukan Pengembang. Silakan pilih tipe login "${userRole === 'admin' ? 'Admin' : 'Guru'}".`)
+        }
+
+        if (userRole === 'admin' || userRole === 'pengembang' || userRole === 'developer') navigate('/admin')
         else navigate('/guru')
         
       } else if (mode === 'register') {
@@ -79,6 +102,7 @@ export default function Login() {
     setLoading(true)
     setError(null)
     try {
+      localStorage.setItem('intended_login_role', selectedRole)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -125,27 +149,49 @@ export default function Login() {
 
       <div style={{ width: '100%', maxWidth: '440px', position: 'relative', zIndex: 1 }}>
         
-        {/* Header Logo & Brand PanritaEdu */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem', marginBottom: '1.75rem' }}>
-          <img 
-            src="/panrita_logo.webp" 
-            alt="PanritaEdu Logo" 
+        {/* Header Logo & Brand PanritaEdu (Sesuai Desain Unggahan) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', marginBottom: '1.75rem', width: '100%' }}>
+          {/* Logo Frame dengan Bingkai Cyan Glowing */}
+          <div 
             style={{ 
-              width: '58px', 
-              height: '58px', 
-              borderRadius: '16px', 
-              objectFit: 'contain',
-              boxShadow: '0 10px 25px -5px rgba(0, 180, 216, 0.45)',
-              border: '2px solid rgba(0, 180, 216, 0.3)'
-            }} 
-          />
-          <div style={{ textAlign: 'left' }}>
-            <div className="brand" style={{ fontSize: '1.75rem', lineHeight: '1.05', letterSpacing: '-0.5px' }}>
+              width: '66px', 
+              height: '66px', 
+              borderRadius: '20px', 
+              background: '#071C35',
+              padding: '2px',
+              border: '2px solid #00B4D8',
+              boxShadow: '0 0 20px rgba(0, 180, 216, 0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            <img 
+              src="/panrita_logo.webp" 
+              alt="PanritaEdu Logo" 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                borderRadius: '16px', 
+                objectFit: 'contain'
+              }} 
+            />
+          </div>
+
+          <div style={{ textAlign: 'left', minWidth: 0 }}>
+            {/* Title: PanritaEdu */}
+            <div className="brand" style={{ fontSize: '1.95rem', lineHeight: '1.05', letterSpacing: '-0.5px' }}>
               <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Panrita</span>
-              <span className="brand-edu" style={{ fontSize: '1.75rem' }}>Edu</span>
+              <span className="brand-edu" style={{ color: '#00B4D8', fontWeight: 700, fontSize: '1.95rem' }}>Edu</span>
             </div>
-            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#90E0EF', fontWeight: 500, letterSpacing: '-0.2px' }}>
+            {/* Tagline: Sistem Presensi & Manajemen Pembelajaran Terpadu */}
+            <p style={{ margin: '0.25rem 0 0.15rem 0', fontSize: '0.85rem', color: '#00B4D8', fontWeight: 700, letterSpacing: '-0.2px' }}>
               Sistem Presensi & Manajemen Pembelajaran Terpadu
+            </p>
+            {/* Kepanjangan Akronim PanritaEdu */}
+            <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8', fontWeight: 500, letterSpacing: '-0.1px', lineHeight: '1.25' }}>
+              Presensi, Penilaian, Riwayat, dan Tata Kelola Edukasi
             </p>
           </div>
         </div>
