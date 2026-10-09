@@ -9,26 +9,21 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.png', 'favicon.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 10000000 // 10MB
       },
       manifest: {
-        name: 'Absensi Guru',
-        short_name: 'Absensi',
-        description: 'Aplikasi Presensi Guru',
+        name: 'Presensia - Absensi Guru',
+        short_name: 'Presensia',
+        description: 'Aplikasi Presensi Guru & KBM',
         theme_color: '#4F46E5',
         background_color: '#F8FAFC',
         display: 'standalone',
         icons: [
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png',
-            sizes: '512x512',
+            src: '/favicon.png',
+            sizes: '192x192 512x512',
             type: 'image/png'
           }
         ]
