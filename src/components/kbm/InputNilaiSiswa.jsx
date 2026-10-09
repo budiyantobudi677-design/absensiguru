@@ -64,7 +64,7 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
         .eq('mata_pelajaran', subject)
         .eq('semester', semester)
         .eq('tahun_ajaran', academicYear)
-        .eq('jenis_penilaian', assessmentType)
+        .eq('tipe_penilaian', assessmentType)
         .eq('nomor_penilaian', assessmentNumber)
 
       if (grErr) throw grErr
@@ -109,7 +109,7 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
           mata_pelajaran: subject,
           semester: semester,
           tahun_ajaran: academicYear,
-          jenis_penilaian: assessmentType,
+          tipe_penilaian: assessmentType,
           nomor_penilaian: assessmentNumber,
           nilai: Number(gradesMap[st.id])
         }))
@@ -118,7 +118,7 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
         const { error } = await supabase
           .from('student_grades')
           .upsert(recordsToUpsert, {
-            onConflict: 'student_id,mata_pelajaran,semester,tahun_ajaran,jenis_penilaian,nomor_penilaian'
+            onConflict: 'student_id,mata_pelajaran,semester,tahun_ajaran,tipe_penilaian,nomor_penilaian'
           })
 
         if (error) throw error

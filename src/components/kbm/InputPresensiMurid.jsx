@@ -296,126 +296,151 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
                 <div
                   key={student.id}
                   style={{
-                    padding: '0.85rem 1.25rem',
+                    padding: '0.9rem 1.15rem',
                     borderBottom: '1px solid var(--border)',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)'
+                    flexDirection: 'column',
+                    gap: '0.65rem',
+                    background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.45)'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', width: '22px', textAlign: 'center', flexShrink: 0 }}>
-                      {idx + 1}
-                    </span>
-                    <div style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '50%',
-                      background: '#F1F5F9',
-                      color: '#475569',
-                      fontWeight: 'bold',
-                      fontSize: '0.8rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                  {/* Baris Atas: Nomor Urut, Nama Lengkap Siswa, dan Sub-informasi */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', width: '100%' }}>
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      color: 'var(--text-muted)',
+                      background: 'rgba(0,0,0,0.04)',
+                      padding: '2px 6px',
+                      borderRadius: '6px',
                       flexShrink: 0,
-                      border: '1px solid #E2E8F0'
+                      marginTop: '1px'
                     }}>
-                      {student.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      #{idx + 1}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: '0.92rem',
+                        fontWeight: '700',
+                        color: 'var(--text)',
+                        lineHeight: 1.35,
+                        wordBreak: 'break-word',
+                        whiteSpace: 'normal'
+                      }}>
                         {student.name}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                        {student.nisn ? `NISN: ${student.nisn} • ` : ''}{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {student.nisn && <span>NISN: <b>{student.nisn}</b></span>}
+                        <span>{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Status Buttons [H] [S] [I] [A] */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, background: '#F1F5F9', padding: '3px', borderRadius: '12px' }}>
+                  {/* Baris Bawah: Tombol Presensi [Hadir] [Sakit] [Izin] [Alfa] Lebar & Nyaman disentuh */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '6px',
+                    width: '100%',
+                    background: '#F1F5F9',
+                    padding: '4px',
+                    borderRadius: '12px'
+                  }}>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'hadir')}
                       style={{
-                        width: '32px',
-                        height: '32px',
+                        height: '38px',
                         borderRadius: '9px',
                         border: 'none',
-                        fontSize: '0.78rem',
+                        fontSize: '0.82rem',
                         fontWeight: '800',
                         cursor: 'pointer',
-                        transition: 'all 0.15s',
+                        transition: 'all 0.15s ease',
                         background: currentStatus === 'hadir' ? '#10B981' : 'transparent',
-                        color: currentStatus === 'hadir' ? 'white' : '#64748B',
-                        boxShadow: currentStatus === 'hadir' ? '0 2px 6px rgba(16, 185, 129, 0.4)' : 'none'
+                        color: currentStatus === 'hadir' ? '#FFFFFF' : '#475569',
+                        boxShadow: currentStatus === 'hadir' ? '0 2px 6px rgba(16, 185, 129, 0.4)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
                       }}
                       title="Hadir"
                     >
-                      H
+                      <span>H</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', opacity: currentStatus === 'hadir' ? 1 : 0.7 }}>Hadir</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'sakit')}
                       style={{
-                        width: '32px',
-                        height: '32px',
+                        height: '38px',
                         borderRadius: '9px',
                         border: 'none',
-                        fontSize: '0.78rem',
+                        fontSize: '0.82rem',
                         fontWeight: '800',
                         cursor: 'pointer',
-                        transition: 'all 0.15s',
+                        transition: 'all 0.15s ease',
                         background: currentStatus === 'sakit' ? '#F59E0B' : 'transparent',
-                        color: currentStatus === 'sakit' ? 'white' : '#64748B',
-                        boxShadow: currentStatus === 'sakit' ? '0 2px 6px rgba(245, 158, 11, 0.4)' : 'none'
+                        color: currentStatus === 'sakit' ? '#FFFFFF' : '#475569',
+                        boxShadow: currentStatus === 'sakit' ? '0 2px 6px rgba(245, 158, 11, 0.4)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
                       }}
                       title="Sakit"
                     >
-                      S
+                      <span>S</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', opacity: currentStatus === 'sakit' ? 1 : 0.7 }}>Sakit</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'izin')}
                       style={{
-                        width: '32px',
-                        height: '32px',
+                        height: '38px',
                         borderRadius: '9px',
                         border: 'none',
-                        fontSize: '0.78rem',
+                        fontSize: '0.82rem',
                         fontWeight: '800',
                         cursor: 'pointer',
-                        transition: 'all 0.15s',
+                        transition: 'all 0.15s ease',
                         background: currentStatus === 'izin' ? '#3B82F6' : 'transparent',
-                        color: currentStatus === 'izin' ? 'white' : '#64748B',
-                        boxShadow: currentStatus === 'izin' ? '0 2px 6px rgba(59, 130, 246, 0.4)' : 'none'
+                        color: currentStatus === 'izin' ? '#FFFFFF' : '#475569',
+                        boxShadow: currentStatus === 'izin' ? '0 2px 6px rgba(59, 130, 246, 0.4)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
                       }}
                       title="Izin"
                     >
-                      I
+                      <span>I</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', opacity: currentStatus === 'izin' ? 1 : 0.7 }}>Izin</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleStatusChange(student.id, 'alpha')}
                       style={{
-                        width: '32px',
-                        height: '32px',
+                        height: '38px',
                         borderRadius: '9px',
                         border: 'none',
-                        fontSize: '0.78rem',
+                        fontSize: '0.82rem',
                         fontWeight: '800',
                         cursor: 'pointer',
-                        transition: 'all 0.15s',
+                        transition: 'all 0.15s ease',
                         background: currentStatus === 'alpha' ? '#EF4444' : 'transparent',
-                        color: currentStatus === 'alpha' ? 'white' : '#64748B',
-                        boxShadow: currentStatus === 'alpha' ? '0 2px 6px rgba(239, 68, 68, 0.4)' : 'none'
+                        color: currentStatus === 'alpha' ? '#FFFFFF' : '#475569',
+                        boxShadow: currentStatus === 'alpha' ? '0 2px 6px rgba(239, 68, 68, 0.4)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
                       }}
                       title="Alpha"
                     >
-                      A
+                      <span>A</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', opacity: currentStatus === 'alpha' ? 1 : 0.7 }}>Alfa</span>
                     </button>
                   </div>
                 </div>
