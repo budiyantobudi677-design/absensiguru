@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { 
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
   ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
-  QrCode, X, Check
+  X, Check
 } from 'lucide-react'
 
 const ROLES = [
@@ -22,7 +22,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
-  const [showQrModal, setShowQrModal] = useState(false)
   
   const [namaSekolah, setNamaSekolah] = useState('Sistem Kehadiran')
   const navigate = useNavigate()
@@ -181,17 +180,17 @@ export default function Login() {
 
           <div style={{ textAlign: 'left', minWidth: 0 }}>
             {/* Title: PanritaEdu */}
-            <div className="brand" style={{ fontSize: '1.95rem', lineHeight: '1.05', letterSpacing: '-0.5px' }}>
+            <div className="brand" style={{ fontSize: '1.95rem', lineHeight: '1', letterSpacing: '-0.5px' }}>
               <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Panrita</span>
               <span className="brand-edu" style={{ color: '#00B4D8', fontWeight: 700, fontSize: '1.95rem' }}>Edu</span>
             </div>
-            {/* Tagline: Sistem Presensi & Manajemen Pembelajaran Terpadu */}
-            <p style={{ margin: '0.25rem 0 0.15rem 0', fontSize: '0.85rem', color: '#00B4D8', fontWeight: 700, letterSpacing: '-0.2px' }}>
-              Sistem Presensi & Manajemen Pembelajaran Terpadu
-            </p>
-            {/* Kepanjangan Akronim PanritaEdu */}
-            <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8', fontWeight: 500, letterSpacing: '-0.1px', lineHeight: '1.25' }}>
+            {/* Kepanjangan Akronim PanritaEdu (Menyatu langsung di bawah teks PanritaEdu) */}
+            <p style={{ margin: '0.15rem 0 0.4rem 0', fontSize: '0.73rem', color: '#CBD5E1', fontWeight: 600, letterSpacing: '-0.1px', lineHeight: '1.2' }}>
               Presensi, Penilaian, Riwayat, dan Tata Kelola Edukasi
+            </p>
+            {/* Tagline: Sistem Presensi & Manajemen Pembelajaran Terpadu (Berada di bawahnya) */}
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#00B4D8', fontWeight: 700, letterSpacing: '-0.2px' }}>
+              Sistem Presensi & Manajemen Pembelajaran Terpadu
             </p>
           </div>
         </div>
@@ -431,14 +430,14 @@ export default function Login() {
                 <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem' }}>
+              <div>
                 {/* Tombol Google OAuth */}
                 <button
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={loading}
                   style={{
-                    flex: 1,
+                    width: '100%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -465,32 +464,6 @@ export default function Login() {
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                   </svg>
                   <span>Daftar / Masuk dengan Google</span>
-                </button>
-
-                {/* Tombol QR Code Quick Presensi */}
-                <button
-                  type="button"
-                  title="Presensi Cepat via QR Code"
-                  onClick={() => setShowQrModal(true)}
-                  style={{
-                    width: '50px',
-                    height: '50px',
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)',
-                    border: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(0, 180, 216, 0.35)',
-                    transition: 'transform 0.15s ease',
-                    flexShrink: 0
-                  }}
-                  onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                  onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <QrCode size={22} />
                 </button>
               </div>
 
@@ -519,100 +492,6 @@ export default function Login() {
         </div>
 
       </div>
-
-      {/* Modal QR Code Quick Presensi */}
-      {showQrModal && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            background: 'rgba(7, 28, 53, 0.75)',
-            backdropFilter: 'blur(6px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '1.5rem'
-          }}
-          onClick={() => setShowQrModal(false)}
-        >
-          <div 
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '28px',
-              padding: '2rem 1.75rem',
-              maxWidth: '380px',
-              width: '100%',
-              textAlign: 'center',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
-              position: 'relative'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowQrModal(false)}
-              style={{
-                position: 'absolute',
-                top: '1rem',
-                right: '1rem',
-                background: '#F1F5F9',
-                border: 'none',
-                borderRadius: '50%',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: '#64748B'
-              }}
-            >
-              <X size={18} />
-            </button>
-
-            <div style={{
-              width: '70px',
-              height: '70px',
-              borderRadius: '22px',
-              background: 'linear-gradient(135deg, rgba(0, 180, 216, 0.15) 0%, rgba(11, 37, 69, 0.1) 100%)',
-              color: '#0096C7',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.25rem auto'
-            }}>
-              <QrCode size={36} />
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0B2545', margin: '0 0 0.5rem 0' }}>
-              Presensi Cepat via QR Code
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748B', lineHeight: '1.5', margin: '0 0 1.5rem 0' }}>
-              Fitur pemindaian QR Code memungkinkan Bapak/Ibu guru atau pegawai melakukan absensi instan menggunakan kartu ID resmi sekolah di mesin pemindai gerbang.
-            </p>
-
-            <button
-              onClick={() => setShowQrModal(false)}
-              style={{
-                width: '100%',
-                padding: '0.85rem',
-                background: '#0B2545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '14px',
-                fontSize: '0.9rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Mengerti
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
