@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 @import 'leaflet/dist/leaflet.css';
 @import "tailwindcss";
 
@@ -397,3 +397,66 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
 .mb-6 { margin-bottom: 1.5rem; }
 .gap-2 { gap: 0.5rem; }
 .gap-4 { gap: 1rem; }
+
+/* PanritaEdu Brand Typography & Layout */
+.brand {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.5px;
+}
+
+.brand-panrita {
+  color: #0B2545;
+  font-weight: 800;
+}
+
+.brand-edu {
+  color: #00B4D8;
+  font-weight: 700;
+}
+
+.brand-tagline {
+  font-family: 'Outfit', sans-serif;
+  color: #0B2545;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+}
+
+[data-theme="dark"] .brand-panrita {
+  color: #E2E8F0;
+}
+
+[data-theme="dark"] .brand-tagline {
+  color: #94A3B8;
+}
+
+.login-header-brand {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  font-size: 1.15rem;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 0.35rem 0.9rem;
+  border-radius: 9999px;
+  box-shadow: 0 4px 14px rgba(11, 37, 69, 0.08);
+  border: 1px solid rgba(11, 37, 69, 0.08);
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.2s ease;
+}
+
+.login-header-brand:hover {
+  transform: translateY(-1px);
+}
+
+.guru-footer-branding {
+  text-align: center;
+  padding: 2rem 1rem 1.25rem 1rem;
+  margin-top: 2rem;
+  border-top: 1px dashed rgba(11, 37, 69, 0.12);
+}
+
+[data-theme="dark"] .guru-footer-branding {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}

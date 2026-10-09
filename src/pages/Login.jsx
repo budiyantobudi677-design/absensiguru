@@ -65,14 +65,19 @@ export default function Login() {
   }
 
   return (
-    <div className="container flex items-center justify-center" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F0F4F8 0%, #D9E2EC 100%)', padding: '1.5rem' }}>
-      <div style={{ width: '100%', maxWidth: '420px' }}>
+    <div className="container flex items-center justify-center" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F0F4F8 0%, #D9E2EC 100%)', padding: '1.5rem', position: 'relative' }}>
+      {/* Brand Header Kanan Atas */}
+      <div className="login-header-brand brand" title="PanritaEdu">
+        <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: '420px', marginTop: '1rem' }}>
         <div className="text-center mb-10">
           <div style={{ 
-            background: logoSekolah ? 'transparent' : 'linear-gradient(135deg, var(--primary) 0%, #312E81 100%)', 
+            background: logoSekolah ? 'transparent' : 'linear-gradient(135deg, #0B2545 0%, #00B4D8 100%)', 
             width: '100px', height: '100px', borderRadius: logoSekolah ? '0' : '28px', display: 'flex', 
             alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem auto', 
-            boxShadow: logoSekolah ? 'none' : '0 15px 30px -5px rgba(79, 70, 229, 0.4)',
+            boxShadow: logoSekolah ? 'none' : '0 15px 30px -5px rgba(0, 180, 216, 0.4)',
           }}>
             {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <UserCheck size={48} color="white" />}
           </div>
@@ -159,9 +164,14 @@ export default function Login() {
             )}
           </form>
         </div>
-        <p className="text-center" style={{ marginTop: '2.5rem', fontSize: '0.85rem', color: '#829AB1', fontWeight: '600' }}>
-          &copy; {new Date().getFullYear()} Absensi Guru & Pegawai
-        </p>
+        <div className="text-center" style={{ marginTop: '2.5rem' }}>
+          <p className="brand" style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+            &copy; {new Date().getFullYear()} <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
+          </p>
+          <p className="brand-tagline" style={{ fontSize: '0.8rem', margin: 0 }}>
+            Sistem Presensi & Manajemen Pembelajaran Terpadu
+          </p>
+        </div>
       </div>
     </div>
   )

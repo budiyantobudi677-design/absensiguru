@@ -51,6 +51,7 @@ export default function DashboardGuru() {
   const [holidayReason, setHolidayReason] = useState('')
   const [showCameraModal, setShowCameraModal] = useState(false)
   const [schoolName, setSchoolName] = useState('Presensia')
+  const [schoolLogo, setSchoolLogo] = useState('')
   const [historyList, setHistoryList] = useState([])
   const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7))
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -209,6 +210,9 @@ export default function DashboardGuru() {
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
         setSchoolInfoData(prev => ({ ...prev, schoolName: settings.nama_sekolah }))
+      }
+      if (settings?.logo_sekolah) {
+        setSchoolLogo(settings.logo_sekolah)
       }
       if (settings) {
         setGeofenceSettings({
@@ -873,6 +877,12 @@ export default function DashboardGuru() {
 
       {/* Header ID Card */}
       <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', position: 'sticky', top: 0, zIndex: 50 }}>
+        {schoolLogo && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.18)', padding: '0.35rem 0.8rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
+            <img src={schoolLogo} alt="Logo Sekolah" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolName}</span>
+          </div>
+        )}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             {profile?.foto_profil ? (
@@ -1874,6 +1884,19 @@ export default function DashboardGuru() {
             )}
           </div>
         )}
+
+        {/* Footer Copyright & Branding PanritaEdu */}
+        <footer className="guru-footer-branding">
+          <div className="brand" style={{ fontSize: '1.2rem', marginBottom: '0.25rem' }}>
+            <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
+          </div>
+          <p className="brand-tagline" style={{ fontSize: '0.82rem', margin: '0 0 0.35rem 0' }}>
+            Sistem Presensi & Manajemen Pembelajaran Terpadu
+          </p>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8', fontWeight: '500' }}>
+            &copy; {new Date().getFullYear()} All Rights Reserved
+          </p>
+        </footer>
       </div>
 
       {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
