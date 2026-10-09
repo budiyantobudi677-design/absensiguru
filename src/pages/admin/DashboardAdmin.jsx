@@ -1058,9 +1058,9 @@ export default function DashboardAdmin() {
                        {a.profiles?.foto_profil ? <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} /> : <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={20} color="var(--text-muted)" /></div>}
                        <div>
                          <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{a.profiles?.full_name || a.profiles?.email?.split('@')[0]}</h4>
-                         <p style={{ margin: 0, fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : 'var(--text-muted)' }}>
+                         <p style={{ margin: 0, fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : (a.keterangan ? '#2563EB' : 'var(--text-muted)') }}>
                            {new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                           {a.status && a.status !== 'hadir' && ` • ${a.status.toUpperCase()}: ${a.keterangan || '-'}`}
+                           {a.status && a.status !== 'hadir' ? ` • ${a.status.toUpperCase()}: ${a.keterangan || '-'}` : (a.keterangan ? ` • ${a.keterangan}` : '')}
                          </p>
                        </div>
                     </div>

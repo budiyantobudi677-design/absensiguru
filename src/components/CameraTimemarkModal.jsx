@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, Settings, CheckSquare, Square } from 'lucide-react'
 
-export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia' }) {
+export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
   const [facingMode, setFacingMode] = useState('environment') // 'user' (selfie) or 'environment' (belakang)
   const [capturedPhoto, setCapturedPhoto] = useState(null)
@@ -1210,31 +1210,63 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             </div>
           </>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
-            <button
-              onClick={() => {
-                setCapturedPhoto(null)
-                startCamera(facingMode)
-              }}
-              className="btn"
-              style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
-            >
-              <RefreshCw size={14} /> Ulangi
-            </button>
-            <button
-              onClick={downloadPhoto}
-              className="btn"
-              style={{ background: '#10B981', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
-            >
-              <Download size={14} /> Simpan
-            </button>
-            <button
-              onClick={sharePhoto}
-              className="btn"
-              style={{ background: '#38BDF8', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
-            >
-              <Share2 size={14} /> Bagikan
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {onSelectPhoto && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectPhoto(capturedPhoto)
+                  onClose()
+                }}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: 'white',
+                  fontSize: '0.9rem',
+                  fontWeight: '700',
+                  padding: '0.85rem 1rem',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <CheckSquare size={18} /> Masukkan Foto ke Form Tugas Luar
+              </button>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCapturedPhoto(null)
+                  startCamera(facingMode)
+                }}
+                className="btn"
+                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+              >
+                <RefreshCw size={14} /> Ulangi
+              </button>
+              <button
+                type="button"
+                onClick={downloadPhoto}
+                className="btn"
+                style={{ background: '#10B981', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+              >
+                <Download size={14} /> Simpan
+              </button>
+              <button
+                type="button"
+                onClick={sharePhoto}
+                className="btn"
+                style={{ background: '#38BDF8', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+              >
+                <Share2 size={14} /> Bagikan
+              </button>
+            </div>
           </div>
         )}
       </div>

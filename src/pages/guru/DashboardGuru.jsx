@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -28,9 +28,16 @@ export default function DashboardGuru() {
     appMode: 'SD'
   })
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
+  const [todayAbsensi, setTodayAbsensi] = useState(null)
   const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
   const [keterangan, setKeterangan] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
+
+  // State Tugas Luar / Pelatihan
+  const [showTugasLuarModal, setShowTugasLuarModal] = useState(false)
+  const [tugasLuarCatatan, setTugasLuarCatatan] = useState('')
+  const [tugasLuarFoto, setTugasLuarFoto] = useState(null)
+  const [cameraModeForTugasLuar, setCameraModeForTugasLuar] = useState(false)
   
   // Offline State
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
@@ -161,6 +168,18 @@ export default function DashboardGuru() {
       } else if (record.jenis === 'sakit' || record.jenis === 'izin') {
         const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: record.jenis, keterangan: record.keterangan })
         if (!error) syncSuccessCount++
+      } else if (record.jenis === 'tugas_luar') {
+        const { error } = await supabase.from('absensi').insert({
+          user_id: record.user_id,
+          waktu_masuk: record.waktu_masuk,
+          waktu_pulang: record.waktu_pulang,
+          tanggal: record.tanggal,
+          lokasi_masuk: record.loc,
+          lokasi_pulang: record.loc,
+          status: 'hadir',
+          keterangan: record.keterangan
+        })
+        if (!error) syncSuccessCount++
       }
     }
     
@@ -232,16 +251,19 @@ export default function DashboardGuru() {
       if (absensi && absensi.waktu_masuk) {
         setHasCheckedIn(true)
         setTodayStatus(absensi.status)
+        setTodayAbsensi(absensi)
       } else {
         // Also check if there's offline check-in for today
         const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-        const offlineToday = offlineData.find(d => d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin'))
+        const offlineToday = offlineData.find(d => d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
         if (offlineToday) {
            setHasCheckedIn(true)
-           setTodayStatus(offlineToday.jenis === 'masuk' ? 'hadir' : offlineToday.jenis)
+           setTodayStatus(offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
+           setTodayAbsensi(offlineToday)
         } else {
            setHasCheckedIn(false)
            setTodayStatus(null)
+           setTodayAbsensi(null)
         }
       }
 
@@ -563,18 +585,23 @@ export default function DashboardGuru() {
 
         try {
           if (jenis === 'masuk') {
-            const { error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+            const { data: insData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().maybeSingle()
             if (error) throw error
             setHasCheckedIn(true)
+            setTodayStatus('hadir')
+            setTodayAbsensi(insData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
             showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
           } else if (jenis === 'pulang') {
-            const { error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today)
+            const { data: updData, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().maybeSingle()
             if (error) throw error
+            setTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
             showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
           } else if (jenis === 'sakit' || jenis === 'izin') {
-            const { error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
+            const { data: izinData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().maybeSingle()
             if (error) throw error
             setHasCheckedIn(true)
+            setTodayStatus(jenis)
+            setTodayAbsensi(izinData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
             setIzinMode(null)
             showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
           }
@@ -589,6 +616,150 @@ export default function DashboardGuru() {
       }, { timeout: 10000 })
     } else {
       showPopup("GPS Tidak Didukung", "Browser Anda tidak mendukung lokasi.", "error")
+      setLoading(false)
+    }
+  }
+
+  const getStoredPhotoForToday = () => {
+    if (tugasLuarFoto) return tugasLuarFoto
+    const today = getLocalDateString()
+    return localStorage.getItem(`tugas_luar_foto_${today}_${user?.id}`) || null
+  }
+
+  const handleTugasLuarSubmit = async (e) => {
+    if (e) e.preventDefault()
+    if (!tugasLuarCatatan.trim()) {
+      showPopup("Catatan Wajib Diisi", "Mohon isi nama pelatihan atau rincian tugas luar.", "error")
+      return
+    }
+
+    setLoading(true)
+    const today = getLocalDateString()
+    const [year, month, day] = today.split('-').map(Number)
+
+    // Jam masuk otomatis 07.00, jam pulang otomatis 14.00 waktu lokal
+    const jamMasukDate = new Date(year, month - 1, day, 7, 0, 0)
+    const jamPulangDate = new Date(year, month - 1, day, 14, 0, 0)
+    const waktuMasuk = jamMasukDate.toISOString()
+    const waktuPulang = jamPulangDate.toISOString()
+
+    // Ambil koordinat GPS perangkat saat ini jika tersedia (tanpa geofence constraint)
+    const getCoordinates = () => new Promise((resolve) => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(`${pos.coords.latitude}, ${pos.coords.longitude}`),
+          () => resolve('Lokasi Tugas Luar'),
+          { timeout: 7000 }
+        )
+      } else {
+        resolve('Lokasi Tugas Luar')
+      }
+    })
+
+    const loc = await getCoordinates()
+    const finalCatatan = `[Tugas Luar/Pelatihan] ${tugasLuarCatatan.trim()}`
+
+    // Simpan foto dokumentasi ke localStorage agar selalu dapat ditampilkan di kartu absensi
+    if (tugasLuarFoto) {
+      try {
+        localStorage.setItem(`tugas_luar_foto_${today}_${user.id}`, tugasLuarFoto)
+      } catch (err) {
+        console.warn("Storage quota exceeded for local preview photo:", err)
+      }
+    }
+
+    // Unggah foto ke storage jika memungkinkan
+    let uploadedPhotoUrl = null
+    if (tugasLuarFoto && !isOffline) {
+      try {
+        const res = await fetch(tugasLuarFoto)
+        const blob = await res.blob()
+        const fileName = `tugas_luar-${user.id}-${Date.now()}.jpg`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/jpeg' })
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+          uploadedPhotoUrl = publicUrl
+        }
+      } catch (e) {
+        console.warn("Upload storage tugas luar:", e)
+      }
+    }
+
+    const keteranganLengkap = uploadedPhotoUrl 
+      ? `${finalCatatan} | Foto: ${uploadedPhotoUrl}` 
+      : finalCatatan
+
+    if (isOffline) {
+      const record = {
+        user_id: user.id,
+        jenis: 'tugas_luar',
+        loc,
+        waktu_masuk: waktuMasuk,
+        waktu_pulang: waktuPulang,
+        waktu: waktuMasuk,
+        tanggal: today,
+        keterangan: keteranganLengkap
+      }
+      const current = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
+      current.push(record)
+      localStorage.setItem('offlineAbsensi', JSON.stringify(current))
+      checkUnsynced()
+      setHasCheckedIn(true)
+      setTodayStatus('hadir')
+      setTodayAbsensi({
+        user_id: user.id,
+        waktu_masuk: waktuMasuk,
+        waktu_pulang: waktuPulang,
+        tanggal: today,
+        lokasi_masuk: loc,
+        lokasi_pulang: loc,
+        status: 'hadir',
+        keterangan: keteranganLengkap
+      })
+      setShowTugasLuarModal(false)
+      showPopup("Tersimpan Luring (Offline)", "Presensi Tugas Luar disimpan. Otomatis Hadir (07:00 - 14:00).", "success")
+      setLoading(false)
+      return
+    }
+
+    try {
+      const payload = {
+        user_id: user.id,
+        waktu_masuk: waktuMasuk,
+        waktu_pulang: waktuPulang,
+        tanggal: today,
+        lokasi_masuk: loc,
+        lokasi_pulang: loc,
+        status: 'hadir',
+        keterangan: keteranganLengkap
+      }
+
+      const { data: existing } = await supabase.from('absensi').select('id').eq('user_id', user.id).eq('tanggal', today).maybeSingle()
+      let dbError = null
+      let inserted = null
+
+      if (existing) {
+        const { data: upd, error } = await supabase.from('absensi').update(payload).eq('id', existing.id).select().maybeSingle()
+        dbError = error
+        inserted = upd
+      } else {
+        const { data: ins, error } = await supabase.from('absensi').insert(payload).select().maybeSingle()
+        dbError = error
+        inserted = ins
+      }
+
+      if (dbError) throw dbError
+
+      setHasCheckedIn(true)
+      setTodayStatus('hadir')
+      setTodayAbsensi(inserted || payload)
+      setShowTugasLuarModal(false)
+      showPopup("Presensi Berhasil!", "Presensi Tugas Luar tersimpan. Anda otomatis tercatat HADIR (07:00 - 14:00).", "success")
+      loadHistory()
+    } catch (err) {
+      console.error("Gagal simpan tugas luar:", err)
+      showPopup("Gagal Presensi", err.message || "Gagal menyimpan ke server.", "error")
+    } finally {
       setLoading(false)
     }
   }
@@ -791,9 +962,12 @@ export default function DashboardGuru() {
                   <Fingerprint size={48} strokeWidth={1.5} />
                   <span>Clock In</span>
                 </button>
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
-                  <button onClick={() => setIzinMode('sakit')} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 1.5rem' }}>Sakit</button>
-                  <button onClick={() => setIzinMode('izin')} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 1.5rem' }}>Izin</button>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
+                  <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
+                  <button onClick={() => { setIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
+                  <button onClick={() => { setShowTugasLuarModal(true); setIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                    <Briefcase size={15} /> Tugas Luar
+                  </button>
                 </div>
               </>
             ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
@@ -801,6 +975,43 @@ export default function DashboardGuru() {
                 <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
                 <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
                 <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+              </div>
+            ) : todayAbsensi?.waktu_pulang ? (
+              <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
+                <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: '#16A34A' }} />
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                  {todayAbsensi.keterangan?.includes('Tugas Luar') ? 'Presensi Tugas Luar Selesai' : 'Presensi Hari Ini Selesai'}
+                </h3>
+                <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803D' }}>
+                  Anda terdaftar <strong>HADIR</strong> untuk hari ini.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM MASUK</div>
+                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#059669' }}>
+                      {todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: '1px solid #E5E7EB' }}></div>
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM PULANG</div>
+                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#D97706' }}>
+                      {todayAbsensi.waktu_pulang ? new Date(todayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00'}
+                    </div>
+                  </div>
+                </div>
+                {todayAbsensi.keterangan && (
+                  <div style={{ textAlign: 'left', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #DCFCE7', fontSize: '0.85rem', color: '#374151', margin: '0 auto 1rem auto', maxWidth: '380px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4B5563', marginBottom: '0.2rem' }}>Catatan Tugas / Keterangan:</div>
+                    <div>{todayAbsensi.keterangan}</div>
+                  </div>
+                )}
+                {getStoredPhotoForToday() && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#4B5563', marginBottom: '0.4rem' }}>Dokumentasi Timemark Tugas Luar:</div>
+                    <img src={getStoredPhotoForToday()} alt="Bukti Tugas Luar" style={{ maxHeight: '180px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }} />
+                  </div>
+                )}
               </div>
             ) : (
               <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
@@ -816,6 +1027,222 @@ export default function DashboardGuru() {
                 <div className="flex gap-2">
                   <button onClick={() => setIzinMode(null)} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
                   <button onClick={() => handleAbsen(izinMode)} className="btn btn-primary" style={{ flex: 1 }}>Kirim</button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Form Tugas Luar / Pelatihan */}
+            {showTugasLuarModal && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0,0,0,0.65)',
+                  backdropFilter: 'blur(4px)',
+                  zIndex: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem'
+                }}
+              >
+                <div
+                  className="card"
+                  style={{
+                    width: '100%',
+                    maxWidth: '460px',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    background: 'white',
+                    borderRadius: '20px',
+                    padding: '1.5rem',
+                    textAlign: 'left',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ background: '#EFF6FF', color: '#2563EB', padding: '0.45rem', borderRadius: '10px' }}>
+                        <Briefcase size={20} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 'bold', color: '#1E293B' }}>Presensi Tugas Luar</h4>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>Masuk: 07.00 • Pulang: 14.00 (Otomatis Hadir)</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTugasLuarModal(false)}
+                      style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#1E40AF', lineHeight: '1.4' }}>
+                    💡 <strong>Ketentuan:</strong> Form khusus guru yang bertugas di luar/pelatihan. Setelah dikirim, Anda langsung tercatat <strong>HADIR</strong> lengkap masuk (07:00) dan pulang (14:00) tanpa batas radius sekolah.
+                  </div>
+
+                  {/* Foto Timemark / Bukti Pelatihan */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block', color: '#334155' }}>
+                      📸 Foto Dokumentasi Timemark / Surat Tugas:
+                    </label>
+
+                    {tugasLuarFoto ? (
+                      <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid #CBD5E1', background: '#F8FAFC', textAlign: 'center' }}>
+                        <img
+                          src={tugasLuarFoto}
+                          alt="Dokumentasi Tugas Luar"
+                          style={{ maxHeight: '200px', width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto', display: 'block' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setTugasLuarFoto(null)}
+                          style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="Hapus / Ambil Ulang"
+                        >
+                          <X size={16} />
+                        </button>
+                        <div style={{ padding: '0.45rem', fontSize: '0.75rem', color: '#059669', background: '#ECFDF5', fontWeight: 'bold' }}>
+                          ✓ Foto Timemark Berhasil Terlampir
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowTugasLuarModal(false)
+                            setCameraModeForTugasLuar(true)
+                            setShowCameraModal(true)
+                          }}
+                          className="btn"
+                          style={{
+                            background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+                            color: 'white',
+                            fontSize: '0.8rem',
+                            padding: '0.75rem 0.5rem',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.4rem',
+                            fontWeight: '600',
+                            border: 'none',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Camera size={16} /> Kamera Timemark
+                        </button>
+
+                        <label
+                          htmlFor="upload-tugas-luar-file"
+                          className="btn"
+                          style={{
+                            background: '#F1F5F9',
+                            color: '#334155',
+                            fontSize: '0.8rem',
+                            padding: '0.75rem 0.5rem',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.4rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            border: '1px solid #E2E8F0',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <Upload size={16} /> Pilih Galeri
+                        </label>
+                        <input
+                          type="file"
+                          id="upload-tugas-luar-file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              try {
+                                const compressed = await compressImage(file)
+                                const reader = new FileReader()
+                                reader.onload = (ev) => {
+                                  setTugasLuarFoto(ev.target.result)
+                                }
+                                reader.readAsDataURL(compressed)
+                              } catch (err) {
+                                console.error(err)
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Catatan / Keterangan Tugas Luar */}
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'block', color: '#334155' }}>
+                      Catatan / Rincian Pelatihan & Tugas: <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <textarea
+                      className="input"
+                      rows="3"
+                      placeholder="Contoh: Mengikuti Pelatihan Pemanfaatan Kurikulum Merdeka di Balai Penjaminan Mutu Pendidikan..."
+                      value={tugasLuarCatatan}
+                      onChange={e => setTugasLuarCatatan(e.target.value)}
+                      style={{ fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+
+                  {/* Tombol Batal & Kirim */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowTugasLuarModal(false)}
+                      className="btn"
+                      style={{ background: '#F1F5F9', color: '#475569', flex: 1, padding: '0.75rem', borderRadius: '12px', fontWeight: '600' }}
+                      disabled={loading}
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTugasLuarSubmit}
+                      className="btn btn-primary"
+                      style={{
+                        background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                        color: 'white',
+                        flex: 1.5,
+                        padding: '0.75rem',
+                        borderRadius: '12px',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw size={16} className="spin" /> Memproses...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={16} /> Kirim Presensi
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1465,10 +1892,22 @@ export default function DashboardGuru() {
       {/* Camera Timemark Modal */}
       <CameraTimemarkModal
         isOpen={showCameraModal}
-        onClose={() => setShowCameraModal(false)}
+        onClose={() => {
+          setShowCameraModal(false)
+          if (cameraModeForTugasLuar) {
+            setShowTugasLuarModal(true)
+            setCameraModeForTugasLuar(false)
+          }
+        }}
         profile={profile}
         user={user}
         schoolName={schoolName}
+        onSelectPhoto={cameraModeForTugasLuar ? (photoUrl) => {
+          setTugasLuarFoto(photoUrl)
+          setShowCameraModal(false)
+          setCameraModeForTugasLuar(false)
+          setShowTugasLuarModal(true)
+        } : null}
       />
       
       <style>{`
