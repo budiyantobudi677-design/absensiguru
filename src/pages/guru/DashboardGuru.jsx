@@ -14,6 +14,29 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { Preferences } from '@capacitor/preferences'
+
+const getLocalPref = async (key, fallback = null) => {
+  try {
+    const { value } = await Preferences.get({ key })
+    if (value !== null && value !== undefined) return value
+  } catch {}
+  try {
+    const val = localStorage.getItem(key)
+    if (val !== null && val !== undefined) return val
+  } catch {}
+  return fallback
+}
+
+const setLocalPref = async (key, value) => {
+  const strVal = typeof value === 'string' ? value : JSON.stringify(value)
+  try {
+    await Preferences.set({ key, value: strVal })
+  } catch {}
+  try {
+    localStorage.setItem(key, strVal)
+  } catch {}
+}
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -30,6 +53,8 @@ export default function DashboardGuru() {
   const [kbmSubTab, setKbmSubTab] = useState('menu') // 'menu' | 'presensi_siswa' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [classesList, setClassesList] = useState([])
   const [assignedClasses, setAssignedClasses] = useState([])
+  const [guruTipeState, setGuruTipeState] = useState('guru_kelas')
+  const [guruMapelState, setGuruMapelState] = useState('')
   const [showAssignmentReminder, setShowAssignmentReminder] = useState(false)
   const [schoolInfoData, setSchoolInfoData] = useState({
     schoolName: 'Presensia',
@@ -263,19 +288,33 @@ export default function DashboardGuru() {
       // Sinkronisasi daftar mata pelajaran terbaru dari cloud database
       await syncCloudSubjects(supabase)
 
-      // Ambil data penugasan kelas guru
-      const storedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')
+      // Ambil data penugasan kelas guru dari penyimpanan permanen
+      let storedAssigned = []
+      try {
+        const rawAssigned = await getLocalPref(`guru_assigned_classes_${user.id}`, null)
+        if (rawAssigned) {
+          storedAssigned = typeof rawAssigned === 'string' ? JSON.parse(rawAssigned) : rawAssigned
+        }
+      } catch (err) {
+        console.error('Error parsing assigned classes:', err)
+      }
       setAssignedClasses(storedAssigned)
 
       // Cek apakah penugasan sudah diatur
-      const userTipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
-      const userMapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
+      const userTipe = await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))
+      setGuruTipeState(userTipe)
+
+      const userMapel = profile?.mata_pelajaran || await getLocalPref(`guru_mapel_${user.id}`, '')
+      setGuruMapelState(userMapel)
+
       const isConfigured = userTipe === 'guru_mapel' 
         ? (Boolean(userMapel) && storedAssigned.length > 0)
         : (storedAssigned.length > 0)
 
       if (!isConfigured) {
         setShowAssignmentReminder(true)
+      } else {
+        setShowAssignmentReminder(false)
       }
 
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
@@ -1511,16 +1550,19 @@ export default function DashboardGuru() {
                 const updates = { 
                   full_name: formData.get('full_name'), 
                   nip: formData.get('nip'), 
-                  jabatan: formattedJabatan
+                  jabatan: formattedJabatan,
+                  mata_pelajaran: mataPelajaran
                 };
                 
                 let { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
 
                 if (!error) {
-                  localStorage.setItem(`guru_tipe_${user.id}`, guruTipe);
-                  localStorage.setItem(`guru_mapel_${user.id}`, mataPelajaran);
-                  localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(selectedClasses));
+                  await setLocalPref(`guru_tipe_${user.id}`, guruTipe);
+                  await setLocalPref(`guru_mapel_${user.id}`, mataPelajaran);
+                  await setLocalPref(`guru_assigned_classes_${user.id}`, selectedClasses);
                   setAssignedClasses(selectedClasses);
+                  setGuruTipeState(guruTipe);
+                  setGuruMapelState(mataPelajaran);
                   setShowAssignmentReminder(false);
                   setProfile({ 
                     ...profile, 
@@ -1553,16 +1595,8 @@ export default function DashboardGuru() {
                   <select 
                     name="penugasan_tipe" 
                     className="input" 
-                    defaultValue={localStorage.getItem(`guru_tipe_${user?.id}`) || (profile?.penugasan_tipe === 'guru_mapel' || profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')}
-                    onChange={(e) => {
-                      const isMapel = e.target.value === 'guru_mapel';
-                      const mapelBox = document.getElementById('mapel-select-box');
-                      const waliBox = document.getElementById('kelas-wali-box');
-                      const kMapelBox = document.getElementById('kelas-mapel-box');
-                      if (mapelBox) mapelBox.style.display = isMapel ? 'block' : 'none';
-                      if (waliBox) waliBox.style.display = isMapel ? 'none' : 'block';
-                      if (kMapelBox) kMapelBox.style.display = isMapel ? 'block' : 'none';
-                    }}
+                    value={guruTipeState}
+                    onChange={(e) => setGuruTipeState(e.target.value)}
                   >
                     <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
                     <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
@@ -1575,13 +1609,14 @@ export default function DashboardGuru() {
                 <div 
                   id="mapel-select-box" 
                   className="input-group" 
-                  style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'block' : 'none' }}
+                  style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}
                 >
                   <label className="input-label">Bidang Studi / Mata Pelajaran Utama</label>
                   <select 
                     name="mata_pelajaran" 
                     className="input" 
-                    defaultValue={profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user?.id}`) || ''}
+                    value={guruMapelState}
+                    onChange={(e) => setGuruMapelState(e.target.value)}
                   >
                     <option value="">-- Pilih Mata Pelajaran --</option>
                     {getCustomSubjects().map(sub => (
@@ -1598,10 +1633,11 @@ export default function DashboardGuru() {
                   <label className="input-label">Penugasan Kelas / Rombel Belajar</label>
                   
                   {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
-                  <div id="kelas-wali-box" style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'none' : 'block' }}>
+                  <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
                     <select 
                       name="kelas_wali" 
                       className="input" 
+                      key={`wali-${assignedClasses.join(',')}`}
                       defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
                     >
                       <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
@@ -1615,7 +1651,7 @@ export default function DashboardGuru() {
                   </div>
 
                   {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}
-                  <div id="kelas-mapel-box" style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'block' : 'none' }}>
+                  <div id="kelas-mapel-box" style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}>
                     <div style={{ fontSize: '0.78rem', color: '#475569', marginBottom: '6px' }}>
                       Centang semua kelas yang Anda ajar untuk mata pelajaran ini:
                     </div>
