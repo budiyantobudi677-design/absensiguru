@@ -1286,77 +1286,167 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         background: '#0F172A',
         zIndex: 9999,
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: isDeviceLandscape ? 'row' : 'column',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '1rem',
-        boxSizing: 'border-box'
+        justifyContent: isDeviceLandscape ? 'center' : 'space-between',
+        padding: isDeviceLandscape ? '0.5rem 1rem' : '1rem',
+        gap: isDeviceLandscape ? '1rem' : '0',
+        boxSizing: 'border-box',
+        overflow: 'hidden'
       }}
     >
-      {/* Top Header */}
-      <div style={{ width: '100%', maxWidth: isDeviceLandscape ? '720px' : '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
-          <Camera size={22} color="#38BDF8" />
-          <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
+      {/* Tombol Header saat Landscape (Floating di Kiri Atas / Kanan Atas) atau Header Standar saat Portrait */}
+      {!isDeviceLandscape ? (
+        <div style={{ width: '100%', maxWidth: '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
+            <Camera size={22} color="#38BDF8" />
+            <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {/* Tombol Pengaturan Desain */}
+            <button
+              onClick={() => setIsEditingTitle(!isEditingTitle)}
+              title="Pengaturan Watermark"
+              style={{
+                background: isEditingTitle ? '#38BDF8' : 'rgba(255,255,255,0.15)',
+                border: 'none',
+                color: 'white',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <Settings size={18} />
+            </button>
+
+            {/* Tombol Tutup */}
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                color: 'white',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* Tombol Pengaturan Desain */}
-          <button
-            onClick={() => setIsEditingTitle(!isEditingTitle)}
-            title="Pengaturan Watermark"
+      ) : (
+        /* Floating Header Action Buttons in Landscape */
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '16px',
+            right: '16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            zIndex: 30,
+            pointerEvents: 'none'
+          }}
+        >
+          <div
             style={{
-              background: isEditingTitle ? '#38BDF8' : 'rgba(255,255,255,0.15)',
-              border: 'none',
-              color: 'white',
-              borderRadius: '50%',
-              width: '36px',
-              height: '36px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <Settings size={18} />
-          </button>
-
-          {/* Tombol Tutup */}
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: 'none',
+              gap: '6px',
               color: 'white',
-              borderRadius: '50%',
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
+              background: 'rgba(15, 23, 42, 0.75)',
+              padding: '4px 10px',
+              borderRadius: '20px',
+              backdropFilter: 'blur(6px)'
             }}
           >
-            <X size={20} />
-          </button>
+            <Camera size={16} color="#38BDF8" />
+            <span style={{ fontWeight: '600', fontSize: '0.8rem' }}>Kamera Timemark</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }}>
+            <button
+              onClick={() => setIsEditingTitle(!isEditingTitle)}
+              title="Pengaturan Watermark"
+              style={{
+                background: isEditingTitle ? '#38BDF8' : 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '34px',
+                height: '34px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                backdropFilter: 'blur(6px)'
+              }}
+            >
+              <Settings size={16} />
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '34px',
+                height: '34px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                backdropFilter: 'blur(6px)'
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Settings Panel Drawer */}
+      {/* Settings Panel Drawer Modal */}
       {isEditingTitle && (
         <div
           style={{
-            width: '100%',
-            maxWidth: isDeviceLandscape ? '720px' : '480px',
-            background: 'rgba(30, 41, 59, 0.95)',
-            border: '1px solid rgba(255,255,255,0.15)',
+            position: isDeviceLandscape ? 'fixed' : 'relative',
+            top: isDeviceLandscape ? '50%' : 'auto',
+            left: isDeviceLandscape ? '50%' : 'auto',
+            transform: isDeviceLandscape ? 'translate(-50%, -50%)' : 'none',
+            width: isDeviceLandscape ? '90%' : '100%',
+            maxWidth: '520px',
+            maxHeight: isDeviceLandscape ? '85vh' : 'auto',
+            overflowY: 'auto',
+            background: 'rgba(30, 41, 59, 0.98)',
+            border: '1px solid rgba(255,255,255,0.2)',
             borderRadius: '16px',
-            padding: '1rem',
+            padding: '1.2rem',
             boxSizing: 'border-box',
-            marginTop: '0.5rem',
+            marginTop: isDeviceLandscape ? 0 : '0.5rem',
             color: 'white',
-            zIndex: 20
+            zIndex: 50,
+            boxShadow: '0 20px 40px rgba(0,0,0,0.8)'
           }}
         >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+            <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#38BDF8' }}>⚙️ Pengaturan Desain & Watermark</span>
+            <button
+              onClick={() => setIsEditingTitle(false)}
+              style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '1rem', cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.3rem' }}>
               Judul Timemark / Status Presensi (Merubah teks Hadir, Selesai, dll.)
@@ -1552,17 +1642,19 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       <div
         style={{
           position: 'relative',
-          width: '100%',
-          maxWidth: isDeviceLandscape ? '640px' : '480px',
+          flex: isDeviceLandscape ? '1 1 auto' : 'none',
+          width: isDeviceLandscape ? 'auto' : '100%',
+          maxWidth: isDeviceLandscape ? 'calc(100vw - 140px)' : '480px',
+          height: isDeviceLandscape ? 'calc(100vh - 24px)' : 'auto',
           aspectRatio: isDeviceLandscape ? (aspectRatio === '16:9' ? '16 / 9' : '4 / 3') : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
-          maxHeight: isDeviceLandscape ? '70vh' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
+          maxHeight: isDeviceLandscape ? 'calc(100vh - 24px)' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: '24px',
           overflow: 'hidden',
           background: '#000',
-          margin: '0.5rem 0',
+          margin: isDeviceLandscape ? '0' : '0.5rem 0',
           border: '1px solid rgba(255,255,255,0.1)'
         }}
       >
@@ -2000,66 +2092,95 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         )}
       </div>
 
-      {/* Controls & Inputs */}
-      <div style={{ width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {/* Controls & Inputs (Berada di Sisi Kanan saat Landscape, di Bawah saat Portrait) */}
+      <div
+        style={{
+          width: isDeviceLandscape ? '96px' : '100%',
+          maxWidth: isDeviceLandscape ? '110px' : '480px',
+          display: 'flex',
+          flexDirection: isDeviceLandscape ? 'column' : 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: isDeviceLandscape ? '1rem' : '0.75rem',
+          flexShrink: 0
+        }}
+      >
         {!capturedPhoto ? (
           <>
-            <input
-              type="text"
-              placeholder="Catatan Kegiatan (Contoh: Mengajar Kelas X-A)..."
-              value={customNote}
-              onChange={(e) => setCustomNote(e.target.value)}
+            {!isDeviceLandscape && (
+              <input
+                type="text"
+                placeholder="Catatan Kegiatan (Contoh: Mengajar Kelas X-A)..."
+                value={customNote}
+                onChange={(e) => setCustomNote(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 1rem',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  fontSize: '0.85rem',
+                  boxSizing: 'border-box',
+                  outline: 'none'
+                }}
+              />
+            )}
+            <div
               style={{
+                display: 'flex',
+                flexDirection: isDeviceLandscape ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: isDeviceLandscape ? 'center' : 'space-around',
+                gap: isDeviceLandscape ? '1.2rem' : '0',
                 width: '100%',
-                padding: '0.65rem 1rem',
-                borderRadius: '12px',
-                border: '1px solid rgba(255,255,255,0.2)',
-                background: 'rgba(255,255,255,0.1)',
-                color: 'white',
-                fontSize: '0.85rem',
-                boxSizing: 'border-box',
-                outline: 'none'
+                padding: '0.5rem 0'
               }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '0.5rem 0' }}>
+            >
+              {/* Tombol Flip Kamera (Di atas shutter saat landscape, di kiri saat portrait) */}
               <button
                 onClick={toggleCamera}
                 title="Tukar Kamera"
                 style={{
-                  background: 'rgba(255,255,255,0.15)',
-                  border: 'none',
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.3)',
                   color: 'white',
                   borderRadius: '50%',
-                  width: '48px',
-                  height: '48px',
+                  width: isDeviceLandscape ? '44px' : '48px',
+                  height: isDeviceLandscape ? '44px' : '48px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(6px)'
                 }}
               >
-                <RefreshCw size={22} />
+                <RefreshCw size={isDeviceLandscape ? 20 : 22} />
               </button>
 
+              {/* Tombol Shutter Jepret (Paling Menonjol) */}
               <button
                 onClick={capturePhoto}
                 disabled={isProcessing}
+                title="Ambil Foto"
                 style={{
-                  width: '68px',
-                  height: '68px',
+                  width: isDeviceLandscape ? '64px' : '68px',
+                  height: isDeviceLandscape ? '64px' : '68px',
                   borderRadius: '50%',
                   border: '4px solid white',
                   background: '#EF4444',
                   boxShadow: '0 0 20px rgba(239, 68, 68, 0.6)',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  outline: 'none',
+                  flexShrink: 0
                 }}
               />
 
-              <div style={{ width: '48px' }}></div>
+              {!isDeviceLandscape && <div style={{ width: '48px' }}></div>}
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', width: isDeviceLandscape ? '110px' : '100%' }}>
             {onSelectPhoto && (
               <button
                 type="button"
@@ -2071,23 +2192,24 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 style={{
                   background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
                   color: 'white',
-                  fontSize: '0.9rem',
+                  fontSize: isDeviceLandscape ? '0.72rem' : '0.9rem',
                   fontWeight: '700',
-                  padding: '0.85rem 1rem',
+                  padding: isDeviceLandscape ? '0.5rem 0.4rem' : '0.85rem 1rem',
                   borderRadius: '12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '0.5rem',
+                  gap: '0.3rem',
                   boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
                   border: 'none',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  textAlign: 'center'
                 }}
               >
-                <CheckSquare size={18} /> Masukkan Foto ke Form Tugas Luar
+                <CheckSquare size={16} /> {isDeviceLandscape ? 'Gunakan' : 'Masukkan Foto ke Form Tugas Luar'}
               </button>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isDeviceLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.4rem' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -2095,25 +2217,25 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   startCamera(facingMode)
                 }}
                 className="btn"
-                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
               >
-                <RefreshCw size={14} /> Ulangi
+                <RefreshCw size={13} /> Ulangi
               </button>
               <button
                 type="button"
                 onClick={downloadPhoto}
                 className="btn"
-                style={{ background: '#10B981', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+                style={{ background: '#10B981', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
               >
-                <Download size={14} /> Simpan
+                <Download size={13} /> Simpan
               </button>
               <button
                 type="button"
                 onClick={sharePhoto}
                 className="btn"
-                style={{ background: '#38BDF8', color: 'white', fontSize: '0.8rem', padding: '0.65rem 0.5rem' }}
+                style={{ background: '#38BDF8', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
               >
-                <Share2 size={14} /> Bagikan
+                <Share2 size={13} /> Bagikan
               </button>
             </div>
           </div>
