@@ -25,7 +25,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
   // Pengaturan Template Layout Watermark ('panritaedu' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
   const [layoutTemplate, setLayoutTemplate] = useState(() => {
-    return localStorage.getItem('timemark_layout_template') || 'panritaedu'
+    const saved = localStorage.getItem('timemark_layout_template')
+    // Jika belum pernah diset atau masih menggunakan nilai lama 'modern', utamakan tema baru 'panritaedu'
+    if (!saved || saved === 'modern') {
+      localStorage.setItem('timemark_layout_template', 'panritaedu')
+      return 'panritaedu'
+    }
+    return saved
   })
 
   // Pengaturan Rasio Aspek Foto ('3:4' | '9:16' | '1:1' | '16:9')
