@@ -12,33 +12,73 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session)
-      if (session) {
-        const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
-        const userRole = data?.role || 'guru'
+    let isMounted = true
+
+    const syncUserRole = async (userSession) => {
+      if (!userSession?.user?.id) {
+        if (isMounted) {
+          setRole(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      // Check cached role first for immediate UI response without waiting
+      const cachedRole = localStorage.getItem(`panrita_role_${userSession.user.id}`)
+      if (cachedRole && isMounted) {
+        setRole(cachedRole)
+        setLoading(false)
+      }
+
+      try {
+        const { data } = await supabase.from('profiles').select('role').eq('id', userSession.user.id).maybeSingle()
+        const userRole = data?.role || cachedRole || 'guru'
+        
         const intended = localStorage.getItem('intended_login_role')
         if (intended) {
           localStorage.removeItem('intended_login_role')
-          if (intended === 'guru' && userRole !== 'guru') {
+          const isAdminType = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
+          if (intended === 'guru' && isAdminType) {
             await supabase.auth.signOut()
-            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
-            setSession(null)
-            setRole(null)
-            setLoading(false)
+            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin/Kepsek, bukan Guru. Silakan pilih tipe login "Admin".')
+            if (isMounted) {
+              setSession(null)
+              setRole(null)
+              setLoading(false)
+            }
             return
           }
-          if (intended === 'admin' && userRole !== 'admin') {
+          if (intended === 'admin' && !isAdminType) {
             await supabase.auth.signOut()
             alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
-            setSession(null)
-            setRole(null)
-            setLoading(false)
+            if (isMounted) {
+              setSession(null)
+              setRole(null)
+              setLoading(false)
+            }
             return
           }
         }
-        setRole(userRole)
-        setLoading(false)
+
+        localStorage.setItem(`panrita_role_${userSession.user.id}`, userRole)
+        if (isMounted) {
+          setRole(userRole)
+          setLoading(false)
+        }
+      } catch (err) {
+        console.error('Error fetching role:', err)
+        if (isMounted && !cachedRole) {
+          setRole('guru')
+          setLoading(false)
+        }
+      }
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return
+      setSession(session)
+      if (session) {
+        syncUserRole(session)
       } else {
         setLoading(false)
       }
@@ -47,33 +87,20 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return
       setSession(session)
       if (session) {
-        const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
-        const userRole = data?.role || 'guru'
-        const intended = localStorage.getItem('intended_login_role')
-        if (intended) {
-          localStorage.removeItem('intended_login_role')
-          if (intended === 'guru' && userRole !== 'guru') {
-            await supabase.auth.signOut()
-            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
-            setSession(null)
-            setRole(null)
-            return
-          }
-          if (intended === 'admin' && userRole !== 'admin') {
-            await supabase.auth.signOut()
-            alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
-            setSession(null)
-            setRole(null)
-            return
-          }
-        }
-        setRole(userRole)
+        syncUserRole(session)
+      } else {
+        setRole(null)
+        setLoading(false)
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   if (loading || (session && role === null)) {
@@ -86,10 +113,12 @@ function App() {
     </div>
   }
 
+  const isAdminRole = role === 'admin' || role === 'kepsek' || role === 'pengembang' || role === 'developer'
+
   return (
     <Router>
       <Routes>
-        <Route path="/" element={!session ? <Login /> : (role === 'admin' ? <Navigate to="/admin" /> : <Navigate to="/guru" />)} />
+        <Route path="/" element={!session ? <Login /> : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />)} />
         <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
         <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
       </Routes>

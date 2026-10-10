@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1",
     "@supabase/supabase-js": "^2.117.1",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",

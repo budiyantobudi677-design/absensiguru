@@ -49,6 +49,7 @@ export default function Login() {
         
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
         const userRole = profile?.role || 'guru'
+        localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
 
         // Validasi ketat kecocokan role yang dipilih dengan role di database
         if (selectedRole === 'guru' && userRole !== 'guru') {
