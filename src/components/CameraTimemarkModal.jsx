@@ -23,9 +23,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return saved !== null ? saved === 'true' : true
   })
 
-  // Pengaturan Template Layout Watermark ('modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
+  // Pengaturan Template Layout Watermark ('panritaedu' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
   const [layoutTemplate, setLayoutTemplate] = useState(() => {
-    return localStorage.getItem('timemark_layout_template') || 'modern'
+    return localStorage.getItem('timemark_layout_template') || 'panritaedu'
   })
 
   // Pengaturan Rasio Aspek Foto ('3:4' | '9:16' | '1:1' | '16:9')
@@ -282,8 +282,182 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const displayTitle = (customTitle || schoolName || 'PRESENSIA').toUpperCase()
     const activeIcon = customIcon || '🎓'
 
-    // 2. Render Watermark Based on layoutTemplate ('modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
-    if (layoutTemplate === 'card') {
+    // 2. Render Watermark Based on layoutTemplate ('panritaedu' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
+    if (layoutTemplate === 'panritaedu') {
+      // ========================================================
+      // TEMA PANRITAEDU (Sesuai Desain Foto Asli Timemark)
+      // ========================================================
+      
+      // A. HEADER KANAN ATAS (Logo PanritaEdu & Subjudul "100% foto asli")
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
+      ctx.shadowBlur = 8 * baseFactor
+      ctx.shadowOffsetX = 2 * baseFactor
+      ctx.shadowOffsetY = 2 * baseFactor
+
+      const topMargin = 28 * baseFactor
+      const rightMargin = targetWidth - (28 * baseFactor)
+
+      // Ukuran font header
+      const brandFontSize = Math.round(28 * baseFactor)
+      ctx.font = `bold ${brandFontSize}px Outfit, sans-serif`
+      
+      // Ukur lebar teks "Panrita" dan "Edu"
+      const panritaWidth = ctx.measureText('Panrita').width
+      ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
+      const eduWidth = ctx.measureText('Edu').width
+      const totalBrandWidth = panritaWidth + eduWidth
+
+      const startBrandX = rightMargin - totalBrandWidth
+
+      // Gambar "Panrita" (Putih Bersih)
+      ctx.fillStyle = '#FFFFFF'
+      ctx.font = `bold ${brandFontSize}px Outfit, sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText('Panrita', startBrandX, topMargin)
+
+      // Gambar "Edu" (Aksen Cyan / Biru Muda Khas PanritaEdu #00B4D8)
+      ctx.fillStyle = '#00B4D8'
+      ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
+      ctx.fillText('Edu', startBrandX + panritaWidth, topMargin)
+
+      // Gambar Subjudul "Foto 100% akurat" / "100% foto asli"
+      const subBrandFontSize = Math.round(14 * baseFactor)
+      ctx.font = `500 ${subBrandFontSize}px Outfit, sans-serif`
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+      ctx.textAlign = 'right'
+      ctx.fillText('100% foto asli', rightMargin, topMargin + brandFontSize + (4 * baseFactor))
+
+      ctx.restore()
+
+      // B. KONTEN KIRI BAWAH
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
+      ctx.shadowBlur = 6 * baseFactor
+      ctx.shadowOffsetX = 2 * baseFactor
+      ctx.shadowOffsetY = 2 * baseFactor
+
+      const leftX = 26 * baseFactor
+      const bottomAreaY = targetHeight - (28 * baseFactor)
+
+      // 1. Badge Jam Kotak Membulat + Lingkaran Ceklis Oranye
+      const hoursMinutes = currentDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      const timeFontSize = Math.round(36 * baseFactor)
+      
+      // Ukur dimensi badge
+      ctx.font = `900 ${timeFontSize}px Outfit, sans-serif`
+      const timeTextWidth = ctx.measureText(hoursMinutes).width
+      const checkCircleRadius = 14 * baseFactor
+      const badgePaddingX = 14 * baseFactor
+      const badgePaddingY = 8 * baseFactor
+      const badgeWidth = timeTextWidth + (checkCircleRadius * 2) + (badgePaddingX * 2) + (10 * baseFactor)
+      const badgeHeight = timeFontSize + (badgePaddingY * 2) + (4 * baseFactor)
+      
+      // Hitung posisi vertikal dari bawah ke atas
+      // Estimasi tinggi teks bawah:
+      // Status (~26px) + Spasi (6) + Tanggal (~18px) + Spasi (6) + Alamat (2 baris ~36px) = ~95px
+      const contentHeight = (135 * baseFactor) + badgeHeight
+      const startBadgeY = targetHeight - contentHeight - (24 * baseFactor)
+
+      // Background Badge Jam (Kotak gelap cokelat-hitam rounded)
+      ctx.fillStyle = 'rgba(38, 24, 18, 0.88)'
+      ctx.beginPath()
+      ctx.roundRect(leftX, startBadgeY, badgeWidth, badgeHeight, 10 * baseFactor)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+      ctx.lineWidth = 1 * baseFactor
+      ctx.stroke()
+
+      // Teks Jam di dalam badge
+      ctx.fillStyle = '#FFFFFF'
+      ctx.font = `900 ${timeFontSize}px Outfit, sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(hoursMinutes, leftX + badgePaddingX, startBadgeY + (badgeHeight / 2))
+
+      // Lingkaran Centang Oranye di samping jam
+      const checkCenterX = leftX + badgePaddingX + timeTextWidth + (10 * baseFactor) + checkCircleRadius
+      const checkCenterY = startBadgeY + (badgeHeight / 2)
+      ctx.beginPath()
+      ctx.arc(checkCenterX, checkCenterY, checkCircleRadius, 0, Math.PI * 2)
+      ctx.fillStyle = '#F59E0B' // Oranye Emas
+      ctx.fill()
+
+      // Tanda Ceklis Putih di dalam lingkaran
+      ctx.fillStyle = '#1E1B18'
+      ctx.font = `bold ${Math.round(16 * baseFactor)}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('✓', checkCenterX, checkCenterY)
+
+      // 2. Garis Aksen Vertikal Oranye
+      const lineX = leftX
+      const lineStartY = startBadgeY + badgeHeight + (14 * baseFactor)
+      const textStartX = lineX + (14 * baseFactor)
+      let curTextY = lineStartY
+
+      // 3. Teks Status (contoh: Selesai / Hadir / Tugas Luar / customNote)
+      const statusTitle = customNote.trim() || 'Hadir'
+      const statusFontSize = Math.round(24 * baseFactor)
+      ctx.font = `bold ${statusFontSize}px Outfit, sans-serif`
+      ctx.fillStyle = '#FFFFFF'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(statusTitle, textStartX, curTextY)
+      curTextY += statusFontSize + (6 * baseFactor)
+
+      // 4. Hari dan Tanggal Lengkap (contoh: Sabtu, 10 Oktober 2026)
+      const dateFontSize = Math.round(18 * baseFactor)
+      ctx.font = `600 ${dateFontSize}px Outfit, sans-serif`
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)'
+      ctx.fillText(dateFormatted, textStartX, curTextY)
+      curTextY += dateFontSize + (6 * baseFactor)
+
+      // 5. Nama Guru (jika diaktifkan)
+      if (showTeacherName) {
+        const teacherFontSize = Math.round(16 * baseFactor)
+        ctx.font = `500 ${teacherFontSize}px Outfit, sans-serif`
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
+        ctx.fillText(`Guru: ${teacherName}${nipText}`, textStartX, curTextY)
+        curTextY += teacherFontSize + (4 * baseFactor)
+      }
+
+      // 6. Alamat Lengkap Geotagging GPS (Bisa terbagi 1 atau 2 baris jika panjang)
+      const addressFontSize = Math.round(15 * baseFactor)
+      ctx.font = `normal ${addressFontSize}px Outfit, sans-serif`
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
+      
+      const maxAddrWidth = targetWidth - textStartX - (35 * baseFactor)
+      const words = locationText.split(' ')
+      let currentLine = ''
+      
+      for (let w = 0; w < words.length; w++) {
+        const testLine = currentLine ? `${currentLine} ${words[w]}` : words[w]
+        const testWidth = ctx.measureText(testLine).width
+        if (testWidth > maxAddrWidth && currentLine) {
+          ctx.fillText(currentLine, textStartX, curTextY)
+          curTextY += addressFontSize + (4 * baseFactor)
+          currentLine = words[w]
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (currentLine) {
+        ctx.fillText(currentLine, textStartX, curTextY)
+        curTextY += addressFontSize + (4 * baseFactor)
+      }
+
+      // Gambarkan garis vertikal oranye di sebelah kiri blok teks detail
+      const lineEndY = curTextY
+      ctx.fillStyle = '#F59E0B' // Oranye Emas
+      ctx.beginPath()
+      ctx.roundRect(lineX, lineStartY, 4 * baseFactor, Math.max(30 * baseFactor, lineEndY - lineStartY), 2 * baseFactor)
+      ctx.fill()
+
+      ctx.restore()
+      // Selesai template panritaedu: footer kode foto & sisi kanan kode foto ditiadakan
+    } else if (layoutTemplate === 'card') {
       // TEMA BADGE / KARTU (Box Mengambang Kanan Bawah)
       const boxWidth = Math.min(targetWidth - (30 * baseFactor), Math.round(500 * baseFactor))
       const boxHeight = Math.round((showTeacherName ? 160 : 130) * baseFactor)
@@ -894,6 +1068,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
               {[
+                { id: 'panritaedu', label: '⭐ PanritaEdu' },
                 { id: 'modern', label: 'Modern Strip' },
                 { id: 'card', label: 'Badge Card' },
                 { id: 'academic', label: '🎓 Akademik' },
@@ -969,7 +1144,106 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             />
 
             {/* Live Watermark Preview Pill disesuaikan dengan template & ukuran */}
-            {layoutTemplate === 'card' ? (
+            {layoutTemplate === 'panritaedu' ? (
+              <>
+                {/* Header Kanan Atas: Logo PanritaEdu + 100% foto asli */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '14px',
+                    right: '16px',
+                    textAlign: 'right',
+                    textShadow: '0 2px 6px rgba(0,0,0,0.95)',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div style={{ fontSize: '1.2rem', lineHeight: '1.1', fontWeight: 'bold' }}>
+                    <span style={{ color: '#FFFFFF', fontWeight: '800' }}>Panrita</span>
+                    <span style={{ color: '#00B4D8', fontWeight: '800' }}>Edu</span>
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.92)', fontWeight: '500', marginTop: '2px' }}>
+                    100% foto asli
+                  </div>
+                </div>
+
+                {/* Konten Kiri Bawah: Jam Kotak Rounded + Garis Oranye + Teks */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '16px',
+                    left: '16px',
+                    right: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    textShadow: '0 2px 6px rgba(0,0,0,0.95)',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {/* Badge Jam Kotak + Lingkaran Ceklis Oranye */}
+                  <div
+                    style={{
+                      background: 'rgba(38, 24, 18, 0.88)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      alignSelf: 'flex-start'
+                    }}
+                  >
+                    <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#FFFFFF', letterSpacing: '-0.5px' }}>
+                      {currentDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <div
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: '#F59E0B',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#1E1B18',
+                        fontSize: '11px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ✓
+                    </div>
+                  </div>
+
+                  {/* Blok Teks dengan Garis Vertikal Oranye di Samping Kiri */}
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px' }}>
+                    <div
+                      style={{
+                        width: '3.5px',
+                        background: '#F59E0B',
+                        borderRadius: '3px',
+                        flexShrink: 0
+                      }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#FFFFFF' }}>
+                        {customNote.trim() || 'Hadir'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'rgba(255,255,255,0.95)' }}>
+                        {currentDateTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      </div>
+                      {showTeacherName && (
+                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.85)' }}>
+                          Guru: {profile?.full_name || user?.email?.split('@')[0] || 'Guru'}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.3' }}>
+                        {locationText}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : layoutTemplate === 'card' ? (
               <div
                 style={{
                   position: 'absolute',
