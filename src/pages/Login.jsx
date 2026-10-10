@@ -54,28 +54,36 @@ export default function Login() {
         localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
 
         // Validasi ketat kecocokan role yang dipilih dengan role di database
-        if (selectedRole === 'guru' && userRole !== 'guru') {
+        const isGuru = userRole === 'guru' || userRole === 'guru_kelas' || userRole === 'guru_mapel'
+        const isAdmin = userRole === 'admin'
+        const isKepsek = userRole === 'kepsek'
+        const isDev = userRole === 'pengembang' || userRole === 'developer'
+
+        if (selectedRole === 'guru' && !isGuru) {
           await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda terdaftar sebagai Admin, bukan Guru. Silakan pilih tipe login "Admin".')
+          throw new Error('Akses ditolak: Akun Anda bukan akun Guru. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (selectedRole === 'admin' && userRole !== 'admin') {
+        if (selectedRole === 'admin' && !isAdmin) {
           await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
+          throw new Error('Akses ditolak: Akun Anda bukan Administrator. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (selectedRole === 'kepsek' && userRole !== 'kepsek') {
+        if (selectedRole === 'kepsek' && !isKepsek) {
           await supabase.auth.signOut()
-          throw new Error(`Akses ditolak: Akun Anda terdaftar sebagai ${userRole === 'admin' ? 'Admin' : 'Guru'}, bukan Kepala Sekolah. Silakan pilih tipe login "${userRole === 'admin' ? 'Admin' : 'Guru'}".`)
+          throw new Error('Akses ditolak: Akun Anda bukan Kepala Sekolah. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (selectedRole === 'pengembang' && userRole !== 'pengembang' && userRole !== 'developer') {
+        if (selectedRole === 'pengembang' && !isDev) {
           await supabase.auth.signOut()
-          throw new Error(`Akses ditolak: Akun Anda terdaftar sebagai ${userRole === 'admin' ? 'Admin' : 'Guru'}, bukan Pengembang. Silakan pilih tipe login "${userRole === 'admin' ? 'Admin' : 'Guru'}".`)
+          throw new Error('Akses ditolak: Akun Anda bukan Pengembang. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (userRole === 'admin' || userRole === 'pengembang' || userRole === 'developer') navigate('/admin')
-        else navigate('/guru')
+        if (isAdmin || isKepsek || isDev) {
+          navigate('/admin')
+        } else {
+          navigate('/guru')
+        }
         
       } else if (mode === 'register') {
         const { error } = await supabase.auth.signUp({ email, password })

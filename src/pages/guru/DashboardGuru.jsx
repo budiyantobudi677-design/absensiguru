@@ -165,14 +165,14 @@ function GuruDesktopWrapper({
               {activeTab === 'pengaturan' && 'Profil Pendidik & Pengaturan Penugasan'}
             </h2>
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {schoolLogo ? schoolName : 'PanritaEdu'} • {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {schoolLogo ? schoolName : 'PanritaEdu'} • {(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}
             </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.4rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600' }}>
               <Clock size={16} color="var(--primary)" />
-              <span>{currentTime.toLocaleTimeString('id-ID')}</span>
+              <span>{(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleTimeString('id-ID') : '--:--:--'}</span>
             </div>
             <button
               onClick={toggleTheme}
@@ -286,9 +286,16 @@ export default function DashboardGuru() {
     if (!user) return true
     const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
     const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
-    const assigned = assignedClasses.length > 0 
-      ? assignedClasses 
-      : JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')
+    let assigned = assignedClasses
+    if (!assigned || assigned.length === 0) {
+      try {
+        const raw = localStorage.getItem(`guru_assigned_classes_${user.id}`)
+        assigned = raw ? JSON.parse(raw) : []
+        if (!Array.isArray(assigned)) assigned = []
+      } catch (e) {
+        assigned = []
+      }
+    }
     
     if (tipe === 'guru_mapel') {
       return Boolean(mapel) && assigned.length > 0
@@ -297,9 +304,20 @@ export default function DashboardGuru() {
   }
 
   // Filter daftar kelas yang diampu oleh guru ini
-  const userAssignedIds = assignedClasses.length > 0 
-    ? assignedClasses 
-    : JSON.parse(localStorage.getItem(`guru_assigned_classes_${user?.id}`) || '[]')
+  let userAssignedIds = assignedClasses
+  if (!userAssignedIds || userAssignedIds.length === 0) {
+    if (user?.id) {
+      try {
+        const raw = localStorage.getItem(`guru_assigned_classes_${user.id}`)
+        userAssignedIds = raw ? JSON.parse(raw) : []
+        if (!Array.isArray(userAssignedIds)) userAssignedIds = []
+      } catch (e) {
+        userAssignedIds = []
+      }
+    } else {
+      userAssignedIds = []
+    }
+  }
   
   const filteredClassesList = userAssignedIds.length > 0
     ? classesList.filter(c => userAssignedIds.includes(c.id))

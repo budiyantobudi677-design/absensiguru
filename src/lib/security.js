@@ -66,15 +66,20 @@ export async function syncServerTime() {
     const t1 = Date.now()
     if (data && data.utc_datetime) {
       const serverTime = new Date(data.utc_datetime).getTime()
-      const rtt = t1 - t0
-      serverTimeOffsetMs = (serverTime + Math.round(rtt / 2)) - t1
-      lastSyncTimestamp = t1
-      return serverTimeOffsetMs
+      if (!isNaN(serverTime)) {
+        const rtt = t1 - t0
+        serverTimeOffsetMs = (serverTime + Math.round(rtt / 2)) - t1
+        lastSyncTimestamp = t1
+        return serverTimeOffsetMs
+      }
     }
   } catch (err) {
     console.warn('Gagal sinkronisasi fallback world time:', err)
   }
 
+  if (isNaN(serverTimeOffsetMs) || !isFinite(serverTimeOffsetMs)) {
+    serverTimeOffsetMs = 0
+  }
   return serverTimeOffsetMs
 }
 
@@ -83,22 +88,36 @@ export async function syncServerTime() {
  * Kebal terhadap manipulasi jam manual di pengaturan ponsel / laptop.
  */
 export function getSecureServerDate() {
-  return new Date(Date.now() + serverTimeOffsetMs)
+  const ms = (typeof serverTimeOffsetMs === 'number' && !isNaN(serverTimeOffsetMs) && isFinite(serverTimeOffsetMs))
+    ? serverTimeOffsetMs
+    : 0
+  const date = new Date(Date.now() + ms)
+  return isNaN(date.getTime()) ? new Date() : date
 }
 
 /**
  * Mendapatkan ISO string waktu terkini dari server
  */
 export function getSecureServerIsoString() {
-  return getSecureServerDate().toISOString()
+  try {
+    const d = getSecureServerDate()
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+  } catch {
+    return new Date().toISOString()
+  }
 }
 
 /**
  * Mendapatkan tanggal lokal format YYYY-MM-DD berbasis jam server
  */
 export function getSecureLocalDateString() {
-  const d = getSecureServerDate()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  try {
+    const d = getSecureServerDate()
+    if (isNaN(d.getTime())) return new Date().toLocaleDateString('en-CA')
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  } catch {
+    return new Date().toLocaleDateString('en-CA')
+  }
 }
 
 /**
