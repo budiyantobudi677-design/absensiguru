@@ -27,7 +27,7 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
     tanggal: new Date().toLocaleDateString('en-CA'),
     mata_pelajaran: initialSubject,
     topik: '',
-    teknik: 'Tatap Muka (Luring)',
+    teknik: 'Luring',
     kegiatan: '',
     penilaian: '',
     catatan: ''
@@ -105,6 +105,15 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
     setMessage(null)
 
     try {
+      // Pastikan nilai teknik selalu sesuai constraint database: 'Luring', 'Daring', atau 'Hybrid'
+      const rawTeknik = (formData.teknik || '').toLowerCase()
+      let safeTeknik = 'Luring'
+      if (rawTeknik.includes('daring') || rawTeknik.includes('online')) {
+        safeTeknik = 'Daring'
+      } else if (rawTeknik.includes('hybrid') || rawTeknik.includes('campuran') || rawTeknik.includes('kombinasi')) {
+        safeTeknik = 'Hybrid'
+      }
+
       const { data, error } = await supabase
         .from('learning_journals')
         .insert([{
@@ -113,7 +122,7 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
           tanggal: formData.tanggal,
           mata_pelajaran: formData.mata_pelajaran,
           topik: formData.topik.trim(),
-          teknik: formData.teknik,
+          teknik: safeTeknik,
           kegiatan: formData.kegiatan.trim(),
           penilaian: formData.penilaian.trim(),
           catatan: formData.catatan.trim()
@@ -371,11 +380,9 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
                   className="input"
                   style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
                 >
-                  <option value="Tatap Muka (Luring)">Tatap Muka (Luring)</option>
-                  <option value="Diskusi Kelompok">Diskusi Kelompok</option>
-                  <option value="Praktikum / Eksperimen">Praktikum / Eksperimen</option>
-                  <option value="Pembelajaran Proyek (PBL)">Pembelajaran Proyek (PBL)</option>
-                  <option value="Daring / Online">Daring / Online</option>
+                  <option value="Luring">Tatap Muka (Luring)</option>
+                  <option value="Daring">Daring / Online</option>
+                  <option value="Hybrid">Hybrid (Kombinasi)</option>
                 </select>
               </div>
 

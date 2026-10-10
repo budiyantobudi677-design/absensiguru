@@ -216,6 +216,24 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   }
 
   const videoRef = useRef(null)
+  const viewfinderRef = useRef(null)
+  const [vfSize, setVfSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    if (!viewfinderRef.current || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect) {
+          setVfSize({
+            width: Math.round(entry.contentRect.width),
+            height: Math.round(entry.contentRect.height)
+          })
+        }
+      }
+    })
+    observer.observe(viewfinderRef.current)
+    return () => observer.disconnect()
+  }, [isOpen, isLandscape])
 
   useEffect(() => {
     if (!isOpen) {
@@ -1753,6 +1771,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
       {/* Camera Viewfinder / Preview */}
       <div
+        ref={viewfinderRef}
         style={{
           position: 'relative',
           flex: isLandscape ? '1 1 auto' : 'none',
@@ -1789,12 +1808,24 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               autoPlay
               playsInline
               muted
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
-              }}
+              style={
+                isVirtualLandscape
+                  ? {
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      width: vfSize.height ? `${vfSize.height}px` : '100%',
+                      height: vfSize.width ? `${vfSize.width}px` : '100%',
+                      objectFit: 'cover',
+                      transform: `translate(-50%, -50%) rotate(${virtualRotationAngle === -90 ? -90 : 90}deg)${facingMode === 'user' ? ' scaleX(-1)' : ''}`
+                    }
+                  : {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
+                    }
+              }
             />
 
             {/* Header Kanan Atas: Logo PanritaEdu + 100% foto asli (Live Preview, Ukuran Kecil Elegan) */}
