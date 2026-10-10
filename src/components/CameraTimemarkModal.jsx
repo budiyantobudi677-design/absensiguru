@@ -28,6 +28,16 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
     return false
   })
+  // Sudut rotasi virtual ketika layar sistem HP terkunci potret (90 = CCW / Primary, -90 = CW / Reverse)
+  const [virtualRotationAngle, setVirtualRotationAngle] = useState(90)
+  const [windowDimensions, setWindowDimensions] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 390,
+    height: typeof window !== 'undefined' ? window.innerHeight : 844
+  }))
+
+  const isSystemLandscape = typeof window !== 'undefined' && windowDimensions.width > windowDimensions.height
+  const isLandscape = isDeviceLandscape || isSystemLandscape
+  const isVirtualLandscape = isLandscape && !isSystemLandscape
 
   // Judul / Status Timemark kustom yang tersimpan di localStorage (Merubah teks "Hadir", "Selesai", dll.)
   const [customTitle, setCustomTitle] = useState(() => {
@@ -89,17 +99,22 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
       // 2. Deteksi Rotasi Fisik HP 90 Derajat (Landscape) via accelerometer gamma & beta
       // HP Potret: |beta| tinggi (~70-90°), |gamma| rendah (~0-20°).
-      // HP Landscape (dimiringkan 90° mendatar): |gamma| tinggi (> 40°).
+      // HP Landscape (dimiringkan 90° mendatar): |gamma| tinggi (> 35°).
       if (e.gamma !== null && e.gamma !== undefined && e.beta !== null && e.beta !== undefined) {
         const absGamma = Math.abs(e.gamma)
         const absBeta = Math.abs(e.beta)
 
-        if (absGamma > 38 && absBeta < 60) {
+        if (absGamma > 34 && absBeta < 68) {
           setIsDeviceLandscape(true)
-        } else if (absBeta > 50 && absGamma < 30) {
+          if (e.gamma < -20) {
+            setVirtualRotationAngle(90) // CCW (earpiece di kiri, charger di kanan)
+          } else if (e.gamma > 20) {
+            setVirtualRotationAngle(-90) // CW (earpiece di kanan, charger di kiri)
+          }
+        } else if (absBeta > 52 && absGamma < 28) {
           setIsDeviceLandscape(false)
         } else if (typeof window !== 'undefined') {
-          // Fallback ke orientasi layar sistem
+          // Fallback ke orientasi layar sistem jika didukung
           setIsDeviceLandscape(window.innerWidth > window.innerHeight)
         }
       }
@@ -107,6 +122,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
     const checkOrientation = () => {
       if (typeof window !== 'undefined') {
+        setWindowDimensions({ width: window.innerWidth, height: window.innerHeight })
         const isLand = window.innerWidth > window.innerHeight
         setIsDeviceLandscape(isLand)
       }
@@ -319,62 +335,61 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const canvas = document.createElement('canvas')
 
     // 1. Calculate Target Dimensions Based on Device Rotation (Landscape saat HP diputar 90 derajat)
-    const isLandscape = isDeviceLandscape
     let effectiveAspectRatio = aspectRatio
 
     if (isLandscape) {
-      if (aspectRatio === '3:4') effectiveAspectRatio = '4:3'
-      else if (aspectRatio === '9:16') effectiveAspectRatio = '16:9'
+      if (aspectRatio === '3:4' || aspectRatio === '4:3') effectiveAspectRatio = '4:3'
+      else if (aspectRatio === '9:16' || aspectRatio === '16:9') effectiveAspectRatio = '16:9'
       else if (aspectRatio !== '1:1') effectiveAspectRatio = '4:3'
     }
 
-    let targetWidth = video.videoWidth || (isLandscape ? 1280 : 960)
-    let targetHeight = video.videoHeight || (isLandscape ? 960 : 1280)
+    let targetWidth = isLandscape ? 1280 : (video.videoWidth || 960)
+    let targetHeight = isLandscape ? (effectiveAspectRatio === '16:9' ? 720 : 960) : (video.videoHeight || 1280)
     let sourceX = 0
     let sourceY = 0
-    let sourceWidth = targetWidth
-    let sourceHeight = targetHeight
+    let sourceWidth = video.videoWidth || (isLandscape ? 1280 : 960)
+    let sourceHeight = video.videoHeight || (isLandscape ? 960 : 1280)
 
     if (effectiveAspectRatio === '1:1') {
-      const minDim = Math.min(targetWidth, targetHeight)
-      sourceX = (targetWidth - minDim) / 2
-      sourceY = (targetHeight - minDim) / 2
+      const minDim = Math.min(sourceWidth, sourceHeight)
+      sourceX = (sourceWidth - minDim) / 2
+      sourceY = (sourceHeight - minDim) / 2
       sourceWidth = minDim
       sourceHeight = minDim
       targetWidth = 1080
       targetHeight = 1080
     } else if (effectiveAspectRatio === '9:16') {
-      if (targetWidth > targetHeight) {
-        const calcWidth = Math.round((targetHeight * 9) / 16)
-        sourceX = Math.round((targetWidth - calcWidth) / 2)
+      if (sourceWidth > sourceHeight) {
+        const calcWidth = Math.round((sourceHeight * 9) / 16)
+        sourceX = Math.round((sourceWidth - calcWidth) / 2)
         sourceWidth = calcWidth
       } else {
-        const calcHeight = Math.round((targetWidth * 16) / 9)
-        if (calcHeight <= targetHeight) {
-          sourceY = Math.round((targetHeight - calcHeight) / 2)
+        const calcHeight = Math.round((sourceWidth * 16) / 9)
+        if (calcHeight <= sourceHeight) {
+          sourceY = Math.round((sourceHeight - calcHeight) / 2)
           sourceHeight = calcHeight
         }
       }
       targetWidth = 1080
       targetHeight = 1920
     } else if (effectiveAspectRatio === '3:4') {
-      if (targetWidth > targetHeight) {
-        const calcWidth = Math.round((targetHeight * 3) / 4)
-        sourceX = Math.round((targetWidth - calcWidth) / 2)
+      if (sourceWidth > sourceHeight) {
+        const calcWidth = Math.round((sourceHeight * 3) / 4)
+        sourceX = Math.round((sourceWidth - calcWidth) / 2)
         sourceWidth = calcWidth
       }
       targetWidth = 960
       targetHeight = 1280
     } else if (effectiveAspectRatio === '4:3') {
       // Landscape 4:3
-      if (targetHeight > targetWidth) {
-        const calcHeight = Math.round((targetWidth * 3) / 4)
-        sourceY = Math.round((targetHeight - calcHeight) / 2)
+      if (sourceHeight > sourceWidth && !isVirtualLandscape) {
+        const calcHeight = Math.round((sourceWidth * 3) / 4)
+        sourceY = Math.round((sourceHeight - calcHeight) / 2)
         sourceHeight = calcHeight
-      } else {
-        const calcWidth = Math.round((targetHeight * 4) / 3)
-        if (calcWidth <= targetWidth) {
-          sourceX = Math.round((targetWidth - calcWidth) / 2)
+      } else if (!isVirtualLandscape) {
+        const calcWidth = Math.round((sourceHeight * 4) / 3)
+        if (calcWidth <= sourceWidth) {
+          sourceX = Math.round((sourceWidth - calcWidth) / 2)
           sourceWidth = calcWidth
         }
       }
@@ -382,10 +397,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       targetHeight = 960
     } else if (effectiveAspectRatio === '16:9') {
       // Landscape 16:9
-      const calcHeight = Math.round((targetWidth * 9) / 16)
-      if (calcHeight <= targetHeight) {
-        sourceY = Math.round((targetHeight - calcHeight) / 2)
-        sourceHeight = calcHeight
+      if (!isVirtualLandscape) {
+        const calcHeight = Math.round((sourceWidth * 9) / 16)
+        if (calcHeight <= sourceHeight) {
+          sourceY = Math.round((sourceHeight - calcHeight) / 2)
+          sourceHeight = calcHeight
+        }
       }
       targetWidth = 1280
       targetHeight = 720
@@ -413,13 +430,31 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
 
     // Draw video frame to canvas with aspect ratio cropping
-    if (facingMode === 'user') {
-      ctx.translate(targetWidth, 0)
-      ctx.scale(-1, 1)
-      ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
+    if (isVirtualLandscape) {
+      ctx.save()
+      ctx.translate(targetWidth / 2, targetHeight / 2)
+      const rotAngle = virtualRotationAngle === -90 ? -90 : 90
+      ctx.rotate((rotAngle * Math.PI) / 180)
+      if (facingMode === 'user') {
+        ctx.scale(-1, 1)
+      }
+      const vW = video.videoWidth || 720
+      const vH = video.videoHeight || 1280
+      // Frame video diputar 90 derajat sehingga vH memetakan ke targetWidth dan vW memetakan ke targetHeight
+      const scale = Math.max(targetWidth / vH, targetHeight / vW)
+      const drawW = vW * scale
+      const drawH = vH * scale
+      ctx.drawImage(video, -drawW / 2, -drawH / 2, drawW, drawH)
+      ctx.restore()
     } else {
-      ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
+      if (facingMode === 'user') {
+        ctx.translate(targetWidth, 0)
+        ctx.scale(-1, 1)
+        ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+      } else {
+        ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
+      }
     }
 
     // Hitung Skala Proporsional Canvas (Memastikan ukuran watermark tetap kecil dan konsisten baik potret maupun landscape)
@@ -1305,22 +1340,28 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         position: 'fixed',
         top: 0,
         left: 0,
-        width: '100vw',
-        height: '100vh',
+        width: isVirtualLandscape ? `${windowDimensions.height}px` : '100vw',
+        height: isVirtualLandscape ? `${windowDimensions.width}px` : '100vh',
+        transformOrigin: 'top left',
+        transform: isVirtualLandscape
+          ? virtualRotationAngle === -90
+            ? `translate(0, ${windowDimensions.height}px) rotate(-90deg)`
+            : `translate(${windowDimensions.width}px, 0) rotate(90deg)`
+          : 'none',
         background: '#0F172A',
         zIndex: 9999,
         display: 'flex',
-        flexDirection: isDeviceLandscape ? 'row' : 'column',
+        flexDirection: isLandscape ? 'row' : 'column',
         alignItems: 'center',
-        justifyContent: isDeviceLandscape ? 'center' : 'space-between',
-        padding: isDeviceLandscape ? '0.5rem 1rem' : '1rem',
-        gap: isDeviceLandscape ? '1rem' : '0',
+        justifyContent: isLandscape ? 'center' : 'space-between',
+        padding: isLandscape ? '0.4rem 0.6rem' : '1rem',
+        gap: isLandscape ? '0.6rem' : '0',
         boxSizing: 'border-box',
         overflow: 'hidden'
       }}
     >
       {/* Tombol Header saat Landscape (Floating di Kiri Atas / Kanan Atas) atau Header Standar saat Portrait */}
-      {!isDeviceLandscape ? (
+      {!isLandscape ? (
         <div style={{ width: '100%', maxWidth: '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
             <Camera size={22} color="#38BDF8" />
@@ -1443,11 +1484,11 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       {isEditingTitle && (
         <div
           style={{
-            position: 'fixed',
+            position: 'absolute',
             top: 0,
             left: 0,
-            width: '100vw',
-            height: '100vh',
+            width: '100%',
+            height: '100%',
             background: 'rgba(0, 0, 0, 0.75)',
             backdropFilter: 'blur(8px)',
             zIndex: 10000,
@@ -1465,7 +1506,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             style={{
               width: '100%',
               maxWidth: '480px',
-              maxHeight: '85vh',
+              maxHeight: isLandscape ? '92%' : '85vh',
               overflowY: 'auto',
               background: '#1E293B',
               border: '1.5px solid rgba(56, 189, 248, 0.4)',
@@ -1714,19 +1755,21 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       <div
         style={{
           position: 'relative',
-          flex: isDeviceLandscape ? '1 1 auto' : 'none',
-          width: isDeviceLandscape ? 'calc(100vw - 120px)' : '100%',
-          maxWidth: isDeviceLandscape ? 'calc(100vw - 120px)' : '480px',
-          height: isDeviceLandscape ? 'calc(100vh - 16px)' : 'auto',
-          aspectRatio: isDeviceLandscape ? (aspectRatio === '16:9' ? '16 / 9' : '4 / 3') : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
-          maxHeight: isDeviceLandscape ? 'calc(100vh - 16px)' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
+          flex: isLandscape ? '1 1 auto' : 'none',
+          width: isLandscape ? 'calc(100% - 100px)' : '100%',
+          maxWidth: isLandscape ? 'none' : '480px',
+          height: isLandscape ? 'calc(100% - 8px)' : 'auto',
+          aspectRatio: isLandscape
+            ? (aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '1:1' ? '1 / 1' : '4 / 3')
+            : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
+          maxHeight: isLandscape ? '100%' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: isDeviceLandscape ? '16px' : '24px',
+          borderRadius: isLandscape ? '16px' : '24px',
           overflow: 'hidden',
           background: '#000',
-          margin: isDeviceLandscape ? '0' : '0.5rem 0',
+          margin: isLandscape ? '0' : '0.5rem 0',
           border: '1px solid rgba(255,255,255,0.1)'
         }}
       >
@@ -2167,19 +2210,19 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       {/* Controls & Inputs (Berada di Sisi Kanan saat Landscape, di Bawah saat Portrait) */}
       <div
         style={{
-          width: isDeviceLandscape ? '96px' : '100%',
-          maxWidth: isDeviceLandscape ? '110px' : '480px',
+          width: isLandscape ? '85px' : '100%',
+          maxWidth: isLandscape ? '85px' : '480px',
           display: 'flex',
-          flexDirection: isDeviceLandscape ? 'column' : 'column',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: isDeviceLandscape ? '1rem' : '0.75rem',
+          gap: isLandscape ? '1rem' : '0.75rem',
           flexShrink: 0
         }}
       >
         {!capturedPhoto ? (
           <>
-            {!isDeviceLandscape && (
+            {!isLandscape && (
               <input
                 type="text"
                 placeholder="Catatan Kegiatan (Contoh: Mengajar Kelas X-A)..."
@@ -2201,10 +2244,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             <div
               style={{
                 display: 'flex',
-                flexDirection: isDeviceLandscape ? 'column' : 'row',
+                flexDirection: isLandscape ? 'column' : 'row',
                 alignItems: 'center',
-                justifyContent: isDeviceLandscape ? 'center' : 'space-around',
-                gap: isDeviceLandscape ? '1.2rem' : '0',
+                justifyContent: isLandscape ? 'center' : 'space-around',
+                gap: isLandscape ? '1.2rem' : '0',
                 width: '100%',
                 padding: '0.5rem 0'
               }}
@@ -2218,8 +2261,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   border: '1px solid rgba(255,255,255,0.3)',
                   color: 'white',
                   borderRadius: '50%',
-                  width: isDeviceLandscape ? '44px' : '48px',
-                  height: isDeviceLandscape ? '44px' : '48px',
+                  width: isLandscape ? '44px' : '48px',
+                  height: isLandscape ? '44px' : '48px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -2227,7 +2270,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   backdropFilter: 'blur(6px)'
                 }}
               >
-                <RefreshCw size={isDeviceLandscape ? 20 : 22} />
+                <RefreshCw size={isLandscape ? 20 : 22} />
               </button>
 
               {/* Tombol Shutter Jepret (Paling Menonjol) */}
@@ -2236,8 +2279,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 disabled={isProcessing}
                 title="Ambil Foto"
                 style={{
-                  width: isDeviceLandscape ? '64px' : '68px',
-                  height: isDeviceLandscape ? '64px' : '68px',
+                  width: isLandscape ? '62px' : '68px',
+                  height: isLandscape ? '62px' : '68px',
                   borderRadius: '50%',
                   border: '4px solid white',
                   background: '#EF4444',
@@ -2248,11 +2291,11 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 }}
               />
 
-              {!isDeviceLandscape && <div style={{ width: '48px' }}></div>}
+              {!isLandscape && <div style={{ width: '48px' }}></div>}
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', width: isDeviceLandscape ? '110px' : '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: isLandscape ? '85px' : '100%' }}>
             {onSelectPhoto && (
               <button
                 type="button"
@@ -2264,9 +2307,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 style={{
                   background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
                   color: 'white',
-                  fontSize: isDeviceLandscape ? '0.72rem' : '0.9rem',
+                  fontSize: isLandscape ? '0.72rem' : '0.9rem',
                   fontWeight: '700',
-                  padding: isDeviceLandscape ? '0.5rem 0.4rem' : '0.85rem 1rem',
+                  padding: isLandscape ? '0.5rem 0.3rem' : '0.85rem 1rem',
                   borderRadius: '12px',
                   display: 'flex',
                   alignItems: 'center',
@@ -2278,10 +2321,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   textAlign: 'center'
                 }}
               >
-                <CheckSquare size={16} /> {isDeviceLandscape ? 'Gunakan' : 'Masukkan Foto ke Form Tugas Luar'}
+                <CheckSquare size={16} /> {isLandscape ? 'Gunakan' : 'Masukkan Foto ke Form Tugas Luar'}
               </button>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: isDeviceLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.4rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.35rem' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -2289,25 +2332,25 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   startCamera(facingMode)
                 }}
                 className="btn"
-                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
+                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
               >
-                <RefreshCw size={13} /> Ulangi
+                <RefreshCw size={12} /> Ulangi
               </button>
               <button
                 type="button"
                 onClick={downloadPhoto}
                 className="btn"
-                style={{ background: '#10B981', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
+                style={{ background: '#10B981', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
               >
-                <Download size={13} /> Simpan
+                <Download size={12} /> Simpan
               </button>
               <button
                 type="button"
                 onClick={sharePhoto}
                 className="btn"
-                style={{ background: '#38BDF8', color: 'white', fontSize: '0.75rem', padding: '0.55rem 0.4rem' }}
+                style={{ background: '#38BDF8', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
               >
-                <Share2 size={13} /> Bagikan
+                <Share2 size={12} /> Bagikan
               </button>
             </div>
           </div>
