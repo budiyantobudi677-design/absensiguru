@@ -14,9 +14,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 10000000 // 10MB
       },
       manifest: {
-        name: 'Presensia - Absensi Guru',
-        short_name: 'Presensia',
-        description: 'Aplikasi Presensi Guru & KBM',
+        name: 'PanritaEdu (Presensi Digital)',
+        short_name: 'PanritaEdu',
+        description: 'Aplikasi Presensi Digital & KBM Guru',
         theme_color: '#4F46E5',
         background_color: '#F8FAFC',
         display: 'standalone',
