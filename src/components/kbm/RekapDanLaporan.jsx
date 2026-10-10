@@ -6,7 +6,13 @@ import { FileSpreadsheet, Printer, Calendar, BookOpen, Award, CheckCircle, Chevr
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects } from '../../lib/subjectsManager'
 
-export default function RekapDanLaporan({ selectedClass, classes, user, schoolInfo }) {
+export default function RekapDanLaporan({ selectedClass, classes, user, profile, schoolInfo }) {
+  const activeProfile = profile || user || {}
+  const uId = activeProfile?.id || user?.id
+  const guruTipe = localStorage.getItem(`guru_tipe_${uId}`) || activeProfile?.penugasan_tipe || (activeProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+  const isGuruMapel = guruTipe === 'guru_mapel'
+  const guruMapelSubject = activeProfile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${uId}`) || ''
+
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [rekapType, setRekapType] = useState('kehadiran') // 'kehadiran' | 'nilai' | 'jurnal'
 
@@ -18,7 +24,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
   // Sub-tipe Nilai: 'per_mapel' | 'legger_semua'
   const [gradesViewMode, setGradesViewMode] = useState('per_mapel')
   const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
-  const [subject, setSubject] = useState(getCustomSubjects()[0] || 'Matematika')
+  const [subject, setSubject] = useState(isGuruMapel && guruMapelSubject ? guruMapelSubject : (getCustomSubjects()[0] || 'Matematika'))
   const [semester, setSemester] = useState('ganjil')
   const [academicYear, setAcademicYear] = useState('2026/2027')
 
@@ -799,18 +805,32 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           {rekapType === 'nilai' && gradesViewMode === 'per_mapel' && (
             <div>
               <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                Mata Pelajaran
+                Mata Pelajaran {isGuruMapel && '(Terkunci Mapel Anda)'}
               </label>
-              <select
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="input"
-                style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-              >
-                {availableSubjects.map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
+              {isGuruMapel ? (
+                <div style={{
+                  padding: '0.65rem 0.85rem',
+                  fontSize: '0.85rem',
+                  borderRadius: '12px',
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  color: '#475569',
+                  fontWeight: 'bold'
+                }}>
+                  {subject || guruMapelSubject}
+                </div>
+              ) : (
+                <select
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="input"
+                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+                >
+                  {availableSubjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -818,19 +838,33 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
             <>
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                  Mata Pelajaran
+                  Mata Pelajaran {isGuruMapel && '(Terkunci Mapel Anda)'}
                 </label>
-                <select
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="input"
-                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-                >
-                  <option value="Semua">-- Semua Mata Pelajaran --</option>
-                  {availableSubjects.map(sub => (
-                    <option key={sub} value={sub}>{sub}</option>
-                  ))}
-                </select>
+                {isGuruMapel ? (
+                  <div style={{
+                    padding: '0.65rem 0.85rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '12px',
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    color: '#475569',
+                    fontWeight: 'bold'
+                  }}>
+                    {subject || guruMapelSubject}
+                  </div>
+                ) : (
+                  <select
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="input"
+                    style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+                  >
+                    <option value="Semua">-- Semua Mata Pelajaran --</option>
+                    {availableSubjects.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>

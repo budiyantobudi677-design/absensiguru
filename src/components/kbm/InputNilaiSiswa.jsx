@@ -1,16 +1,25 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Award, Save, RefreshCw, Layers, Sparkles, Filter, CheckCircle2, TrendingUp, HelpCircle, ShieldAlert } from 'lucide-react'
-import { getCustomSubjects } from '../../lib/subjectsManager'
+import { Award, Save, RefreshCw, Layers, Sparkles, Filter, CheckCircle2, TrendingUp, HelpCircle, ShieldAlert, Lock, AlertCircle } from 'lucide-react'
+import { getCustomSubjects, getAssignedMapelInfo } from '../../lib/subjectsManager'
 
 export default function InputNilaiSiswa({ selectedClass, classes, user, profile, schoolInfo }) {
   const activeProfile = profile || user || {}
+  const uId = activeProfile?.id || user?.id
+  const guruTipe = localStorage.getItem(`guru_tipe_${uId}`) || activeProfile?.penugasan_tipe || (activeProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+  const isGuruMapel = guruTipe === 'guru_mapel'
+  const guruMapelSubject = activeProfile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${uId}`) || ''
+
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [students, setStudents] = useState([])
   const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
-  const [subject, setSubject] = useState(activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
+  const [assignedMapelMap, setAssignedMapelMap] = useState({})
+
+  const initialSubject = isGuruMapel && guruMapelSubject 
+    ? guruMapelSubject 
+    : (activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
+
+  const [subject, setSubject] = useState(initialSubject)
   const [semester, setSemester] = useState('ganjil')
   const [academicYear, setAcademicYear] = useState('2026/2027')
   const [assessmentType, setAssessmentType] = useState('tp') // 'tp' | 'sts' | 'sas'
@@ -22,18 +31,38 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
   const [message, setMessage] = useState(null)
 
   useEffect(() => {
+    // Muat info peta guru mapel
+    getAssignedMapelInfo(supabase).then(info => {
+      setAssignedMapelMap(info || {})
+    })
+  }, [])
+
+  useEffect(() => {
+    // Jika akun guru mapel, pastikan subject selalu terkunci pada mata pelajarannya
+    if (isGuruMapel && guruMapelSubject) {
+      setSubject(guruMapelSubject)
+    }
+  }, [isGuruMapel, guruMapelSubject])
+
+  useEffect(() => {
     const onSubjectsUpdated = () => {
       const subs = getCustomSubjects()
       setAvailableSubjects(subs)
-      if (!subs.includes(subject)) {
+      if (!isGuruMapel && !subs.includes(subject)) {
         setSubject(subs[0] || 'Matematika')
       }
     }
     window.addEventListener('kbm_subjects_updated', onSubjectsUpdated)
     return () => window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
-  }, [subject])
+  }, [subject, isGuruMapel])
 
   const standardSubjects = availableSubjects
+
+  // Cek apakah mata pelajaran yang dipilih saat ini diampu oleh Guru Mapel
+  const currentAssignedInfo = assignedMapelMap[subject]
+  const isMapelManagedByGuruMapel = Boolean(currentAssignedInfo && currentAssignedInfo.teacherId !== uId)
+  // Untuk Guru Kelas: jika mapel sudah ada guru mapelnya, jadikan read-only
+  const isReadOnlyForGuruKelas = !isGuruMapel && isMapelManagedByGuruMapel
 
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {
@@ -181,19 +210,49 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-              Mata Pelajaran
-            </label>
-            <select
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="input"
-              style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
-            >
-              {standardSubjects.map(sub => (
-                <option key={sub} value={sub}>{sub}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Mata Pelajaran
+              </label>
+              {isGuruMapel && (
+                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#9333EA', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  <Lock size={11} /> Terkunci (Guru Mapel)
+                </span>
+              )}
+            </div>
+            {isGuruMapel ? (
+              <div style={{
+                padding: '0.65rem 0.85rem',
+                fontSize: '0.875rem',
+                borderRadius: '12px',
+                background: '#FAF5FF',
+                border: '1px solid #E9D5FF',
+                color: '#7E22CE',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <span>{subject || guruMapelSubject || 'Belum diatur'}</span>
+                <Lock size={14} color="#9333EA" />
+              </div>
+            ) : (
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="input"
+                style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+              >
+                {standardSubjects.map(sub => {
+                  const isManaged = Boolean(assignedMapelMap[sub] && assignedMapelMap[sub].teacherId !== uId)
+                  return (
+                    <option key={sub} value={sub}>
+                      {sub} {isManaged ? `(Diampu Guru Mapel)` : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            )}
           </div>
 
           <div>
@@ -254,6 +313,29 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
           </div>
         </div>
       </div>
+
+      {/* Banner Mode Hanya Lihat untuk Guru Kelas jika mapel diampu Guru Mapel */}
+      {isReadOnlyForGuruKelas && (
+        <div style={{
+          background: '#FEF3C7',
+          border: '1px solid #FCD34D',
+          borderRadius: '16px',
+          padding: '0.9rem 1.25rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '12px',
+          color: '#92400E'
+        }}>
+          <ShieldAlert size={22} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div style={{ fontSize: '0.85rem', lineHeight: '1.45' }}>
+            <strong>Mode Hanya Lihat:</strong> Mata pelajaran <u>{subject}</u> diampu oleh <strong>{currentAssignedInfo?.teacherName}</strong> (Guru Mapel).
+            <br />
+            <span style={{ fontSize: '0.78rem', color: '#B45309' }}>
+              Sebagai Guru Kelas, Anda tetap dapat melihat nilai dan mengunduh legger/rekap. Form input nilai terkunci karena pengisian nilai wewenang guru mata pelajaran bersangkutan.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Alert Notifikasi */}
       {message && (
@@ -401,6 +483,7 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
                       value={currentScore}
                       onChange={(e) => handleGradeChange(student.id, e.target.value)}
                       placeholder="0"
+                      disabled={isReadOnlyForGuruKelas}
                       style={{
                         width: '68px',
                         padding: '0.45rem 0.5rem',
@@ -408,6 +491,8 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
                         textAlign: 'center',
                         fontSize: '0.9rem',
                         fontWeight: '800',
+                        opacity: isReadOnlyForGuruKelas ? 0.75 : 1,
+                        cursor: isReadOnlyForGuruKelas ? 'not-allowed' : 'text',
                         border: currentScore === '' ? '1px solid var(--border)' : isTuntas ? '1px solid #10B981' : '1px solid #EF4444',
                         background: currentScore === '' ? 'var(--surface)' : isTuntas ? '#ECFDF5' : '#FEF2F2',
                         color: currentScore === '' ? 'var(--text)' : isTuntas ? '#065F46' : '#991B1B'
@@ -423,11 +508,13 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
         {/* Footer Submit Button */}
         <div style={{ padding: '1rem 1.25rem', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Nilai tersimpan akan terintegrasi ke buku nilai dan rekapitulasi.
+            {isReadOnlyForGuruKelas 
+              ? `*Mode Hanya Lihat: Nilai dikelola langsung oleh guru mapel (${currentAssignedInfo?.teacherName}).`
+              : 'Nilai tersimpan akan terintegrasi ke buku nilai dan rekapitulasi.'}
           </span>
           <button
             onClick={handleSaveGrades}
-            disabled={saving || students.length === 0}
+            disabled={saving || students.length === 0 || isReadOnlyForGuruKelas}
             className="btn btn-primary"
             style={{
               width: 'auto',
@@ -435,14 +522,16 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, profile,
               borderRadius: '12px',
               fontSize: '0.85rem',
               fontWeight: 'bold',
-              background: '#9333EA',
+              background: isReadOnlyForGuruKelas ? '#CBD5E1' : '#9333EA',
+              color: isReadOnlyForGuruKelas ? '#64748B' : 'white',
+              cursor: isReadOnlyForGuruKelas ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            <Save size={16} />
-            <span>{saving ? 'Menyimpan...' : 'Simpan Semua Nilai'}</span>
+            {isReadOnlyForGuruKelas ? <Lock size={16} /> : <Save size={16} />}
+            <span>{isReadOnlyForGuruKelas ? 'Terkunci (Guru Mapel)' : (saving ? 'Menyimpan...' : 'Simpan Semua Nilai')}</span>
           </button>
         </div>
       </div>

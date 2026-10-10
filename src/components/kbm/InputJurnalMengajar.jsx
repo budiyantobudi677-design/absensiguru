@@ -1,12 +1,15 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter } from 'lucide-react'
-import { getCustomSubjects } from '../../lib/subjectsManager'
+import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter, Lock, ShieldAlert, AlertCircle } from 'lucide-react'
+import { getCustomSubjects, getAssignedMapelInfo } from '../../lib/subjectsManager'
 
 export default function InputJurnalMengajar({ selectedClass, classes, user, profile, schoolInfo }) {
   const activeProfile = profile || user || {}
+  const uId = activeProfile?.id || user?.id
+  const guruTipe = localStorage.getItem(`guru_tipe_${uId}`) || activeProfile?.penugasan_tipe || (activeProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+  const isGuruMapel = guruTipe === 'guru_mapel'
+  const guruMapelSubject = activeProfile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${uId}`) || ''
+
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [journals, setJournals] = useState([])
   const [loading, setLoading] = useState(false)
@@ -14,16 +17,35 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
   const [message, setMessage] = useState(null)
   const [viewTab, setViewTab] = useState('form') // 'form' | 'history'
   const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
+  const [assignedMapelMap, setAssignedMapelMap] = useState({})
+
+  const initialSubject = isGuruMapel && guruMapelSubject 
+    ? guruMapelSubject 
+    : (activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toLocaleDateString('en-CA'),
-    mata_pelajaran: activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika',
+    mata_pelajaran: initialSubject,
     topik: '',
     teknik: 'Tatap Muka (Luring)',
     kegiatan: '',
     penilaian: '',
     catatan: ''
   })
+
+  useEffect(() => {
+    // Muat info peta guru mapel
+    getAssignedMapelInfo(supabase).then(info => {
+      setAssignedMapelMap(info || {})
+    })
+  }, [])
+
+  useEffect(() => {
+    // Jika guru mapel, kunci form ke mapel miliknya sendiri
+    if (isGuruMapel && guruMapelSubject) {
+      setFormData(prev => ({ ...prev, mata_pelajaran: guruMapelSubject }))
+    }
+  }, [isGuruMapel, guruMapelSubject])
 
   useEffect(() => {
     const onSubjectsUpdated = () => {
@@ -34,6 +56,12 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
   }, [])
 
   const standardSubjects = availableSubjects
+
+  // Cek apakah mata pelajaran yang dipilih saat ini diampu oleh Guru Mapel spesifik
+  const currentAssignedInfo = assignedMapelMap[formData.mata_pelajaran]
+  const isMapelManagedByGuruMapel = Boolean(currentAssignedInfo && currentAssignedInfo.teacherId !== uId)
+  // Untuk Guru Kelas: jika mapel sudah ada guru mapelnya, jadikan read-only
+  const isReadOnlyForGuruKelas = !isGuruMapel && isMapelManagedByGuruMapel
 
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {
@@ -245,22 +273,75 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
               </div>
 
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                  Mata Pelajaran
-                </label>
-                <select
-                  name="mata_pelajaran"
-                  value={formData.mata_pelajaran}
-                  onChange={handleInputChange}
-                  className="input"
-                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
-                >
-                  {standardSubjects.map(sub => (
-                    <option key={sub} value={sub}>{sub}</option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Mata Pelajaran
+                  </label>
+                  {isGuruMapel && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#0D9488', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                      <Lock size={11} /> Terkunci (Guru Mapel)
+                    </span>
+                  )}
+                </div>
+                {isGuruMapel ? (
+                  <div style={{
+                    padding: '0.65rem 0.85rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '12px',
+                    background: '#F0FDFA',
+                    border: '1px solid #99F6E4',
+                    color: '#0F766E',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span>{formData.mata_pelajaran || guruMapelSubject || 'Belum diatur'}</span>
+                    <Lock size={14} color="#0D9488" />
+                  </div>
+                ) : (
+                  <select
+                    name="mata_pelajaran"
+                    value={formData.mata_pelajaran}
+                    onChange={handleInputChange}
+                    className="input"
+                    style={{ padding: '0.65rem 0.85rem', fontSize: '0.875rem', borderRadius: '12px' }}
+                  >
+                    {standardSubjects.map(sub => {
+                      const isManaged = Boolean(assignedMapelMap[sub] && assignedMapelMap[sub].teacherId !== uId)
+                      return (
+                        <option key={sub} value={sub}>
+                          {sub} {isManaged ? `(Diampu Guru Mapel)` : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                )}
               </div>
             </div>
+
+            {/* Banner Mode Hanya Lihat untuk Guru Kelas jika mapel diampu Guru Mapel */}
+            {isReadOnlyForGuruKelas && (
+              <div style={{
+                background: '#FEF3C7',
+                border: '1px solid #FCD34D',
+                borderRadius: '14px',
+                padding: '0.85rem 1rem',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                color: '#92400E'
+              }}>
+                <ShieldAlert size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>
+                  <strong>Mode Hanya Lihat:</strong> Mata pelajaran <u>{formData.mata_pelajaran}</u> diampu oleh <strong>{currentAssignedInfo?.teacherName}</strong> (Guru Mapel). 
+                  <br />
+                  <span style={{ fontSize: '0.75rem', color: '#B45309' }}>
+                    Anda hanya dapat melihat riwayat agenda kegiatan dan mengunduh rekap. Pengisian agenda jurnal baru hanya dapat dilakukan oleh guru mapel bersangkutan.
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
@@ -346,20 +427,25 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || isReadOnlyForGuruKelas}
               className="btn"
               style={{
                 marginTop: '0.5rem',
-                background: 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)',
-                color: 'white',
+                background: isReadOnlyForGuruKelas ? '#CBD5E1' : 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)',
+                color: isReadOnlyForGuruKelas ? '#64748B' : 'white',
                 borderRadius: '14px',
                 padding: '0.85rem 1.5rem',
                 fontWeight: 'bold',
-                boxShadow: '0 4px 14px rgba(13, 148, 136, 0.3)'
+                cursor: isReadOnlyForGuruKelas ? 'not-allowed' : 'pointer',
+                boxShadow: isReadOnlyForGuruKelas ? 'none' : '0 4px 14px rgba(13, 148, 136, 0.3)'
               }}
             >
-              <BookOpen size={18} />
-              <span>{submitting ? 'Menyimpan...' : 'Simpan Jurnal Pembelajaran'}</span>
+              {isReadOnlyForGuruKelas ? <Lock size={18} /> : <BookOpen size={18} />}
+              <span>
+                {isReadOnlyForGuruKelas 
+                  ? 'Terkunci (Hanya Guru Mapel yang Mengisi)' 
+                  : (submitting ? 'Menyimpan...' : 'Simpan Jurnal Pembelajaran')}
+              </span>
             </button>
           </form>
         </div>
