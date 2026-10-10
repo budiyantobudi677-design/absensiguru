@@ -15,30 +15,23 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   const [geoData, setGeoData] = useState({
     latitude: null,
     longitude: null,
-    altitude: null,
+    altitude: 64.6,
     heading: null,
     accuracy: null
   })
+  const [compassHeading, setCompassHeading] = useState(227)
 
-  // Pengaturan Teks Kustom yang Bisa Diedit Pengguna
-  const [isEditingWatermark, setIsEditingWatermark] = useState(false)
-  const [customStatusText, setCustomStatusText] = useState(() => localStorage.getItem('timemark_custom_status') || 'Selesai')
-  const [customAddressText, setCustomAddressText] = useState(() => localStorage.getItem('timemark_custom_address') || '')
-  const [customCompassText, setCustomCompassText] = useState(() => localStorage.getItem('timemark_custom_compass') || '227°SW')
-  const [customAltitudeText, setCustomAltitudeText] = useState(() => localStorage.getItem('timemark_custom_altitude') || '64.6 m')
-  const [customCoordsText, setCustomCoordsText] = useState(() => localStorage.getItem('timemark_custom_coords') || '')
-
-  // Deteksi Orientasi Perangkat (Potret / Landscape)
-  const [orientationMode, setOrientationMode] = useState(() => {
+  // Deteksi Otomatis Rotasi HP (Landscape jika HP diputar 90 derajat)
+  const [isDeviceLandscape, setIsDeviceLandscape] = useState(() => {
     if (typeof window !== 'undefined') {
-      return window.innerWidth > window.innerHeight ? 'landscape' : 'portrait'
+      return window.innerWidth > window.innerHeight
     }
-    return 'portrait'
+    return false
   })
 
-  // Judul paling atas kustom yang tersimpan di localStorage
+  // Judul / Status Timemark kustom yang tersimpan di localStorage (Merubah teks "Hadir", "Selesai", dll.)
   const [customTitle, setCustomTitle] = useState(() => {
-    return localStorage.getItem('timemark_custom_title') || schoolName || 'Presensia'
+    return localStorage.getItem('timemark_custom_title') || 'Selesai'
   })
   const [isEditingTitle, setIsEditingTitle] = useState(false)
 
@@ -58,7 +51,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return saved
   })
 
-  // Pengaturan Rasio Aspek Foto ('3:4' | '9:16' | '1:1' | '16:9' | '4:3')
+  // Pengaturan Rasio Aspek Foto ('3:4' | '9:16' | '1:1' | '16:9')
   const [aspectRatio, setAspectRatio] = useState(() => {
     return localStorage.getItem('timemark_aspect_ratio') || '3:4'
   })
@@ -81,20 +74,53 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return 'WIB'
   }
 
-  // Listener Sensor & Window Resize untuk Orientasi Landscape / Portrait
+  // Listener Sensor Arah Kompas Dinamis (Otomatis Berubah Mengikuti Gerakan / Arah HP)
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleOrientation = (e) => {
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        setCompassHeading(Math.round(e.webkitCompassHeading))
+      } else if (e.alpha !== null && e.alpha !== undefined) {
+        const heading = (360 - Math.round(e.alpha)) % 360
+        setCompassHeading(heading)
+      }
+    }
+
+    window.addEventListener('deviceorientation', handleOrientation, true)
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation, true)
+    }
+  }, [isOpen])
+
+  // Listener Deteksi Rotasi HP 90 Derajat (Landscape Alami saat HP Diputar)
   useEffect(() => {
     const checkOrientation = () => {
       const isLand = window.innerWidth > window.innerHeight
-      setOrientationMode(isLand ? 'landscape' : 'portrait')
+      setIsDeviceLandscape(isLand)
     }
 
     window.addEventListener('resize', checkOrientation)
     window.addEventListener('orientationchange', checkOrientation)
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', checkOrientation)
+    }
     return () => {
       window.removeEventListener('resize', checkOrientation)
       window.removeEventListener('orientationchange', checkOrientation)
+      if (window.screen?.orientation) {
+        window.screen.orientation.removeEventListener('change', checkOrientation)
+      }
     }
   }, [])
+
+  // Helper Konversi Singkatan Arah Kompas (Contoh: 227 -> SW)
+  const getCompassShortDir = (deg) => {
+    if (deg === null || deg === undefined || isNaN(deg)) return 'SW'
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+    const idx = Math.round(((deg % 360) / 22.5)) % 16
+    return directions[idx] || 'SW'
+  }
 
   // Helper Konversi Koordinat Desimal ke Format Foto Referensi (Contoh: 5.125379°S, 119.530402°E)
   const formatCoordDecimalCard = (lat, lng) => {
@@ -277,8 +303,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const video = videoRef.current
     const canvas = document.createElement('canvas')
 
-    // 1. Calculate Target Dimensions Based on Aspect Ratio & Landscape Mode
-    const isLandscape = orientationMode === 'landscape'
+    // 1. Calculate Target Dimensions Based on Device Rotation (Landscape saat HP diputar 90 derajat)
+    const isLandscape = isDeviceLandscape
     let effectiveAspectRatio = aspectRatio
 
     if (isLandscape) {
@@ -405,12 +431,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const displayTitle = (customTitle || schoolName || 'PRESENSIA').toUpperCase()
     const activeIcon = customIcon || '🎓'
 
-    // Data Kustom yang Bisa Diedit
-    const displayStatus = customStatusText.trim() || customNote.trim() || 'Hadir'
-    const displayAddress = customAddressText.trim() || locationText
-    const displayCompass = customCompassText.trim() || '227°SW'
-    const displayAltitude = customAltitudeText.trim() || (geoData.altitude !== null ? `${geoData.altitude} m` : '64.6 m')
-    const displayCoords = customCoordsText.trim() || formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)
+    // Teks status presensi mengikuti apa yang diisi di menu pengaturan (merubah Hadir, Selesai, dll.)
+    const displayStatus = customTitle.trim() || 'Hadir'
+    const displayAddress = locationText
+    const displayCompass = `${compassHeading}°${getCompassShortDir(compassHeading)}`
+    const displayAltitude = geoData.altitude ? `${geoData.altitude} m` : '64.6 m'
+    const displayCoords = formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)
 
     // Helper: Gambar Logo Teks PanritaEdu & Subjudul "100% foto asli" di Bagian Kanan Atas Foto (Ukuran Elegan & Sedikit Lebih Kecil)
     const drawPanritaEduBrand = () => {
@@ -1268,63 +1294,15 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }}
     >
       {/* Top Header */}
-      <div style={{ width: '100%', maxWidth: orientationMode === 'landscape' ? '720px' : '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+      <div style={{ width: '100%', maxWidth: isDeviceLandscape ? '720px' : '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
           <Camera size={22} color="#38BDF8" />
           <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {/* Tombol Toggle Rotasi / Orientasi Manual */}
-          <button
-            onClick={() => setOrientationMode(orientationMode === 'landscape' ? 'portrait' : 'landscape')}
-            title="Ubah Orientasi Landscape / Potret"
-            style={{
-              background: orientationMode === 'landscape' ? '#0284C7' : 'rgba(255,255,255,0.15)',
-              border: orientationMode === 'landscape' ? '1px solid #38BDF8' : 'none',
-              color: 'white',
-              borderRadius: '20px',
-              padding: '0.35rem 0.65rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '0.75rem',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            {orientationMode === 'landscape' ? '🖥️ Landscape' : '📱 Potret'}
-          </button>
-
-          {/* Tombol Buka Panel Edit Teks */}
-          <button
-            onClick={() => {
-              setIsEditingWatermark(!isEditingWatermark)
-              if (isEditingTitle) setIsEditingTitle(false)
-            }}
-            title="Edit Teks Watermark"
-            style={{
-              background: isEditingWatermark ? '#F59E0B' : 'rgba(255,255,255,0.15)',
-              border: isEditingWatermark ? '1px solid #FDE047' : 'none',
-              color: 'white',
-              borderRadius: '20px',
-              padding: '0.35rem 0.65rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '0.75rem',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            ✏️ Edit Teks
-          </button>
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {/* Tombol Pengaturan Desain */}
           <button
-            onClick={() => {
-              setIsEditingTitle(!isEditingTitle)
-              if (isEditingWatermark) setIsEditingWatermark(false)
-            }}
+            onClick={() => setIsEditingTitle(!isEditingTitle)}
             title="Pengaturan Watermark"
             style={{
               background: isEditingTitle ? '#38BDF8' : 'rgba(255,255,255,0.15)',
@@ -1363,132 +1341,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         </div>
       </div>
 
-      {/* Panel Edit Teks Watermark (Bisa Diedit Bebas oleh Pengguna) */}
-      {isEditingWatermark && (
-        <div
-          style={{
-            width: '100%',
-            maxWidth: orientationMode === 'landscape' ? '720px' : '480px',
-            background: 'rgba(15, 23, 42, 0.96)',
-            border: '1.5px solid #F59E0B',
-            borderRadius: '16px',
-            padding: '1rem',
-            boxSizing: 'border-box',
-            marginTop: '0.5rem',
-            color: 'white',
-            zIndex: 25,
-            maxHeight: '40vh',
-            overflowY: 'auto'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.4rem' }}>
-            <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#FDE047' }}>✏️ Edit Teks Watermark & Geo Tag</span>
-            <button
-              onClick={() => {
-                setCustomStatusText('Selesai')
-                setCustomAddressText('')
-                setCustomCompassText('227°SW')
-                setCustomAltitudeText('64.6 m')
-                setCustomCoordsText('')
-                localStorage.removeItem('timemark_custom_status')
-                localStorage.removeItem('timemark_custom_address')
-                localStorage.removeItem('timemark_custom_compass')
-                localStorage.removeItem('timemark_custom_altitude')
-                localStorage.removeItem('timemark_custom_coords')
-              }}
-              style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Reset ke Default GPS
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-            <div>
-              <label style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'block', marginBottom: '0.2rem' }}>Status / Kegiatan</label>
-              <input
-                type="text"
-                value={customStatusText}
-                onChange={(e) => {
-                  setCustomStatusText(e.target.value)
-                  localStorage.setItem('timemark_custom_status', e.target.value)
-                }}
-                placeholder="Contoh: Selesai / Hadir"
-                style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #475569', background: '#0F172A', color: 'white', fontSize: '0.8rem', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'block', marginBottom: '0.2rem' }}>Kompas (Tetap)</label>
-              <input
-                type="text"
-                value={customCompassText}
-                onChange={(e) => {
-                  setCustomCompassText(e.target.value)
-                  localStorage.setItem('timemark_custom_compass', e.target.value)
-                }}
-                placeholder="Contoh: 227°SW"
-                style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #475569', background: '#0F172A', color: 'white', fontSize: '0.8rem', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginTop: '0.5rem' }}>
-            <div>
-              <label style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'block', marginBottom: '0.2rem' }}>Ketinggian / Elevasi</label>
-              <input
-                type="text"
-                value={customAltitudeText}
-                onChange={(e) => {
-                  setCustomAltitudeText(e.target.value)
-                  localStorage.setItem('timemark_custom_altitude', e.target.value)
-                }}
-                placeholder="Contoh: 64.6 m"
-                style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #475569', background: '#0F172A', color: 'white', fontSize: '0.8rem', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'block', marginBottom: '0.2rem' }}>Koordinat GPS</label>
-              <input
-                type="text"
-                value={customCoordsText}
-                onChange={(e) => {
-                  setCustomCoordsText(e.target.value)
-                  localStorage.setItem('timemark_custom_coords', e.target.value)
-                }}
-                placeholder="Contoh: 5.125379°S, 119.530402°E"
-                style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #475569', background: '#0F172A', color: 'white', fontSize: '0.8rem', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-
-          <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'block', marginBottom: '0.2rem' }}>Alamat Lengkap</label>
-            <textarea
-              rows={2}
-              value={customAddressText}
-              onChange={(e) => {
-                setCustomAddressText(e.target.value)
-                localStorage.setItem('timemark_custom_address', e.target.value)
-              }}
-              placeholder={`Kosongkan untuk otomatis: ${locationText}`}
-              style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #475569', background: '#0F172A', color: 'white', fontSize: '0.78rem', boxSizing: 'border-box', resize: 'none' }}
-            />
-          </div>
-
-          <button
-            onClick={() => setIsEditingWatermark(false)}
-            style={{ width: '100%', marginTop: '0.6rem', padding: '0.5rem', background: '#D97706', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
-          >
-            ✓ Selesai Mengedit Teks
-          </button>
-        </div>
-      )}
-
       {/* Settings Panel Drawer */}
       {isEditingTitle && (
         <div
           style={{
             width: '100%',
-            maxWidth: orientationMode === 'landscape' ? '720px' : '480px',
+            maxWidth: isDeviceLandscape ? '720px' : '480px',
             background: 'rgba(30, 41, 59, 0.95)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: '16px',
@@ -1501,13 +1359,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         >
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.3rem' }}>
-              Judul Timemark Paling Atas (Tersimpan otomatis)
+              Judul Timemark / Status Presensi (Merubah teks Hadir, Selesai, dll.)
             </label>
             <input
               type="text"
               value={customTitle}
               onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Contoh: SMKN 1 MAKASSAR / PRESENSIA"
+              placeholder="Contoh: Selesai / Hadir / SMKN 1 MAKASSAR"
               style={{
                 width: '100%',
                 padding: '0.5rem 0.75rem',
@@ -1695,9 +1553,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: orientationMode === 'landscape' ? '640px' : '480px',
-          aspectRatio: orientationMode === 'landscape' ? (aspectRatio === '16:9' ? '16 / 9' : '4 / 3') : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
-          maxHeight: orientationMode === 'landscape' ? '70vh' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
+          maxWidth: isDeviceLandscape ? '640px' : '480px',
+          aspectRatio: isDeviceLandscape ? (aspectRatio === '16:9' ? '16 / 9' : '4 / 3') : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
+          maxHeight: isDeviceLandscape ? '70vh' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1806,7 +1664,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   <div style={{ width: '3.5px', background: '#F59E0B', borderRadius: '3px', flexShrink: 0 }} />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#FFFFFF' }}>
-                      {customStatusText.trim() || customNote.trim() || 'Hadir'}
+                      {customTitle.trim() || customNote.trim() || 'Hadir'}
                     </div>
                     <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'rgba(255,255,255,0.95)' }}>
                       {currentDateTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -1817,7 +1675,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                       </div>
                     )}
                     <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.3' }}>
-                      {customAddressText.trim() || locationText}
+                      {locationText}
                     </div>
                   </div>
                 </div>
@@ -1849,7 +1707,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 </div>
                 {/* Alamat di Bawah Jam */}
                 <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.92)', lineHeight: '1.3' }}>
-                  {customAddressText.trim() || locationText}
+                  {locationText}
                 </div>
                 <div style={{ width: '60%', height: '1px', background: 'rgba(255,255,255,0.3)', marginTop: '2px' }} />
               </div>
@@ -1880,14 +1738,14 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                         boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
                       }}
                     >
-                      🧭 {customCompassText.trim() || '227°SW'}
+                      🧭 {compassHeading}°{getCompassShortDir(compassHeading)}
                     </div>
                     <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.68rem' }}>
-                      ▲ {customAltitudeText.trim() || (geoData.altitude ? `${geoData.altitude} m` : '64.6 m')}
+                      ▲ {geoData.altitude ? `${geoData.altitude} m` : '64.6 m'}
                     </div>
                   </div>
                   <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.68rem' }}>
-                    📍 {customCoordsText.trim() || formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)}
+                    📍 {formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)}
                   </div>
                 </div>
 
@@ -1911,7 +1769,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                       {currentDateTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} {currentDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.92)', lineHeight: '1.3' }}>
-                      {customAddressText.trim() || locationText}
+                      {locationText}
                     </div>
                   </div>
                 </div>
