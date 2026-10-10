@@ -12,7 +12,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { getCustomSubjects } from '../../lib/subjectsManager'
+import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -250,6 +250,9 @@ export default function DashboardGuru() {
       
       const { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (cls) setClassesList(cls)
+
+      // Sinkronisasi daftar mata pelajaran terbaru dari cloud database
+      await syncCloudSubjects(supabase)
 
       // Ambil data penugasan kelas guru
       const storedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')

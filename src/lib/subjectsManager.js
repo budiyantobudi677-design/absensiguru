@@ -32,12 +32,68 @@ export function getCustomSubjects() {
   return DEFAULT_SUBJECTS
 }
 
-export function saveCustomSubjects(subjectsList) {
+/**
+ * Sinkronisasi daftar mata pelajaran dari Supabase ke localStorage
+ * sehingga akun guru di browser/perangkat berbeda otomatis mendapatkan daftar mapel terbaru.
+ */
+export async function syncCloudSubjects(supabase) {
+  try {
+    if (!supabase) return getCustomSubjects()
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('*')
+      .eq('target_type', '__SYSTEM_CONFIG_SUBJECTS__')
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (!error && data && data.length > 0) {
+      const parsed = JSON.parse(data[0].pesan)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        localStorage.setItem('panrita_kbm_subjects', JSON.stringify(parsed))
+        window.dispatchEvent(new Event('kbm_subjects_updated'))
+        return parsed
+      }
+    }
+  } catch (err) {
+    console.error('Error syncing cloud subjects:', err)
+  }
+  return getCustomSubjects()
+}
+
+/**
+ * Menyimpan mata pelajaran ke localStorage dan database Supabase (cloud)
+ */
+export async function saveCustomSubjects(subjectsList, supabase) {
   try {
     localStorage.setItem('panrita_kbm_subjects', JSON.stringify(subjectsList))
     window.dispatchEvent(new Event('kbm_subjects_updated'))
+
+    if (supabase) {
+      const payloadStr = JSON.stringify(subjectsList)
+      // Cek apakah sudah ada row config
+      const { data: existing } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', '__SYSTEM_CONFIG_SUBJECTS__')
+        .limit(1)
+
+      if (existing && existing.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', existing[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: '__SYSTEM_CONFIG_SUBJECTS__',
+            target_users: ''
+          }])
+      }
+    }
   } catch (err) {
-    console.error('Error saving subjects to localStorage', err)
+    console.error('Error saving subjects to cloud/localStorage', err)
   }
 }
 

@@ -13,8 +13,7 @@ import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
 import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
-import { getCustomSubjects } from '../../lib/subjectsManager'
-
+import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState({ role: 'admin' })
@@ -194,6 +193,7 @@ export default function DashboardAdmin() {
   const loadPegawai = async () => {
     setLoadingData(true)
     loadKbmClasses()
+    syncCloudSubjects(supabase)
     const { data } = await supabase.from('profiles').select('*')
     if (data) setPegawaiData(data)
     setLoadingData(false)
@@ -226,7 +226,12 @@ export default function DashboardAdmin() {
 
   const loadPengumuman = async () => {
     setLoadingData(true)
-    const { data, error } = await supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(50)
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('*')
+      .neq('target_type', '__SYSTEM_CONFIG_SUBJECTS__')
+      .order('created_at', { ascending: false })
+      .limit(50)
     if (!error && data) setPengumumanData(data)
     setLoadingData(false)
   }

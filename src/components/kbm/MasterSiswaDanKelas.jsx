@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { getCustomSubjects, saveCustomSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
+import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
 
 export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
@@ -43,6 +43,12 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   useEffect(() => {
     fetchClasses()
     loadSubjects()
+
+    const onSubjectsUpdated = () => {
+      setSubjectsList(getCustomSubjects())
+    }
+    window.addEventListener('kbm_subjects_updated', onSubjectsUpdated)
+    return () => window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
   }, [])
 
   useEffect(() => {
@@ -53,8 +59,13 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     }
   }, [selectedClassId])
 
-  const loadSubjects = () => {
+  const loadSubjects = async () => {
+    // Muat dari local storage terlebih dahulu agar instan, lalu sinkronkan dari database Supabase
     setSubjectsList(getCustomSubjects())
+    const cloudSubs = await syncCloudSubjects(supabase)
+    if (cloudSubs && cloudSubs.length > 0) {
+      setSubjectsList(cloudSubs)
+    }
   }
 
   const fetchClasses = async () => {
@@ -272,7 +283,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   }
 
   // ===================== PENGATURAN MATA PELAJARAN =====================
-  const handleAddSubject = (e) => {
+  const handleAddSubject = async (e) => {
     e.preventDefault()
     const trimmed = newSubjectName.trim()
     if (!trimmed) return
@@ -282,16 +293,16 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     }
     const updated = [...subjectsList, trimmed]
     setSubjectsList(updated)
-    saveCustomSubjects(updated)
+    await saveCustomSubjects(updated, supabase)
     setNewSubjectName('')
     setMessage({ type: 'success', text: `Mata pelajaran "${trimmed}" berhasil ditambahkan!` })
   }
 
-  const handleDeleteSubject = (index, name) => {
+  const handleDeleteSubject = async (index, name) => {
     if (!window.confirm(`Hapus mata pelajaran "${name}"?`)) return
     const updated = subjectsList.filter((_, idx) => idx !== index)
     setSubjectsList(updated)
-    saveCustomSubjects(updated)
+    await saveCustomSubjects(updated, supabase)
     setMessage({ type: 'success', text: `Mata pelajaran "${name}" telah dihapus.` })
   }
 
@@ -300,21 +311,21 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     setEditSubjectValue(name)
   }
 
-  const handleSaveEditSubject = (index) => {
+  const handleSaveEditSubject = async (index) => {
     const trimmed = editSubjectValue.trim()
     if (!trimmed) return
     const updated = [...subjectsList]
     updated[index] = trimmed
     setSubjectsList(updated)
-    saveCustomSubjects(updated)
+    await saveCustomSubjects(updated, supabase)
     setEditingIndex(null)
     setMessage({ type: 'success', text: `Mata pelajaran berhasil diperbarui menjadi "${trimmed}".` })
   }
 
-  const handleResetDefaultSubjects = () => {
+  const handleResetDefaultSubjects = async () => {
     if (!window.confirm('Kembalikan daftar mata pelajaran ke pengaturan bawaan kurikulum standar?')) return
     setSubjectsList(DEFAULT_SUBJECTS)
-    saveCustomSubjects(DEFAULT_SUBJECTS)
+    await saveCustomSubjects(DEFAULT_SUBJECTS, supabase)
     setMessage({ type: 'success', text: 'Mata pelajaran berhasil di-reset ke standar kurikulum!' })
   }
 
