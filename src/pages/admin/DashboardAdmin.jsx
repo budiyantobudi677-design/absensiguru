@@ -17,7 +17,7 @@ import { getCustomSubjects } from '../../lib/subjectsManager'
 
 
 export default function DashboardAdmin() {
-  const [admin, setAdmin] = useState(null)
+  const [admin, setAdmin] = useState({ role: 'admin' })
   const [activeTab, setActiveTab] = useState('overview') 
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
@@ -170,7 +170,8 @@ export default function DashboardAdmin() {
   const fetchAdmin = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return navigate('/')
-    setAdmin(user)
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+    setAdmin({ ...user, ...(profile || {}), role: profile?.role || 'admin' })
   }
 
   const fetchOverviewStats = async () => {
@@ -1550,7 +1551,8 @@ export default function DashboardAdmin() {
 
                 {kbmAdminSubTab === 'master_siswa' && (
                   <MasterSiswaDanKelas
-                    user={admin}
+                    user={{ ...admin, role: 'admin' }}
+                    profile={{ ...admin, role: 'admin' }}
                     schoolInfo={{ schoolName: namaSekolah }}
                     onRefresh={loadKbmClasses}
                   />

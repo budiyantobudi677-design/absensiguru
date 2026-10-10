@@ -11,10 +11,12 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
 
   // Peran Guru & Hak Akses
   const activeProfile = profile || user || {}
-  const isAdmin = activeProfile.role === 'admin'
-  const isGuruMapel = activeProfile.role === 'guru_mapel'
+  const isAdmin = activeProfile.role === 'admin' || 
+                  user?.role === 'admin' || 
+                  window.location.pathname.startsWith('/admin')
+  const isGuruMapel = !isAdmin && (activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
   // Admin & Wali Kelas berhak mengelola siswa; Guru Mapel dibatasi (Read Only)
-  const canManageStudents = !isGuruMapel
+  const canManageStudents = isAdmin || !isGuruMapel
   // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
   const canManageSubjects = isAdmin
 
