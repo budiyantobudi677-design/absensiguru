@@ -86,8 +86,15 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     }
   }
 
+  const [editClassModal, setEditClassModal] = useState(null) // { id, name }
+  const [editClassNameInput, setEditClassNameInput] = useState('')
+
   const handleAddClass = async (e) => {
     e.preventDefault()
+    if (!isAdmin) {
+      alert('Hanya Admin yang berhak menambahkan kelas / rombel!')
+      return
+    }
     if (!newClassName.trim()) return
     try {
       const { data, error } = await supabase
@@ -103,6 +110,51 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
       if (onRefresh) onRefresh()
     } catch (err) {
       setMessage({ type: 'error', text: 'Gagal menambah kelas: ' + err.message })
+    }
+  }
+
+  const handleEditClass = async (e) => {
+    e.preventDefault()
+    if (!isAdmin) return
+    const trimmed = editClassNameInput.trim()
+    if (!trimmed || !editClassModal) return
+
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ name: trimmed })
+        .eq('id', editClassModal.id)
+      if (error) throw error
+
+      setClasses(classes.map(c => c.id === editClassModal.id ? { ...c, name: trimmed } : c))
+      setMessage({ type: 'success', text: `Nama kelas berhasil diubah menjadi "${trimmed}"!` })
+      setEditClassModal(null)
+      if (onRefresh) onRefresh()
+    } catch (err) {
+      alert('Gagal mengubah kelas: ' + err.message)
+    }
+  }
+
+  const handleDeleteClass = async (classId, className) => {
+    if (!isAdmin) return
+    if (!window.confirm(`Yakin ingin menghapus Rombel "${className}"?\n\nPERINGATAN: Siswa di dalam kelas ini juga akan terhapus!`)) return
+
+    try {
+      // Hapus siswa di kelas tsb terlebih dahulu
+      await supabase.from('students').delete().eq('class_id', classId)
+      // Hapus kelas
+      const { error } = await supabase.from('classes').delete().eq('id', classId)
+      if (error) throw error
+
+      const remaining = classes.filter(c => c.id !== classId)
+      setClasses(remaining)
+      if (selectedClassId === classId) {
+        setSelectedClassId(remaining.length > 0 ? remaining[0].id : '')
+      }
+      setMessage({ type: 'success', text: `Rombel "${className}" telah dihapus.` })
+      if (onRefresh) onRefresh()
+    } catch (err) {
+      alert('Gagal menghapus kelas: ' + err.message)
     }
   }
 
@@ -460,6 +512,31 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
               </form>
             )}
 
+            {/* Modal / Form Edit Nama Kelas */}
+            {editClassModal && (
+              <form onSubmit={handleEditClass} style={{ padding: '1rem', background: '#EFF6FF', borderRadius: '14px', border: '1px solid #BFDBFE', marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#1E40AF', marginBottom: '4px' }}>
+                    Edit Nama Rombel: {editClassModal.name}
+                  </div>
+                  <input
+                    type="text"
+                    value={editClassNameInput}
+                    onChange={(e) => setEditClassNameInput(e.target.value)}
+                    required
+                    className="input"
+                    style={{ padding: '0.55rem 0.85rem', fontSize: '0.85rem', borderRadius: '10px' }}
+                  />
+                </div>
+                <button type="submit" className="btn" style={{ width: 'auto', padding: '0.55rem 1rem', borderRadius: '10px', background: '#2563EB', color: 'white', fontWeight: 'bold', fontSize: '0.8rem', marginTop: '16px' }}>
+                  Simpan Perubahan
+                </button>
+                <button type="button" onClick={() => setEditClassModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', marginTop: '16px' }}>
+                  Batal
+                </button>
+              </form>
+            )}
+
             {/* Modal / Form Tambah Siswa Baru */}
             {showAddStudent && (
               <form onSubmit={handleAddStudent} style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -511,16 +588,67 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                 <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
                   Pilih Rombel / Kelas
                 </label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
-                  className="input"
-                  style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-                >
-                  {(classes || []).map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => setSelectedClassId(e.target.value)}
+                    className="input"
+                    style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+                  >
+                    {(classes || []).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {isAdmin && selectedClassId && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cls = classes.find(c => c.id === selectedClassId)
+                          if (cls) {
+                            setEditClassModal(cls)
+                            setEditClassNameInput(cls.name)
+                          }
+                        }}
+                        title="Edit Nama Kelas Ini (Khusus Admin)"
+                        style={{
+                          background: '#EFF6FF',
+                          border: '1px solid #BFDBFE',
+                          color: '#2563EB',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cls = classes.find(c => c.id === selectedClassId)
+                          if (cls) handleDeleteClass(cls.id, cls.name)
+                        }}
+                        title="Hapus Kelas Ini (Khusus Admin)"
+                        style={{
+                          background: '#FEF2F2',
+                          border: '1px solid #FECACA',
+                          color: '#DC2626',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {canManageStudents ? (

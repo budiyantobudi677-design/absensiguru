@@ -193,6 +193,7 @@ export default function DashboardAdmin() {
 
   const loadPegawai = async () => {
     setLoadingData(true)
+    loadKbmClasses()
     const { data } = await supabase.from('profiles').select('*')
     if (data) setPegawaiData(data)
     setLoadingData(false)
@@ -1050,6 +1051,18 @@ export default function DashboardAdmin() {
                                 Mapel: {p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)}
                               </p>
                             )}
+                            {(() => {
+                              const assigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${p.id}`) || '[]')
+                              if (assigned.length > 0) {
+                                const names = kbmClasses.filter(c => assigned.includes(c.id)).map(c => c.name).join(', ')
+                                return (
+                                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.72rem', color: '#059669', fontWeight: '600' }}>
+                                    Kelas Diampu: {names || `${assigned.length} Kelas`}
+                                  </p>
+                                )
+                              }
+                              return null
+                            })()}
                           </div>
                         </div>
 
@@ -1119,6 +1132,10 @@ export default function DashboardAdmin() {
                         formattedJabatan = `Guru ${newMapel} • ${newJabatan || 'Guru Mapel'}`;
                       }
 
+                      // Ambil assigned_classes dari formData
+                      const assignedClasses = formData.getAll('assigned_classes')
+                      localStorage.setItem(`guru_assigned_classes_${editingPegawai.id}`, JSON.stringify(assignedClasses))
+
                       // Coba update dengan mata_pelajaran & role jika kolom tersedia, jika tidak fallback ke jabatan saja
                       let { error } = await supabase.from('profiles').update({
                         role: newRole,
@@ -1178,13 +1195,46 @@ export default function DashboardAdmin() {
                         <select 
                           name="mata_pelajaran" 
                           className="input" 
-                          defaultValue={editingPegawai.mata_pelajaran || ''}
+                          defaultValue={editingPegawai.mata_pelajaran || localStorage.getItem(`guru_mapel_${editingPegawai.id}`) || ''}
                         >
                           <option value="">-- Pilih Mata Pelajaran --</option>
                           {getCustomSubjects().map(sub => (
                             <option key={sub} value={sub}>{sub}</option>
                           ))}
                         </select>
+                      </div>
+
+                      {/* Penugasan Kelas / Rombel */}
+                      <div className="input-group" style={{ marginBottom: '1rem' }}>
+                        <label className="input-label">Penugasan Kelas / Rombel</label>
+                        {(() => {
+                          const savedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${editingPegawai.id}`) || '[]')
+                          return (
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '6px' }}>
+                                Centang kelas yang diampu oleh guru ini:
+                              </div>
+                              <div style={{ maxHeight: '140px', overflowY: 'auto', background: '#F8FAFC', padding: '0.65rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {kbmClasses.length === 0 ? (
+                                  <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada kelas rombel dibuat di Master KBM.</span>
+                                ) : (
+                                  kbmClasses.map(cls => (
+                                    <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', cursor: 'pointer' }}>
+                                      <input 
+                                        type="checkbox" 
+                                        name="assigned_classes" 
+                                        value={cls.id} 
+                                        defaultChecked={savedAssigned.includes(cls.id)}
+                                        style={{ width: '16px', height: '16px' }} 
+                                      />
+                                      <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
+                                    </label>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       <div className="input-group" style={{ marginBottom: '1.25rem' }}>

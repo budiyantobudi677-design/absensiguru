@@ -21,6 +21,8 @@ export default function DashboardGuru() {
   const [activeTab, setActiveTab] = useState('absensi') 
   const [kbmSubTab, setKbmSubTab] = useState('menu') // 'menu' | 'presensi_siswa' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [classesList, setClassesList] = useState([])
+  const [assignedClasses, setAssignedClasses] = useState([])
+  const [showAssignmentReminder, setShowAssignmentReminder] = useState(false)
   const [schoolInfoData, setSchoolInfoData] = useState({
     schoolName: 'Presensia',
     principalName: '',
@@ -69,6 +71,30 @@ export default function DashboardGuru() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
 
   const navigate = useNavigate()
+
+  // Helper untuk mengecek apakah penugasan guru sudah lengkap
+  const checkAssignmentConfigured = () => {
+    if (!user) return true
+    const role = profile?.role || 'guru_kelas'
+    const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
+    const assigned = assignedClasses.length > 0 
+      ? assignedClasses 
+      : JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')
+    
+    if (role === 'guru_mapel') {
+      return Boolean(mapel) && assigned.length > 0
+    }
+    return assigned.length > 0
+  }
+
+  // Filter daftar kelas yang diampu oleh guru ini
+  const userAssignedIds = assignedClasses.length > 0 
+    ? assignedClasses 
+    : JSON.parse(localStorage.getItem(`guru_assigned_classes_${user?.id}`) || '[]')
+  
+  const filteredClassesList = userAssignedIds.length > 0
+    ? classesList.filter(c => userAssignedIds.includes(c.id))
+    : classesList
 
   useEffect(() => {
     if (darkMode) {
@@ -136,8 +162,29 @@ export default function DashboardGuru() {
     // Initial check for unsynced
     checkUnsynced()
 
+    // Interval 10 Menit (600,000 ms) pengingat penugasan belum diatur
+    const reminderTimer = setInterval(() => {
+      const u = supabase.auth.getUser()
+      const stored = localStorage.getItem('lastActive_guru')
+      if (stored) {
+        const uId = localStorage.getItem('sb-current-user-id') // or check active state
+        // Evaluasi apakah penugasan sudah diset
+        const savedClasses = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user?.id}`) || '[]')
+        const role = profile?.role || 'guru_kelas'
+        const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user?.id}`) || ''
+        const configured = role === 'guru_mapel' 
+          ? (Boolean(mapel) && savedClasses.length > 0)
+          : (savedClasses.length > 0)
+
+        if (!configured) {
+          setShowAssignmentReminder(true)
+        }
+      }
+    }, 10 * 60 * 1000)
+
     return () => {
       clearInterval(timer)
+      clearInterval(reminderTimer)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
@@ -205,6 +252,21 @@ export default function DashboardGuru() {
       
       const { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (cls) setClassesList(cls)
+
+      // Ambil data penugasan kelas guru
+      const storedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')
+      setAssignedClasses(storedAssigned)
+
+      // Cek apakah penugasan sudah diatur
+      const userRole = profile?.role || 'guru_kelas'
+      const userMapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
+      const isConfigured = userRole === 'guru_mapel' 
+        ? (Boolean(userMapel) && storedAssigned.length > 0)
+        : (storedAssigned.length > 0)
+
+      if (!isConfigured) {
+        setShowAssignmentReminder(true)
+      }
 
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
       const hariKerja = settings?.hari_kerja || 5
@@ -876,6 +938,104 @@ export default function DashboardGuru() {
         </div>
       )}
 
+      {/* Modal Pengingat Penugasan & Kelas (Muncul Setiap Login & Tiap 10 Menit Jika Belum Diatur) */}
+      {showAssignmentReminder && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.25rem'
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '420px',
+              width: '100%',
+              background: 'white',
+              borderRadius: '24px',
+              padding: '1.75rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              textAlign: 'center',
+              border: '1px solid #E2E8F0'
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: '#FEF3C7',
+                color: '#D97706',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1rem auto'
+              }}
+            >
+              <Briefcase size={32} />
+            </div>
+
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1E293B', margin: '0 0 0.5rem 0' }}>
+              Atur Penugasan & Kelas Anda
+            </h3>
+
+            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: '1.5', margin: '0 0 1.25rem 0' }}>
+              Anda belum mengatur <strong>penugasan kelas / mata pelajaran</strong> yang diampu. Menu Pembelajaran (KBM) tidak dapat diakses hingga penugasan selesai diatur di menu Profil.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAssignmentReminder(false);
+                  setActiveTab('pengaturan');
+                }}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '0.85rem',
+                  borderRadius: '14px',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>Atur Penugasan Sekarang</span>
+                <ChevronRight size={18} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAssignmentReminder(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94A3B8',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  padding: '0.5rem'
+                }}
+              >
+                Ingatkan Saya 10 Menit Lagi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header ID Card */}
       <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.18)', padding: '0.35rem 0.8rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
@@ -1328,6 +1488,15 @@ export default function DashboardGuru() {
                   formattedJabatan = `Guru ${mataPelajaran} • ${formattedJabatan || 'Guru Mapel'}`;
                 }
 
+                // Ambil rombel yang dipilih
+                let selectedClasses = [];
+                if (guruRole === 'guru_kelas') {
+                  const kelasWali = formData.get('kelas_wali');
+                  if (kelasWali) selectedClasses = [kelasWali];
+                } else {
+                  selectedClasses = formData.getAll('assigned_classes') || [];
+                }
+
                 const updates = { 
                   full_name: formData.get('full_name'), 
                   nip: formData.get('nip'), 
@@ -1352,8 +1521,11 @@ export default function DashboardGuru() {
 
                 if (!error) {
                   localStorage.setItem(`guru_mapel_${user.id}`, mataPelajaran);
+                  localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(selectedClasses));
+                  setAssignedClasses(selectedClasses);
+                  setShowAssignmentReminder(false);
                   setProfile({ ...profile, ...updates, jabatan: formattedJabatan });
-                  showPopup("Tersimpan!", "Profil dan bidang studi Anda berhasil diperbarui.", "success");
+                  showPopup("Tersimpan!", "Profil dan penugasan kelas Anda berhasil diperbarui.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");
                 }
@@ -1379,10 +1551,13 @@ export default function DashboardGuru() {
                     className="input" 
                     defaultValue={profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'}
                     onChange={(e) => {
+                      const isMapel = e.target.value === 'guru_mapel';
                       const mapelBox = document.getElementById('mapel-select-box');
-                      if (mapelBox) {
-                        mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none';
-                      }
+                      const waliBox = document.getElementById('kelas-wali-box');
+                      const kMapelBox = document.getElementById('kelas-mapel-box');
+                      if (mapelBox) mapelBox.style.display = isMapel ? 'block' : 'none';
+                      if (waliBox) waliBox.style.display = isMapel ? 'none' : 'block';
+                      if (kMapelBox) kMapelBox.style.display = isMapel ? 'block' : 'none';
                     }}
                   >
                     <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
@@ -1394,7 +1569,7 @@ export default function DashboardGuru() {
                 </div>
 
                 <div 
-                  id="mapel-select-box"
+                  id="mapel-select-box" 
                   className="input-group" 
                   style={{ display: profile?.role === 'guru_mapel' ? 'block' : 'none' }}
                 >
@@ -1402,7 +1577,7 @@ export default function DashboardGuru() {
                   <select 
                     name="mata_pelajaran" 
                     className="input" 
-                    defaultValue={profile?.mata_pelajaran || ''}
+                    defaultValue={profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user?.id}`) || ''}
                   >
                     <option value="">-- Pilih Mata Pelajaran --</option>
                     {getCustomSubjects().map(sub => (
@@ -1414,8 +1589,58 @@ export default function DashboardGuru() {
                   </small>
                 </div>
 
-                <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.5rem' }} disabled={loading}>
-                  {loading ? 'Menyimpan...' : 'Simpan Profil'}
+                {/* Pemilihan Penugasan Rombel / Kelas */}
+                <div className="input-group" style={{ marginTop: '0.5rem' }}>
+                  <label className="input-label">Penugasan Kelas / Rombel Belajar</label>
+                  
+                  {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
+                  <div id="kelas-wali-box" style={{ display: profile?.role === 'guru_mapel' ? 'none' : 'block' }}>
+                    <select 
+                      name="kelas_wali" 
+                      className="input" 
+                      defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
+                    >
+                      <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
+                      {classesList.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                      Pilih rombel kelas yang Anda bina sebagai Wali Kelas.
+                    </small>
+                  </div>
+
+                  {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}
+                  <div id="kelas-mapel-box" style={{ display: profile?.role === 'guru_mapel' ? 'block' : 'none' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#475569', marginBottom: '6px' }}>
+                      Centang semua kelas yang Anda ajar untuk mata pelajaran ini:
+                    </div>
+                    <div style={{ maxHeight: '160px', overflowY: 'auto', background: '#F8FAFC', padding: '0.75rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {classesList.length === 0 ? (
+                        <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada daftar kelas dari Admin.</span>
+                      ) : (
+                        classesList.map(cls => (
+                          <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              name="assigned_classes" 
+                              value={cls.id} 
+                              defaultChecked={assignedClasses.includes(cls.id)}
+                              style={{ width: '16px', height: '16px' }} 
+                            />
+                            <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                      Pilihan kelas ini akan menjadi filter rombel otomatis di menu Pembelajaran Anda.
+                    </small>
+                  </div>
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.75rem' }} disabled={loading}>
+                  {loading ? 'Menyimpan...' : 'Simpan Profil & Penugasan'}
                 </button>
               </form>
             </div>
@@ -1624,7 +1849,7 @@ export default function DashboardGuru() {
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>Pilih modul kegiatan belajar mengajar</p>
                   </div>
                   <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '4px 10px', borderRadius: '12px' }}>
-                    {classesList.length} Rombel
+                    {filteredClassesList.length} Rombel Diampu
                   </span>
                 </div>
 
@@ -1912,7 +2137,7 @@ export default function DashboardGuru() {
 
                 {kbmSubTab === 'presensi_siswa' && (
                   <InputPresensiMurid
-                    classes={classesList}
+                    classes={filteredClassesList}
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolInfo={schoolInfoData}
@@ -1921,7 +2146,7 @@ export default function DashboardGuru() {
 
                 {kbmSubTab === 'jurnal' && (
                   <InputJurnalMengajar
-                    classes={classesList}
+                    classes={filteredClassesList}
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolInfo={schoolInfoData}
@@ -1930,7 +2155,7 @@ export default function DashboardGuru() {
 
                 {kbmSubTab === 'nilai' && (
                   <InputNilaiSiswa
-                    classes={classesList}
+                    classes={filteredClassesList}
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolInfo={schoolInfoData}
@@ -1939,7 +2164,7 @@ export default function DashboardGuru() {
 
                 {kbmSubTab === 'rekap' && (
                   <RekapDanLaporan
-                    classes={classesList}
+                    classes={filteredClassesList}
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolInfo={schoolInfoData}
@@ -2002,7 +2227,14 @@ export default function DashboardGuru() {
         <button
           className={`nav-item ${activeTab === 'kbm' ? 'active' : ''}`}
           style={{ flex: 1 }}
-          onClick={() => setActiveTab('kbm')}
+          onClick={() => {
+            if (!checkAssignmentConfigured()) {
+              setShowAssignmentReminder(true);
+              showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
+              return;
+            }
+            setActiveTab('kbm');
+          }}
         >
           <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> Pembelajaran
         </button>
