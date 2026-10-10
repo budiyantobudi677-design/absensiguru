@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { Browser } from '@capacitor/browser'
 import { 
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
   ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
@@ -103,13 +105,22 @@ export default function Login() {
     setError(null)
     try {
       localStorage.setItem('intended_login_role', selectedRole)
-      const { error } = await supabase.auth.signInWithOAuth({
+      const isNative = Capacitor.isNativePlatform()
+      // Di aplikasi APK, gunakan custom scheme deep link agar otomatis kembali ke APK
+      const redirectTo = isNative ? 'panritaedu://auth-callback' : window.location.origin
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo,
+          skipBrowserRedirect: isNative,
         },
       })
       if (error) throw error
+
+      if (isNative && data?.url) {
+        await Browser.open({ url: data.url, windowName: '_self' })
+      }
     } catch (err) {
       setError(err.message)
       setLoading(false)
