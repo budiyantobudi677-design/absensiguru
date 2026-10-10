@@ -14,6 +14,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
@@ -215,6 +216,7 @@ export default function DashboardGuru() {
   const [kbmSubTab, setKbmSubTab] = useState('menu') // 'menu' | 'presensi_siswa' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [classesList, setClassesList] = useState([])
   const [assignedClasses, setAssignedClasses] = useState([])
+  const [allProfiles, setAllProfiles] = useState([])
   const [guruTipeState, setGuruTipeState] = useState('guru_kelas')
   const [guruMapelState, setGuruMapelState] = useState('')
   const [showAssignmentReminder, setShowAssignmentReminder] = useState(false)
@@ -472,31 +474,48 @@ export default function DashboardGuru() {
 
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (profile) setProfile(profile)
+
+      // Ambil seluruh profiles untuk mendeteksi kelas yang sudah diambil oleh guru lain
+      const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran')
+      if (profilesAll) setAllProfiles(profilesAll)
       
       const { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (cls) setClassesList(cls)
 
-      // Sinkronisasi daftar mata pelajaran terbaru dari cloud database
+      // Sinkronisasi daftar mata pelajaran & penugasan guru dari cloud database
       await syncCloudSubjects(supabase)
+      const cloudAssignments = await syncCloudTeacherAssignments(supabase)
+      const myCloudAssignment = cloudAssignments?.[user.id]
 
-      // Ambil data penugasan kelas guru dari penyimpanan permanen
+      // Ambil data penugasan kelas guru dari cloud database terlebih dahulu (agar tidak hilang saat pindah browser/akun baru)
       let storedAssigned = []
-      try {
-        const rawAssigned = await getLocalPref(`guru_assigned_classes_${user.id}`, null)
-        if (rawAssigned) {
-          storedAssigned = typeof rawAssigned === 'string' ? JSON.parse(rawAssigned) : rawAssigned
+      if (myCloudAssignment && Array.isArray(myCloudAssignment.assignedClasses) && myCloudAssignment.assignedClasses.length > 0) {
+        storedAssigned = myCloudAssignment.assignedClasses
+      } else {
+        try {
+          const rawAssigned = await getLocalPref(`guru_assigned_classes_${user.id}`, null)
+          if (rawAssigned) {
+            storedAssigned = typeof rawAssigned === 'string' ? JSON.parse(rawAssigned) : rawAssigned
+          }
+        } catch (err) {
+          console.error('Error parsing assigned classes:', err)
         }
-      } catch (err) {
-        console.error('Error parsing assigned classes:', err)
       }
       setAssignedClasses(storedAssigned)
 
-      // Cek apakah penugasan sudah diatur
-      const userTipe = await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))
+      // Cek apakah tipe dan mapel penugasan sudah diatur di cloud atau local
+      const userTipe = myCloudAssignment?.tipe || await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))
       setGuruTipeState(userTipe)
 
-      const userMapel = profile?.mata_pelajaran || await getLocalPref(`guru_mapel_${user.id}`, '')
+      const userMapel = myCloudAssignment?.mapel || profile?.mata_pelajaran || await getLocalPref(`guru_mapel_${user.id}`, '')
       setGuruMapelState(userMapel)
+
+      // Pastikan tersimpan sinkron di localStorage perangkat ini
+      if (storedAssigned.length > 0) {
+        localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(storedAssigned))
+      }
+      if (userTipe) localStorage.setItem(`guru_tipe_${user.id}`, userTipe)
+      if (userMapel) localStorage.setItem(`guru_mapel_${user.id}`, userMapel)
 
       const isConfigured = userTipe === 'guru_mapel' 
         ? (Boolean(userMapel) && storedAssigned.length > 0)
@@ -1788,6 +1807,16 @@ export default function DashboardGuru() {
                   await setLocalPref(`guru_tipe_${user.id}`, guruTipe);
                   await setLocalPref(`guru_mapel_${user.id}`, mataPelajaran);
                   await setLocalPref(`guru_assigned_classes_${user.id}`, selectedClasses);
+                  
+                  // Simpan ke Cloud Supabase agar tersinkron ke semua perangkat & akun lain
+                  await saveTeacherAssignmentToCloud({
+                    teacherId: user.id,
+                    tipe: guruTipe,
+                    mapel: mataPelajaran,
+                    assignedClasses: selectedClasses,
+                    supabase
+                  });
+
                   setAssignedClasses(selectedClasses);
                   setGuruTipeState(guruTipe);
                   setGuruMapelState(mataPelajaran);
@@ -1862,20 +1891,38 @@ export default function DashboardGuru() {
                   
                   {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
                   <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
-                    <select 
-                      name="kelas_wali" 
-                      className="input" 
-                      key={`wali-${assignedClasses.join(',')}`}
-                      defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
-                    >
-                      <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
-                      {classesList.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                      Pilih rombel kelas yang Anda bina sebagai Wali Kelas.
-                    </small>
+                    {(() => {
+                      const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles)
+                      return (
+                        <>
+                          <select 
+                            name="kelas_wali" 
+                            className="input" 
+                            key={`wali-${assignedClasses.join(',')}`}
+                            defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
+                          >
+                            <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
+                            {classesList.map(c => {
+                              const isTaken = Boolean(takenMap[c.id])
+                              const takenBy = takenMap[c.id]?.teacherName || 'Guru Lain'
+                              return (
+                                <option 
+                                  key={c.id} 
+                                  value={c.id} 
+                                  disabled={isTaken}
+                                  style={{ color: isTaken ? '#94A3B8' : 'inherit' }}
+                                >
+                                  {c.name} {isTaken ? `(🔒 Terkunci: ${takenBy})` : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
+                          <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                            Pilih rombel kelas yang Anda bina sebagai Wali Kelas. Kelas yang sudah dipilih oleh guru kelas lain otomatis terkunci (🔒).
+                          </small>
+                        </>
+                      )
+                    })()}
                   </div>
 
                   {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}

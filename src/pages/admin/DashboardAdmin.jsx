@@ -15,6 +15,7 @@ import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
@@ -284,6 +285,7 @@ export default function DashboardAdmin() {
     setLoadingData(true)
     loadKbmClasses()
     syncCloudSubjects(supabase)
+    await syncCloudTeacherAssignments(supabase)
     const { data } = await supabase.from('profiles').select('*')
     if (data) setPegawaiData(data)
     setLoadingData(false)
@@ -1291,6 +1293,15 @@ export default function DashboardAdmin() {
 
                       // Simpan tipe penugasan guru di localStorage
                       localStorage.setItem(`guru_tipe_${editingPegawai.id}`, newRole)
+
+                      // Simpan ke Cloud Supabase agar otomatis tersinkron ke semua perangkat guru
+                      await saveTeacherAssignmentToCloud({
+                        teacherId: editingPegawai.id,
+                        tipe: newRole,
+                        mapel: newMapel,
+                        assignedClasses: assignedClasses,
+                        supabase
+                      })
 
                       // Update profil di database (tanpa mengubah role utama agar tidak melanggar profiles_role_check)
                       let { error } = await supabase.from('profiles').update({
