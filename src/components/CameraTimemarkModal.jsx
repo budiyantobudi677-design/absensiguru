@@ -451,7 +451,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     if (isVirtualLandscape) {
       ctx.save()
       ctx.translate(targetWidth / 2, targetHeight / 2)
-      const rotAngle = virtualRotationAngle === -90 ? -90 : 90
+      const rotAngle = virtualRotationAngle === -90 ? 90 : -90
       ctx.rotate((rotAngle * Math.PI) / 180)
       if (facingMode === 'user') {
         ctx.scale(-1, 1)
@@ -1817,7 +1817,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                       width: vfSize.height ? `${vfSize.height}px` : '100%',
                       height: vfSize.width ? `${vfSize.width}px` : '100%',
                       objectFit: 'cover',
-                      transform: `translate(-50%, -50%) rotate(${virtualRotationAngle === -90 ? -90 : 90}deg)${facingMode === 'user' ? ' scaleX(-1)' : ''}`
+                      transform: `translate(-50%, -50%) rotate(${virtualRotationAngle === -90 ? 90 : -90}deg)${facingMode === 'user' ? ' scaleX(-1)' : ''}`
                     }
                   : {
                       width: '100%',
