@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Award, Save, RefreshCw, Layers, Sparkles, Filter, CheckCircle2, TrendingUp, HelpCircle } from 'lucide-react'
+import { getCustomSubjects } from '../../lib/subjectsManager'
 
 export default function InputNilaiSiswa({ selectedClass, classes, user, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [students, setStudents] = useState([])
-  const [subject, setSubject] = useState(user?.mata_pelajaran || 'Matematika')
+  const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
+  const [subject, setSubject] = useState(user?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
   const [semester, setSemester] = useState('ganjil')
   const [academicYear, setAcademicYear] = useState('2026/2027')
   const [assessmentType, setAssessmentType] = useState('tp') // 'tp' | 'sts' | 'sas'
@@ -18,19 +20,19 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
 
-  const standardSubjects = [
-    'Matematika',
-    'Bahasa Indonesia',
-    'Bahasa Inggris',
-    'IPA / Sains',
-    'IPS / Sosial',
-    'Pendidikan Agama & Budi Pekerti',
-    'Pendidikan Pancasila / PKn',
-    'Seni Budaya & Prakarya',
-    'Pendidikan Jasmani (PJOK)',
-    'Informatika / TIK',
-    'Muatan Lokal / Bahasa Daerah'
-  ]
+  useEffect(() => {
+    const onSubjectsUpdated = () => {
+      const subs = getCustomSubjects()
+      setAvailableSubjects(subs)
+      if (!subs.includes(subject)) {
+        setSubject(subs[0] || 'Matematika')
+      }
+    }
+    window.addEventListener('kbm_subjects_updated', onSubjectsUpdated)
+    return () => window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
+  }, [subject])
+
+  const standardSubjects = availableSubjects
 
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {

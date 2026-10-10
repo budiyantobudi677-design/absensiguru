@@ -1718,10 +1718,10 @@ export default function DashboardGuru() {
                       </div>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Master Siswa & Rombel</h4>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Master KBM</h4>
                           <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', background: '#F1F5F9', padding: '2px 8px', borderRadius: '8px' }}>Basis Data</span>
                         </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Kelola rombel kelas, tambah siswa & impor file Excel</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Kelola rombel kelas, siswa & mata pelajaran</p>
                       </div>
                     </div>
                     <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
@@ -1834,7 +1834,7 @@ export default function DashboardGuru() {
                         color: kbmSubTab === 'master_siswa' ? 'white' : 'var(--text-muted)'
                       }}
                     >
-                      👥 Siswa
+                      ⚙️ Master KBM
                     </button>
                   </div>
                 </div>

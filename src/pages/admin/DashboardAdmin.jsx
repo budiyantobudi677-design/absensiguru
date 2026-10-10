@@ -1347,7 +1347,7 @@ export default function DashboardAdmin() {
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Unduh rekap berkas Excel & cetak laporan</p>
                   </div>
 
-                  {/* Card 5: Master Siswa & Rombel */}
+                  {/* Card 5: Master KBM (Siswa, Rombel & Mapel) */}
                   <div
                     onClick={() => setKbmAdminSubTab('master_siswa')}
                     className="card"
@@ -1356,8 +1356,8 @@ export default function DashboardAdmin() {
                     <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(79, 70, 229, 0.25)' }}>
                       <Users size={32} color="white" />
                     </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Master Siswa & Rombel</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola rombel kelas & impor data Excel</p>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Master KBM</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola rombel kelas, siswa & mata pelajaran</p>
                   </div>
                 </div>
               </div>
@@ -1469,7 +1469,7 @@ export default function DashboardAdmin() {
                         boxShadow: kbmAdminSubTab === 'master_siswa' ? '0 2px 5px rgba(30, 41, 59, 0.25)' : 'none'
                       }}
                     >
-                      👥 Siswa
+                      ⚙️ Master KBM
                     </button>
                   </div>
                 </div>

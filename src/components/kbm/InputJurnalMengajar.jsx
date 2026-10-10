@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter } from 'lucide-react'
+import { getCustomSubjects } from '../../lib/subjectsManager'
 
 export default function InputJurnalMengajar({ selectedClass, classes, user, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
@@ -11,10 +12,11 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState(null)
   const [viewTab, setViewTab] = useState('form') // 'form' | 'history'
+  const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toLocaleDateString('en-CA'),
-    mata_pelajaran: user?.mata_pelajaran || 'Matematika',
+    mata_pelajaran: user?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika',
     topik: '',
     teknik: 'Tatap Muka (Luring)',
     kegiatan: '',
@@ -22,19 +24,15 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
     catatan: ''
   })
 
-  const standardSubjects = [
-    'Matematika',
-    'Bahasa Indonesia',
-    'Bahasa Inggris',
-    'IPA / Sains',
-    'IPS / Sosial',
-    'Pendidikan Agama & Budi Pekerti',
-    'Pendidikan Pancasila / PKn',
-    'Seni Budaya & Prakarya',
-    'Pendidikan Jasmani (PJOK)',
-    'Informatika / TIK',
-    'Muatan Lokal / Bahasa Daerah'
-  ]
+  useEffect(() => {
+    const onSubjectsUpdated = () => {
+      setAvailableSubjects(getCustomSubjects())
+    }
+    window.addEventListener('kbm_subjects_updated', onSubjectsUpdated)
+    return () => window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
+  }, [])
+
+  const standardSubjects = availableSubjects
 
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {
