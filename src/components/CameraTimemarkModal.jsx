@@ -4,8 +4,13 @@ import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, 
 export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', schoolLogo = '', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
   const [facingMode, setFacingMode] = useState('environment') // 'user' (selfie) or 'environment' (belakang)
-  const [capturedPhoto, setCapturedPhoto] = useState(null)
+  const [capturedPhotos, setCapturedPhotos] = useState([]) // Array multi-shot (maks 10 foto)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0)
+  const [isReviewMode, setIsReviewMode] = useState(false)
+  const [isFlashActive, setIsFlashActive] = useState(false)
   const [customNote, setCustomNote] = useState('')
+
+  const activePhoto = capturedPhotos[selectedPhotoIndex] || capturedPhotos[capturedPhotos.length - 1] || null
   const [locationText, setLocationText] = useState('Mencari lokasi GPS...')
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [cameraError, setCameraError] = useState('')
@@ -238,7 +243,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   useEffect(() => {
     if (!isOpen) {
       stopCamera()
-      setCapturedPhoto(null)
+      setCapturedPhotos([])
+      setSelectedPhotoIndex(0)
+      setIsReviewMode(false)
       return
     }
 
@@ -1314,14 +1321,27 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     drawPanritaEduBrand()
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
-    setCapturedPhoto(dataUrl)
+    setIsFlashActive(true)
+    setTimeout(() => setIsFlashActive(false), 120)
+
+    const newPhoto = { id: Date.now(), dataUrl, timestamp: new Date() }
+    setCapturedPhotos((prev) => {
+      const nextList = [...prev, newPhoto]
+      if (nextList.length >= 10) {
+        setIsReviewMode(true)
+        setSelectedPhotoIndex(9)
+      } else {
+        setSelectedPhotoIndex(nextList.length - 1)
+      }
+      return nextList
+    })
     setIsProcessing(false)
   }
 
   const downloadPhoto = () => {
-    if (!capturedPhoto) return
+    if (!activePhoto) return
     const link = document.createElement('a')
-    link.href = capturedPhoto
+    link.href = activePhoto.dataUrl
     link.download = `Dokumentasi_Timemark_${Date.now()}.jpg`
     document.body.appendChild(link)
     link.click()
@@ -1329,9 +1349,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   }
 
   const sharePhoto = async () => {
-    if (!capturedPhoto) return
+    if (!activePhoto) return
     try {
-      const res = await fetch(capturedPhoto)
+      const res = await fetch(activePhoto.dataUrl)
       const blob = await res.blob()
       const file = new File([blob], `Timemark_${Date.now()}.jpg`, { type: 'image/jpeg' })
 
@@ -1348,6 +1368,19 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       console.error(err)
       downloadPhoto()
     }
+  }
+
+  const handleDeletePhoto = (indexToDelete) => {
+    setCapturedPhotos((prev) => {
+      const updated = prev.filter((_, idx) => idx !== indexToDelete)
+      if (updated.length === 0) {
+        setIsReviewMode(false)
+        setSelectedPhotoIndex(0)
+      } else {
+        setSelectedPhotoIndex((curr) => Math.min(curr, updated.length - 1))
+      }
+      return updated
+    })
   }
 
   if (!isOpen) return null
@@ -1799,10 +1832,136 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               Coba Lagi
             </button>
           </div>
-        ) : capturedPhoto ? (
-          <img src={capturedPhoto} alt="Captured" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        ) : isReviewMode && activePhoto ? (
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={activePhoto.dataUrl} alt={`Captured ${selectedPhotoIndex + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+
+            {/* Badge Urutan Foto Terpilih */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                left: '14px',
+                background: 'rgba(15, 23, 42, 0.88)',
+                border: '1px solid rgba(245, 158, 11, 0.6)',
+                borderRadius: '20px',
+                padding: '4px 12px',
+                color: '#FDE047',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backdropFilter: 'blur(8px)',
+                zIndex: 30
+              }}
+            >
+              Foto #{selectedPhotoIndex + 1} dari {capturedPhotos.length}
+            </div>
+
+            {/* Filmstrip Barisan Thumbnail Multi-Shot di Bawah Viewfinder */}
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '12px',
+                left: '10px',
+                right: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: capturedPhotos.length > 5 ? 'flex-start' : 'center',
+                gap: '8px',
+                background: 'rgba(15, 23, 42, 0.88)',
+                backdropFilter: 'blur(10px)',
+                padding: '6px 10px',
+                borderRadius: '16px',
+                overflowX: 'auto',
+                zIndex: 35,
+                border: '1px solid rgba(255,255,255,0.15)'
+              }}
+            >
+              {capturedPhotos.map((p, idx) => {
+                const isSelected = selectedPhotoIndex === idx
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedPhotoIndex(idx)}
+                    style={{
+                      position: 'relative',
+                      width: isSelected ? '52px' : '42px',
+                      height: isSelected ? '52px' : '42px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: isSelected ? '2.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.3)',
+                      boxShadow: isSelected ? '0 0 10px rgba(245, 158, 11, 0.7)' : 'none',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <img src={p.dataUrl} alt={`Thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: '2px',
+                        right: '2px',
+                        background: isSelected ? '#F59E0B' : 'rgba(0,0,0,0.7)',
+                        color: isSelected ? '#1E1B18' : 'white',
+                        fontSize: '9px',
+                        fontWeight: '800',
+                        padding: '1px 3px',
+                        borderRadius: '3px'
+                      }}
+                    >
+                      #{idx + 1}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         ) : (
           <>
+            {/* Shutter Flash Animation Effect */}
+            {isFlashActive && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: '#FFFFFF',
+                  zIndex: 60,
+                  pointerEvents: 'none'
+                }}
+              />
+            )}
+
+            {/* Badge Counter Jepretan Saat Mode Live Camera */}
+            {capturedPhotos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsReviewMode(true)}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  left: '14px',
+                  background: 'rgba(15, 23, 42, 0.88)',
+                  border: '1px solid #F59E0B',
+                  borderRadius: '20px',
+                  padding: '4px 12px',
+                  color: '#FDE047',
+                  fontSize: '0.78rem',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backdropFilter: 'blur(8px)',
+                  cursor: 'pointer',
+                  zIndex: 25,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+                }}
+              >
+                📸 {capturedPhotos.length}/10 Foto (Lihat)
+              </button>
+            )}
             <video
               ref={videoRef}
               autoPlay
@@ -2251,7 +2410,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           flexShrink: 0
         }}
       >
-        {!capturedPhoto ? (
+        {!isReviewMode ? (
           <>
             {!isLandscape && (
               <input
@@ -2304,35 +2463,90 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 <RefreshCw size={isLandscape ? 20 : 22} />
               </button>
 
-              {/* Tombol Shutter Jepret (Paling Menonjol) */}
-              <button
-                onClick={capturePhoto}
-                disabled={isProcessing}
-                title="Ambil Foto"
-                style={{
-                  width: isLandscape ? '62px' : '68px',
-                  height: isLandscape ? '62px' : '68px',
-                  borderRadius: '50%',
-                  border: '4px solid white',
-                  background: '#EF4444',
-                  boxShadow: '0 0 20px rgba(239, 68, 68, 0.6)',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  flexShrink: 0
-                }}
-              />
+              {/* Tombol Shutter Jepret Berulang Kali (Hingga 10 Foto) */}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button
+                  onClick={capturePhoto}
+                  disabled={isProcessing || capturedPhotos.length >= 10}
+                  title={capturedPhotos.length >= 10 ? 'Maksimal 10 foto tercapai' : 'Ambil Foto'}
+                  style={{
+                    width: isLandscape ? '62px' : '68px',
+                    height: isLandscape ? '62px' : '68px',
+                    borderRadius: '50%',
+                    border: '4px solid white',
+                    background: capturedPhotos.length >= 10 ? '#64748B' : '#EF4444',
+                    boxShadow: capturedPhotos.length >= 10 ? 'none' : '0 0 20px rgba(239, 68, 68, 0.6)',
+                    cursor: capturedPhotos.length >= 10 ? 'not-allowed' : 'pointer',
+                    outline: 'none',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '0.78rem',
+                    fontWeight: '900',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {capturedPhotos.length > 0 ? `${capturedPhotos.length}/10` : ''}
+                </button>
+              </div>
 
-              {!isLandscape && <div style={{ width: '48px' }}></div>}
+              {/* Tombol Thumbnail Review / Lihat Foto yang Sudah Diambil */}
+              {capturedPhotos.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setIsReviewMode(true)}
+                  title="Lihat Hasil Foto"
+                  style={{
+                    position: 'relative',
+                    width: isLandscape ? '44px' : '48px',
+                    height: isLandscape ? '44px' : '48px',
+                    borderRadius: '12px',
+                    border: '2px solid #F59E0B',
+                    overflow: 'hidden',
+                    background: '#0F172A',
+                    cursor: 'pointer',
+                    padding: 0,
+                    boxShadow: '0 0 10px rgba(245, 158, 11, 0.5)'
+                  }}
+                >
+                  <img
+                    src={capturedPhotos[capturedPhotos.length - 1].dataUrl}
+                    alt="Latest thumb"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '0',
+                      right: '0',
+                      background: '#F59E0B',
+                      color: '#1E1B18',
+                      fontSize: '9px',
+                      fontWeight: '900',
+                      padding: '1px 4px',
+                      borderRadius: '0 0 0 6px'
+                    }}
+                  >
+                    {capturedPhotos.length}
+                  </span>
+                </button>
+              ) : (
+                !isLandscape && <div style={{ width: '48px' }}></div>
+              )}
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: isLandscape ? '85px' : '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', width: isLandscape ? '85px' : '100%' }}>
             {onSelectPhoto && (
               <button
                 type="button"
                 onClick={() => {
-                  onSelectPhoto(capturedPhoto)
-                  onClose()
+                  if (activePhoto) {
+                    onSelectPhoto(activePhoto.dataUrl)
+                    onClose()
+                  }
                 }}
                 className="btn"
                 style={{
@@ -2352,36 +2566,64 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   textAlign: 'center'
                 }}
               >
-                <CheckSquare size={16} /> {isLandscape ? 'Gunakan' : 'Masukkan Foto ke Form Tugas Luar'}
+                <CheckSquare size={16} /> {isLandscape ? 'Gunakan' : 'Gunakan Foto Ini'}
               </button>
             )}
+
             <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.35rem' }}>
               <button
                 type="button"
-                onClick={() => {
-                  setCapturedPhoto(null)
-                  startCamera(facingMode)
-                }}
-                className="btn"
-                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
-              >
-                <RefreshCw size={12} /> Ulangi
-              </button>
-              <button
-                type="button"
                 onClick={downloadPhoto}
+                title="Hanya simpan foto terpilih ini ke memori HP"
                 className="btn"
                 style={{ background: '#10B981', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
               >
-                <Download size={12} /> Simpan
+                <Download size={13} /> Simpan
               </button>
               <button
                 type="button"
                 onClick={sharePhoto}
+                title="Bagikan foto terpilih ini"
                 className="btn"
                 style={{ background: '#38BDF8', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
               >
-                <Share2 size={12} /> Bagikan
+                <Share2 size={13} /> Bagikan
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeletePhoto(selectedPhotoIndex)}
+                title="Hapus foto terpilih ini"
+                className="btn"
+                style={{ background: 'rgba(239, 68, 68, 0.25)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+              >
+                🗑️ Hapus
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr', gap: '0.35rem', marginTop: '0.2rem' }}>
+              {capturedPhotos.length < 10 && (
+                <button
+                  type="button"
+                  onClick={() => setIsReviewMode(false)}
+                  title="Kembali ke kamera untuk menambah foto"
+                  className="btn"
+                  style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                >
+                  📸 +Foto
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCapturedPhotos([])
+                  setSelectedPhotoIndex(0)
+                  setIsReviewMode(false)
+                }}
+                title="Hapus semua foto sementara dan ulangi"
+                className="btn"
+                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+              >
+                <RefreshCw size={12} /> Ulangi
               </button>
             </div>
           </div>
