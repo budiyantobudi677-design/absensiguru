@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter, Lock, ShieldAlert, AlertCircle } from 'lucide-react'
+import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter, Lock, ShieldAlert, AlertCircle, Sparkles, Image as ImageIcon, Upload, X, Loader2 } from 'lucide-react'
 import { getCustomSubjects, getAssignedMapelInfo } from '../../lib/subjectsManager'
+import { getSavedGeminiKey, fileToBase64, generateJurnalFromModul } from '../../lib/gemini'
 
 export default function InputJurnalMengajar({ selectedClass, classes, user, profile, schoolInfo }) {
   const activeProfile = profile || user || {}
@@ -18,6 +19,15 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
   const [viewTab, setViewTab] = useState('form') // 'form' | 'history'
   const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
   const [assignedMapelMap, setAssignedMapelMap] = useState({})
+
+  // State Modal AI Jurnal
+  const [showAiModal, setShowAiModal] = useState(false)
+  const [aiInputMode, setAiInputMode] = useState('photo') // 'photo' | 'text'
+  const [aiTextPrompt, setAiTextPrompt] = useState('')
+  const [aiSelectedFile, setAiSelectedFile] = useState(null)
+  const [aiImagePreview, setAiImagePreview] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState(null)
 
   const initialSubject = isGuruMapel && guruMapelSubject 
     ? guruMapelSubject 
@@ -161,6 +171,71 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
     }
   }
 
+  const handleProcessAiJurnal = async () => {
+    setAiError(null)
+    const apiKey = getSavedGeminiKey(uId)
+    if (!apiKey) {
+      setAiError('API Key Gemini belum diatur! Buka menu Profil / Pengaturan Akun untuk memasukkan API Key Gemini Anda.')
+      return
+    }
+
+    if (aiInputMode === 'photo' && !aiSelectedFile) {
+      setAiError('Silakan pilih atau ambil foto modul ajar / RPP terlebih dahulu.')
+      return
+    }
+    if (aiInputMode === 'text' && !aiTextPrompt.trim()) {
+      setAiError('Silakan masukkan teks ringkasan materi / modul ajar.')
+      return
+    }
+
+    setAiLoading(true)
+    try {
+      let imageBase64 = null
+      let imageMimeType = null
+
+      if (aiInputMode === 'photo' && aiSelectedFile) {
+        const converted = await fileToBase64(aiSelectedFile)
+        imageBase64 = converted.base64Data
+        imageMimeType = converted.mimeType
+      }
+
+      const activeClassName = (classes || []).find(c => c.id === activeClassId)?.name || ''
+      const res = await generateJurnalFromModul({
+        apiKey,
+        text: aiInputMode === 'text' ? aiTextPrompt : '',
+        imageBase64,
+        imageMimeType,
+        mataPelajaran: formData.mata_pelajaran,
+        namaKelas: activeClassName
+      })
+
+      if (res && res.data) {
+        setFormData(prev => ({
+          ...prev,
+          topik: res.data.topik || prev.topik,
+          teknik: res.data.teknik || prev.teknik || 'Luring',
+          kegiatan: res.data.kegiatan || prev.kegiatan,
+          penilaian: res.data.penilaian || prev.penilaian,
+          catatan: res.data.catatan || prev.catatan
+        }))
+
+        setShowAiModal(false)
+        setAiSelectedFile(null)
+        setAiImagePreview(null)
+        setAiTextPrompt('')
+        setMessage({
+          type: 'success',
+          text: `✨ Berhasil mengisi jurnal dengan ${res.usedModel}! Silakan tinjau dan klik Simpan Jurnal.`
+        })
+      }
+    } catch (err) {
+      console.error(err)
+      setAiError(err.message || 'Gagal memproses modul ajar dengan AI.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
       {/* Top Segmented Control */}
@@ -239,13 +314,44 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
       {/* TAB 1: FORM TULIS JURNAL BARU */}
       {viewTab === 'form' && (
         <div className="card" style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
-          <div style={{ marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Agenda Pembelajaran Guru
-            </span>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
-              Catat Agenda & Evaluasi KBM
-            </h3>
+          <div style={{ marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Agenda Pembelajaran Guru
+              </span>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+                Catat Agenda & Evaluasi KBM
+              </h3>
+            </div>
+
+            {/* Tombol AI Auto-Fill Jurnal */}
+            <button
+              type="button"
+              onClick={() => {
+                setAiError(null)
+                setShowAiModal(true)
+              }}
+              disabled={isReadOnlyForGuruKelas}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: isReadOnlyForGuruKelas ? '#CBD5E1' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                color: isReadOnlyForGuruKelas ? '#64748B' : 'white',
+                border: 'none',
+                borderRadius: '14px',
+                padding: '0.65rem 1.15rem',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: isReadOnlyForGuruKelas ? 'not-allowed' : 'pointer',
+                boxShadow: isReadOnlyForGuruKelas ? 'none' : '0 4px 12px rgba(79, 70, 229, 0.35)',
+                transition: 'all 0.2s'
+              }}
+              title="Isi otomatis topik, kegiatan & penilaian dari foto atau teks modul ajar"
+            >
+              <Sparkles size={16} />
+              <span>Isi Otomatis dengan AI</span>
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -547,6 +653,293 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL AI: EKSTRAK JURNAL DARI FOTO / TEKS MODUL AJAR */}
+      {showAiModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '24px',
+            maxWidth: '520px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '1.5rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}>
+            {/* Header Modal */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  flexShrink: 0
+                }}>
+                  <Sparkles size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 'bold', color: '#1E293B' }}>
+                    Ekstrak Jurnal dengan AI
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                    Gemini AI membaca modul ajar & mengisi formulir secara instan
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!aiLoading) {
+                    setShowAiModal(false)
+                    setAiError(null)
+                  }
+                }}
+                disabled={aiLoading}
+                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Segmented Mode: Foto vs Teks */}
+            <div style={{ display: 'flex', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setAiInputMode('photo')}
+                style={{
+                  flex: 1,
+                  padding: '0.55rem',
+                  border: 'none',
+                  borderRadius: '9px',
+                  fontSize: '0.82rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: aiInputMode === 'photo' ? 'white' : 'transparent',
+                  color: aiInputMode === 'photo' ? '#4F46E5' : '#64748B',
+                  boxShadow: aiInputMode === 'photo' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                <ImageIcon size={15} />
+                <span>Foto Modul / RPP</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiInputMode('text')}
+                style={{
+                  flex: 1,
+                  padding: '0.55rem',
+                  border: 'none',
+                  borderRadius: '9px',
+                  fontSize: '0.82rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: aiInputMode === 'text' ? 'white' : 'transparent',
+                  color: aiInputMode === 'text' ? '#4F46E5' : '#64748B',
+                  boxShadow: aiInputMode === 'text' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                <FileText size={15} />
+                <span>Ketik / Tempel Teks</span>
+              </button>
+            </div>
+
+            {/* Form Input Sesuai Mode */}
+            {aiInputMode === 'photo' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <label
+                  style={{
+                    border: '2px dashed #CBD5E1',
+                    borderRadius: '16px',
+                    padding: '1.5rem 1rem',
+                    textAlign: 'center',
+                    cursor: aiLoading ? 'not-allowed' : 'pointer',
+                    background: aiImagePreview ? '#F8FAFC' : '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={aiLoading}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setAiSelectedFile(file)
+                        const previewUrl = URL.createObjectURL(file)
+                        setAiImagePreview(previewUrl)
+                        setAiError(null)
+                      }
+                    }}
+                  />
+                  {aiImagePreview ? (
+                    <div style={{ position: 'relative', width: '100%', maxHeight: '200px', display: 'flex', justifyContent: 'center' }}>
+                      <img
+                        src={aiImagePreview}
+                        alt="Preview Modul"
+                        style={{ maxHeight: '180px', borderRadius: '12px', objectFit: 'contain', border: '1px solid #CBD5E1' }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5' }}>
+                        <Upload size={22} />
+                      </div>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#334155' }}>
+                        Pilih atau Foto Lembar Modul Ajar
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                        Format JPG, PNG atau foto dari kamera smartphone
+                      </span>
+                    </>
+                  )}
+                </label>
+                {aiSelectedFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#475569', background: '#F1F5F9', padding: '6px 12px', borderRadius: '8px' }}>
+                    <span>File: <strong>{aiSelectedFile.name}</strong></span>
+                    <button
+                      type="button"
+                      disabled={aiLoading}
+                      onClick={() => {
+                        setAiSelectedFile(null)
+                        setAiImagePreview(null)
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Ganti Foto
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Ringkasan / Teks Materi Modul Ajar:
+                </label>
+                <textarea
+                  rows="5"
+                  value={aiTextPrompt}
+                  onChange={(e) => setAiTextPrompt(e.target.value)}
+                  disabled={aiLoading}
+                  placeholder="Tempelkan teks modul ajar di sini. Contoh: Materi IPAS Bab 2 Siklus Hidup Hewan, fokus pada metamorfosis kupu-kupu dan katak. Siswa mengamati video lalu menggambar bagan..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '12px',
+                    border: '1px solid #CBD5E1',
+                    outline: 'none',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Error Message */}
+            {aiError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{aiError}</span>
+              </div>
+            )}
+
+            {/* Info Engine */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles size={14} color="#6366F1" style={{ flexShrink: 0 }} />
+              <span>Sistem menggunakan Auto-Fallback Cerdas: <strong>Gemini 3.8 Flash ➔ 2.0 Flash ➔ 1.5 Flash</strong> jika kuota batas tercapai.</span>
+            </div>
+
+            {/* Tombol Aksi */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAiModal(false)
+                  setAiError(null)
+                }}
+                disabled={aiLoading}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  borderRadius: '12px',
+                  border: '1px solid #CBD5E1',
+                  background: 'white',
+                  color: '#475569',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleProcessAiJurnal}
+                disabled={aiLoading}
+                style={{
+                  flex: 2,
+                  padding: '0.75rem',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: aiLoading ? '#94A3B8' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: aiLoading ? 'none' : '0 4px 12px rgba(79, 70, 229, 0.35)'
+                }}
+              >
+                {aiLoading ? (
+                  <>
+                    <Loader2 size={16} className="spin" />
+                    <span>Menganalisis dengan AI...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    <span>Mulai Proses AI</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

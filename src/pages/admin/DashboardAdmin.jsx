@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -14,10 +14,18 @@ import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
+import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState({ role: 'admin' })
   const [activeTab, setActiveTab] = useState('overview') 
+
+  // State Gemini AI Key untuk Admin / Kepsek
+  const [geminiApiKey, setGeminiApiKey] = useState('')
+  const [showGeminiKey, setShowGeminiKey] = useState(false)
+  const [geminiTesting, setGeminiTesting] = useState(false)
+  const [geminiTestStatus, setGeminiTestStatus] = useState(null)
+  const [geminiSavedMessage, setGeminiSavedMessage] = useState(null)
   const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
@@ -171,6 +179,7 @@ export default function DashboardAdmin() {
     if (!user) return navigate('/')
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
     setAdmin({ ...user, ...(profile || {}), role: profile?.role || 'admin' })
+    setGeminiApiKey(getSavedGeminiKey(user.id))
   }
 
   const fetchOverviewStats = async () => {
@@ -1909,6 +1918,165 @@ export default function DashboardAdmin() {
                         }} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
                      </div>
                   ))}
+               </div>
+             </div>
+
+             {/* INTEGRASI GOOGLE GEMINI AI UNTUK ADMIN & KEPSEK */}
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+                 <Sparkles size={20} color="#6366F1" />
+                 <h4 style={{ fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>Integrasi Google Gemini AI (Akun Mandiri)</h4>
+               </div>
+               <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1rem', lineHeight: '1.5' }}>
+                 Digunakan untuk <strong>Scan Foto Dokumen Tambah Siswa (OCR Nama & NISN)</strong> serta fitur kecerdasan buatan lainnya. Kunci API ini tersimpan mandiri khusus untuk akun Anda.
+               </p>
+
+               <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.75rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+                 <Sparkles size={14} color="#6366F1" style={{ flexShrink: 0 }} />
+                 <span>Sistem memprioritaskan <strong>Gemini 3.8 Flash</strong>, lalu otomatis fallback ke <strong>2.0 Flash</strong> dan <strong>1.5 Flash</strong> jika kuota limit.</span>
+               </div>
+
+               <div className="input-group">
+                 <label className="input-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                   <span>Gemini API Key</span>
+                   <a
+                     href="https://aistudio.google.com/app/apikey"
+                     target="_blank"
+                     rel="noreferrer"
+                     style={{ fontSize: '0.72rem', color: '#4F46E5', textDecoration: 'underline', fontWeight: 'normal' }}
+                   >
+                     Dapatkan API Key Gratis di Google AI Studio ↗
+                   </a>
+                 </label>
+                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                   <input
+                     type={showGeminiKey ? 'text' : 'password'}
+                     value={geminiApiKey}
+                     onChange={(e) => {
+                       setGeminiApiKey(e.target.value)
+                       setGeminiTestStatus(null)
+                       setGeminiSavedMessage(null)
+                     }}
+                     className="input"
+                     placeholder="AIzaSy..."
+                     style={{ paddingRight: '45px' }}
+                   />
+                   <button
+                     type="button"
+                     onClick={() => setShowGeminiKey(!showGeminiKey)}
+                     style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                   >
+                     {showGeminiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                   </button>
+                 </div>
+               </div>
+
+               {geminiTestStatus && (
+                 <div style={{
+                   padding: '0.65rem 0.85rem',
+                   borderRadius: '12px',
+                   fontSize: '0.78rem',
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: '8px',
+                   marginBottom: '0.75rem',
+                   background: geminiTestStatus.success ? '#ECFDF5' : '#FEF2F2',
+                   color: geminiTestStatus.success ? '#065F46' : '#991B1B',
+                   border: `1px solid ${geminiTestStatus.success ? '#A7F3D0' : '#FECACA'}`
+                 }}>
+                   {geminiTestStatus.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                   <span>{geminiTestStatus.message}</span>
+                 </div>
+               )}
+
+               {geminiSavedMessage && (
+                 <div style={{
+                   padding: '0.65rem 0.85rem',
+                   borderRadius: '12px',
+                   fontSize: '0.78rem',
+                   background: '#ECFDF5',
+                   color: '#065F46',
+                   border: '1px solid #A7F3D0',
+                   marginBottom: '0.75rem'
+                 }}>
+                   {geminiSavedMessage}
+                 </div>
+               )}
+
+               <div style={{ display: 'flex', gap: '8px', marginTop: '0.5rem' }}>
+                 <button
+                   type="button"
+                   disabled={geminiTesting || !geminiApiKey.trim()}
+                   onClick={async () => {
+                     setGeminiTesting(true)
+                     setGeminiTestStatus(null)
+                     try {
+                       const res = await testGeminiConnection(geminiApiKey)
+                       setGeminiTestStatus({
+                         success: true,
+                         message: `Koneksi Berhasil! Model aktif: ${res.usedModel}`
+                       })
+                     } catch (err) {
+                       setGeminiTestStatus({
+                         success: false,
+                         message: err.message || 'Gagal terhubung ke Gemini API.'
+                       })
+                     } finally {
+                       setGeminiTesting(false)
+                     }
+                   }}
+                   className="btn"
+                   style={{
+                     flex: 1,
+                     background: '#F1F5F9',
+                     color: '#1E293B',
+                     padding: '0.75rem',
+                     fontSize: '0.82rem',
+                     fontWeight: 'bold',
+                     borderRadius: '12px',
+                     border: '1px solid #CBD5E1',
+                     cursor: (!geminiApiKey.trim() || geminiTesting) ? 'not-allowed' : 'pointer'
+                   }}
+                 >
+                   {geminiTesting ? (
+                     <>
+                       <Loader2 size={15} className="spin" />
+                       <span>Menguji...</span>
+                     </>
+                   ) : (
+                     <span>Tes Koneksi AI</span>
+                   )}
+                 </button>
+                 <button
+                   type="button"
+                   onClick={async () => {
+                     const saved = saveGeminiKey(geminiApiKey, admin?.id)
+                     try {
+                       if (admin?.id) {
+                         await supabase.from('profiles').update({ gemini_api_key: saved }).eq('id', admin.id)
+                       }
+                     } catch (e) {
+                       // DB column may not exist yet
+                     }
+                     setGeminiSavedMessage('API Key Gemini berhasil disimpan!')
+                     setTimeout(() => setGeminiSavedMessage(null), 3000)
+                   }}
+                   className="btn"
+                   style={{
+                     flex: 1.5,
+                     background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                     color: 'white',
+                     padding: '0.75rem',
+                     fontSize: '0.82rem',
+                     fontWeight: 'bold',
+                     borderRadius: '12px',
+                     border: 'none',
+                     boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)'
+                   }}
+                 >
+                   <Save size={15} />
+                   <span>Simpan API Key</span>
+                 </button>
                </div>
              </div>
 

@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info } from 'lucide-react'
+import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info, Image as ImageIcon, Camera, Loader2, CheckSquare, Square } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
+import { getSavedGeminiKey, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
 
 export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
@@ -33,6 +34,16 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const [showAddStudent, setShowAddStudent] = useState(false)
   const [showAddClass, setShowAddClass] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+
+  // State Modal AI Scan Siswa
+  const [showAiScanModal, setShowAiScanModal] = useState(false)
+  const [aiScanFile, setAiScanFile] = useState(null)
+  const [aiScanPreview, setAiScanPreview] = useState(null)
+  const [aiScanLoading, setAiScanLoading] = useState(false)
+  const [aiScanError, setAiScanError] = useState(null)
+  const [aiExtractedStudents, setAiExtractedStudents] = useState([])
+  const [aiSaving, setAiSaving] = useState(false)
+  const [aiUsedModel, setAiUsedModel] = useState('')
 
   // State Mata Pelajaran
   const [subjectsList, setSubjectsList] = useState([])
@@ -282,6 +293,106 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     reader.readAsBinaryString(file)
   }
 
+  // ===================== AI SCAN SISWA VIA FOTO =====================
+  const handleScanStudentsWithAi = async () => {
+    setAiScanError(null)
+    const uId = activeProfile.id || user?.id
+    const apiKey = getSavedGeminiKey(uId)
+    if (!apiKey) {
+      setAiScanError('API Key Gemini belum diatur! Buka menu Profil / Pengaturan Akun untuk memasukkan API Key.')
+      return
+    }
+
+    if (!aiScanFile) {
+      setAiScanError('Silakan pilih atau ambil foto dokumen daftar siswa terlebih dahulu.')
+      return
+    }
+
+    setAiScanLoading(true)
+    try {
+      const { base64Data, mimeType } = await fileToBase64(aiScanFile)
+      const res = await scanStudentsFromImage({
+        apiKey,
+        imageBase64: base64Data,
+        imageMimeType: mimeType
+      })
+
+      if (!res.students || res.students.length === 0) {
+        throw new Error('Tidak ada nama siswa yang terdeteksi dari foto ini. Pastikan foto cukup jelas dan memuat teks daftar siswa.')
+      }
+
+      setAiUsedModel(res.usedModel)
+      setAiExtractedStudents(
+        res.students.map((st, idx) => ({
+          tempId: idx,
+          name: st.name || '',
+          nisn: st.nisn || '',
+          gender: (st.gender === 'P' || st.gender === 'p') ? 'P' : 'L',
+          selected: true
+        }))
+      )
+    } catch (err) {
+      console.error(err)
+      setAiScanError(err.message || 'Gagal memindai daftar siswa dengan AI.')
+    } finally {
+      setAiScanLoading(false)
+    }
+  }
+
+  const handleToggleSelectStudent = (tempId) => {
+    setAiExtractedStudents(prev => prev.map(s => s.tempId === tempId ? { ...s, selected: !s.selected } : s))
+  }
+
+  const handleToggleSelectAllStudents = (selectAll) => {
+    setAiExtractedStudents(prev => prev.map(s => ({ ...s, selected: selectAll })))
+  }
+
+  const handleUpdateExtractedStudent = (tempId, field, value) => {
+    setAiExtractedStudents(prev => prev.map(s => s.tempId === tempId ? { ...s, [field]: value } : s))
+  }
+
+  const handleSaveAiScannedStudents = async () => {
+    if (!selectedClassId) {
+      alert('Pilih rombel kelas terlebih dahulu!')
+      return
+    }
+
+    const studentsToSave = aiExtractedStudents.filter(s => s.selected && s.name.trim())
+    if (studentsToSave.length === 0) {
+      alert('Tidak ada siswa yang dipilih untuk disimpan!')
+      return
+    }
+
+    setAiSaving(true)
+    try {
+      const records = studentsToSave.map(s => ({
+        class_id: selectedClassId,
+        name: s.name.trim(),
+        nisn: s.nisn.trim() || null,
+        gender: s.gender
+      }))
+
+      const { data, error } = await supabase.from('students').insert(records).select()
+      if (error) throw error
+
+      setStudents(prev => [...prev, ...(data || [])])
+      setMessage({
+        type: 'success',
+        text: `✨ Berhasil menambahkan ${records.length} siswa ke kelas melalui AI Scan (${aiUsedModel})!`
+      })
+      setShowAiScanModal(false)
+      setAiScanFile(null)
+      setAiScanPreview(null)
+      setAiExtractedStudents([])
+      fetchStudents(selectedClassId)
+    } catch (err) {
+      console.error(err)
+      setAiScanError('Gagal menyimpan siswa ke database: ' + err.message)
+    } finally {
+      setAiSaving(false)
+    }
+  }
+
   // ===================== PENGATURAN MATA PELAJARAN =====================
   const handleAddSubject = async (e) => {
     e.preventDefault()
@@ -375,26 +486,58 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                 </button>
               )}
               {canManageStudents ? (
-                <button
-                  onClick={() => setShowAddStudent(!showAddStudent)}
-                  type="button"
-                  className="btn"
-                  style={{
-                    width: 'auto',
-                    padding: '0.5rem 0.85rem',
-                    borderRadius: '12px',
-                    background: '#4F46E5',
-                    color: 'white',
-                    fontSize: '0.8rem',
-                    fontWeight: 'bold',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <Plus size={15} />
-                  <span>Tambah Siswa</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      if (!selectedClassId) {
+                        alert('Pilih rombel kelas terlebih dahulu!')
+                        return
+                      }
+                      setAiScanError(null)
+                      setAiExtractedStudents([])
+                      setShowAiScanModal(true)
+                    }}
+                    type="button"
+                    className="btn"
+                    style={{
+                      width: 'auto',
+                      padding: '0.5rem 0.85rem',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                      color: 'white',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)'
+                    }}
+                    title="Pindai lembar daftar siswa / absensi kertas via foto AI"
+                  >
+                    <Sparkles size={15} />
+                    <span>Scan Siswa (AI)</span>
+                  </button>
+                  <button
+                    onClick={() => setShowAddStudent(!showAddStudent)}
+                    type="button"
+                    className="btn"
+                    style={{
+                      width: 'auto',
+                      padding: '0.5rem 0.85rem',
+                      borderRadius: '12px',
+                      background: '#4F46E5',
+                      color: 'white',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Tambah Siswa</span>
+                  </button>
+                </>
               ) : (
                 <div style={{
                   display: 'inline-flex',
@@ -953,6 +1096,371 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL AI: PINDAI & EKSTRAK DAFTAR SISWA DARI FOTO DOKUMEN */}
+      {showAiScanModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '24px',
+            maxWidth: '680px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '1.5rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}>
+            {/* Header Modal */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  flexShrink: 0
+                }}>
+                  <Sparkles size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 'bold', color: '#1E293B' }}>
+                    Scan Daftar Siswa & NISN (AI)
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                    Target: <strong style={{ color: '#4F46E5' }}>{classes.find(c => c.id === selectedClassId)?.name || 'Pilih Kelas'}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!aiScanLoading && !aiSaving) {
+                    setShowAiScanModal(false)
+                    setAiScanError(null)
+                  }
+                }}
+                disabled={aiScanLoading || aiSaving}
+                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {aiScanError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+                <span>{aiScanError}</span>
+              </div>
+            )}
+
+            {/* TAHAP 1: UPLOAD / FOTO DOKUMEN (Jika belum diekstrak) */}
+            {aiExtractedStudents.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <label
+                  style={{
+                    border: '2px dashed #CBD5E1',
+                    borderRadius: '18px',
+                    padding: '2rem 1rem',
+                    textAlign: 'center',
+                    cursor: aiScanLoading ? 'not-allowed' : 'pointer',
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.6rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={aiScanLoading}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setAiScanFile(file)
+                        const previewUrl = URL.createObjectURL(file)
+                        setAiScanPreview(previewUrl)
+                        setAiScanError(null)
+                      }
+                    }}
+                  />
+                  {aiScanPreview ? (
+                    <div style={{ position: 'relative', width: '100%', maxHeight: '220px', display: 'flex', justifyContent: 'center' }}>
+                      <img
+                        src={aiScanPreview}
+                        alt="Preview Dokumen"
+                        style={{ maxHeight: '200px', borderRadius: '12px', objectFit: 'contain', border: '1px solid #CBD5E1' }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5' }}>
+                        <Camera size={26} />
+                      </div>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#1E293B' }}>
+                        Ambil Foto atau Pilih Gambar Lembar Siswa
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748B', maxWidth: '380px' }}>
+                        Bisa berupa foto lembar absensi cetak, buku induk, atau daftar tulisan tangan yang rapi.
+                      </span>
+                    </>
+                  )}
+                </label>
+
+                {aiScanFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#475569', background: '#F1F5F9', padding: '6px 12px', borderRadius: '10px' }}>
+                    <span>File terpilih: <strong>{aiScanFile.name}</strong></span>
+                    <button
+                      type="button"
+                      disabled={aiScanLoading}
+                      onClick={() => {
+                        setAiScanFile(null)
+                        setAiScanPreview(null)
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Ganti Foto
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={14} color="#6366F1" style={{ flexShrink: 0 }} />
+                  <span>Sistem memprioritaskan <strong>Gemini 3.8 Flash</strong>, lalu otomatis beralih ke <strong>2.0 Flash</strong> jika kuota batas tercapai.</span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '0.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowAiScanModal(false)}
+                    disabled={aiScanLoading}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      border: '1px solid #CBD5E1',
+                      background: 'white',
+                      color: '#475569',
+                      fontWeight: 'bold',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleScanStudentsWithAi}
+                    disabled={aiScanLoading || !aiScanFile}
+                    style={{
+                      flex: 2,
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      border: 'none',
+                      background: (aiScanLoading || !aiScanFile) ? '#94A3B8' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '0.85rem',
+                      cursor: (aiScanLoading || !aiScanFile) ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: (aiScanLoading || !aiScanFile) ? 'none' : '0 4px 12px rgba(79, 70, 229, 0.35)'
+                    }}
+                  >
+                    {aiScanLoading ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        <span>Mengekstrak Dokumen Siswa...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        <span>Mulai Pindai Dokumen</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* TAHAP 2: TABEL PRATINJAU & VERIFIKASI HASIL SCAN */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: '#EEF2FF', padding: '0.65rem 0.85rem', borderRadius: '14px', border: '1px solid #C7D2FE' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CheckCircle2 size={18} color="#4F46E5" />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#312E81' }}>
+                      Terdeteksi {aiExtractedStudents.length} Siswa
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: '#4338CA', background: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                      AI: {aiUsedModel}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiExtractedStudents([])
+                      setAiScanFile(null)
+                      setAiScanPreview(null)
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#4F46E5', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', textDecoration: 'underline' }}
+                  >
+                    Foto Ulang
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748B' }}>
+                  <span>Silakan periksa nama & NISN sebelum disimpan. Anda bisa mengedit langsung di tabel jika ada koreksi.</span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSelectAllStudents(true)}
+                      style={{ background: 'none', border: 'none', color: '#4F46E5', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Pilih Semua
+                    </button>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSelectAllStudents(false)}
+                      style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Batal Semua
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabel List Siswa yang Terdeteksi */}
+                <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '14px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', textAlign: 'left', color: '#64748B' }}>
+                        <th style={{ padding: '8px', width: '36px', textAlign: 'center' }}>Pilih</th>
+                        <th style={{ padding: '8px', width: '32px' }}>No</th>
+                        <th style={{ padding: '8px' }}>Nama Lengkap Siswa</th>
+                        <th style={{ padding: '8px', width: '130px' }}>NISN</th>
+                        <th style={{ padding: '8px', width: '65px' }}>L/P</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aiExtractedStudents.map((st, index) => (
+                        <tr key={st.tempId} style={{ borderBottom: '1px solid #F1F5F9', background: st.selected ? 'white' : '#F8FAFC', opacity: st.selected ? 1 : 0.6 }}>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={st.selected}
+                              onChange={() => handleToggleSelectStudent(st.tempId)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px', color: '#94A3B8', fontWeight: 'bold' }}>
+                            {index + 1}
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input
+                              type="text"
+                              value={st.name}
+                              onChange={(e) => handleUpdateExtractedStudent(st.tempId, 'name', e.target.value)}
+                              style={{ width: '100%', padding: '4px 8px', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <input
+                              type="text"
+                              value={st.nisn}
+                              placeholder="NISN (opsional)"
+                              onChange={(e) => handleUpdateExtractedStudent(st.tempId, 'nisn', e.target.value)}
+                              style={{ width: '100%', padding: '4px 8px', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <select
+                              value={st.gender}
+                              onChange={(e) => handleUpdateExtractedStudent(st.tempId, 'gender', e.target.value)}
+                              style={{ padding: '4px', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
+                            >
+                              <option value="L">L</option>
+                              <option value="P">P</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer Modal Preview */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 'bold' }}>
+                    {aiExtractedStudents.filter(s => s.selected).length} dari {aiExtractedStudents.length} siswa akan disimpan
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAiScanModal(false)}
+                      disabled={aiSaving}
+                      style={{ padding: '0.65rem 1rem', borderRadius: '12px', border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '0.82rem', cursor: 'pointer' }}
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveAiScannedStudents}
+                      disabled={aiSaving || aiExtractedStudents.filter(s => s.selected).length === 0}
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        borderRadius: '12px',
+                        border: 'none',
+                        background: aiSaving ? '#94A3B8' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '0.82rem',
+                        cursor: aiSaving ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                      }}
+                    >
+                      {aiSaving ? (
+                        <>
+                          <Loader2 size={16} className="spin" />
+                          <span>Menyimpan ke Kelas...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={16} />
+                          <span>Simpan Siswa ke Kelas</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
