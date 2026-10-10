@@ -1323,17 +1323,36 @@ export default function DashboardGuru() {
                 const formData = new FormData(e.target);
                 const guruRole = formData.get('role') || 'guru_kelas';
                 const mataPelajaran = guruRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : '';
+                let formattedJabatan = formData.get('jabatan') || '';
+                if (guruRole === 'guru_mapel' && mataPelajaran && !formattedJabatan.includes(mataPelajaran)) {
+                  formattedJabatan = `Guru ${mataPelajaran} • ${formattedJabatan || 'Guru Mapel'}`;
+                }
+
                 const updates = { 
                   full_name: formData.get('full_name'), 
                   nip: formData.get('nip'), 
-                  jabatan: formData.get('jabatan'),
+                  jabatan: formattedJabatan,
                   role: guruRole,
                   mata_pelajaran: mataPelajaran
                 };
                 
-                const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+                let { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+
+                if (error && (error.message?.includes('mata_pelajaran') || error.message?.includes('schema cache'))) {
+                  // Fallback: kolom mata_pelajaran belum ada di database
+                  const fallbackUpdates = {
+                    full_name: formData.get('full_name'),
+                    nip: formData.get('nip'),
+                    jabatan: formattedJabatan,
+                    role: guruRole
+                  };
+                  const res = await supabase.from('profiles').update(fallbackUpdates).eq('id', user.id);
+                  error = res.error;
+                }
+
                 if (!error) {
-                  setProfile({ ...profile, ...updates });
+                  localStorage.setItem(`guru_mapel_${user.id}`, mataPelajaran);
+                  setProfile({ ...profile, ...updates, jabatan: formattedJabatan });
                   showPopup("Tersimpan!", "Profil dan bidang studi Anda berhasil diperbarui.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");

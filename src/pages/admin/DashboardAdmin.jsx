@@ -1045,9 +1045,9 @@ export default function DashboardAdmin() {
                               </span>
                             </div>
                             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
-                            {isMapel && p.mata_pelajaran && (
+                            {isMapel && (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) && (
                               <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.72rem', color: '#6366F1', fontWeight: '600' }}>
-                                Mapel: {p.mata_pelajaran}
+                                Mapel: {p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)}
                               </p>
                             )}
                           </div>
@@ -1114,14 +1114,36 @@ export default function DashboardAdmin() {
                       const newMapel = newRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : ''
                       const newJabatan = formData.get('jabatan') || editingPegawai.jabatan
 
-                      const { error } = await supabase.from('profiles').update({
+                      let formattedJabatan = newJabatan;
+                      if (newRole === 'guru_mapel' && newMapel) {
+                        formattedJabatan = `Guru ${newMapel} • ${newJabatan || 'Guru Mapel'}`;
+                      }
+
+                      // Coba update dengan mata_pelajaran & role jika kolom tersedia, jika tidak fallback ke jabatan saja
+                      let { error } = await supabase.from('profiles').update({
                         role: newRole,
                         mata_pelajaran: newMapel,
-                        jabatan: newJabatan
+                        jabatan: formattedJabatan
                       }).eq('id', editingPegawai.id)
 
+                      if (error && (error.message?.includes('mata_pelajaran') || error.message?.includes('schema cache'))) {
+                        // Kolom mata_pelajaran belum ada di database, simpan role dan simpan mapel di jabatan
+                        const fallbackUpdate = await supabase.from('profiles').update({
+                          role: newRole,
+                          jabatan: formattedJabatan
+                        }).eq('id', editingPegawai.id)
+                        error = fallbackUpdate.error
+                      }
+
                       if (!error) {
-                        setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { ...item, role: newRole, mata_pelajaran: newMapel, jabatan: newJabatan } : item))
+                        // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
+                        localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
+                        setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
+                          ...item, 
+                          role: newRole, 
+                          mata_pelajaran: newMapel, 
+                          jabatan: formattedJabatan 
+                        } : item))
                         setEditingPegawai(null)
                         alert("Penugasan guru berhasil diperbarui!")
                       } else {
