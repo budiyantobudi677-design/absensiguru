@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, Settings, CheckSquare, Square } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
 
 export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', schoolLogo = '', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
@@ -1338,19 +1341,76 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     setIsProcessing(false)
   }
 
-  const downloadPhoto = () => {
+  const downloadPhoto = async () => {
     if (!activePhoto) return
-    const link = document.createElement('a')
-    link.href = activePhoto.dataUrl
-    link.download = `Dokumentasi_Timemark_${Date.now()}.jpg`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const fileName = `Dokumentasi_Timemark_${Date.now()}.jpg`
+        const base64Data = activePhoto.dataUrl.includes('base64,')
+          ? activePhoto.dataUrl.split('base64,')[1]
+          : activePhoto.dataUrl
+
+        try {
+          await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Documents
+          })
+        } catch {
+          await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache
+          })
+        }
+
+        alert('Foto berhasil disimpan ke penyimpanan perangkat Anda!')
+        return
+      }
+
+      // Web fallback
+      const link = document.createElement('a')
+      link.href = activePhoto.dataUrl
+      link.download = `Dokumentasi_Timemark_${Date.now()}.jpg`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      console.error('Error downloading photo:', err)
+      const link = document.createElement('a')
+      link.href = activePhoto.dataUrl
+      link.download = `Dokumentasi_Timemark_${Date.now()}.jpg`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
   }
 
   const sharePhoto = async () => {
     if (!activePhoto) return
     try {
+      if (Capacitor.isNativePlatform()) {
+        const fileName = `Timemark_${Date.now()}.jpg`
+        const base64Data = activePhoto.dataUrl.includes('base64,')
+          ? activePhoto.dataUrl.split('base64,')[1]
+          : activePhoto.dataUrl
+
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache
+        })
+
+        await Share.share({
+          title: 'Dokumentasi Presensia',
+          text: `Dokumentasi Kegiatan Guru: ${profile?.full_name || 'Guru'} - ${schoolName}`,
+          url: savedFile.uri,
+          dialogTitle: 'Bagikan Hasil Foto Timemark'
+        })
+        return
+      }
+
+      // Web fallback
       const res = await fetch(activePhoto.dataUrl)
       const blob = await res.blob()
       const file = new File([blob], `Timemark_${Date.now()}.jpg`, { type: 'image/jpeg' })
@@ -1365,7 +1425,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         downloadPhoto()
       }
     } catch (err) {
-      console.error(err)
+      console.error('Error sharing photo:', err)
       downloadPhoto()
     }
   }

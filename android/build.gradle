@@ -5,6 +5,7 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.0'
@@ -21,11 +22,17 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
     }
 }
 
 subprojects {
     afterEvaluate { project ->
+        if (project.plugins.hasPlugin("kotlin-android") || project.plugins.hasPlugin("org.jetbrains.kotlin.android")) {
+            project.kotlin {
+                jvmToolchain(17)
+            }
+        }
         if (project.hasProperty("android")) {
             android {
                 compileOptions {
