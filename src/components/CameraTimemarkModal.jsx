@@ -74,60 +74,45 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return 'WIB'
   }
 
-  // Listener Sensor Orientasi & Gyroscope HP (Mendeteksi Rotasi Fisik HP bahkan saat Auto-Rotate Layar Dikunci)
+  // Listener Sensor Arah Kompas Dinamis (Otomatis Berubah Mengikuti Gerakan / Arah HP)
   useEffect(() => {
     if (!isOpen) return
 
     const handleOrientation = (e) => {
-      // 1. Arah Kompas Dinamis
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
         setCompassHeading(Math.round(e.webkitCompassHeading))
       } else if (e.alpha !== null && e.alpha !== undefined) {
         const heading = (360 - Math.round(e.alpha)) % 360
         setCompassHeading(heading)
       }
-
-      // 2. Deteksi Rotasi Fisik HP 90 Derajat Mandiri (Menggunakan kemiringan gamma & beta)
-      // Gamma: kemiringan kiri/kanan (-90 ke 90). Saat HP dimiringkan 90 derajat mendatar, |gamma| mendekati 50-90.
-      if (e.gamma !== null && e.gamma !== undefined && e.beta !== null && e.beta !== undefined) {
-        const absGamma = Math.abs(e.gamma)
-        const absBeta = Math.abs(e.beta)
-        if (absGamma > 45 && absBeta < 65) {
-          setIsDeviceLandscape(true)
-        } else if (absBeta > 55 && absGamma < 40) {
-          setIsDeviceLandscape(false)
-        } else {
-          // Fallback ke rasio ukuran jendela browser
-          if (typeof window !== 'undefined') {
-            setIsDeviceLandscape(window.innerWidth > window.innerHeight)
-          }
-        }
-      }
-    }
-
-    const checkWindowSize = () => {
-      if (typeof window !== 'undefined') {
-        const isLand = window.innerWidth > window.innerHeight
-        setIsDeviceLandscape(isLand)
-      }
     }
 
     window.addEventListener('deviceorientation', handleOrientation, true)
-    window.addEventListener('resize', checkWindowSize)
-    window.addEventListener('orientationchange', checkWindowSize)
-    if (window.screen?.orientation) {
-      window.screen.orientation.addEventListener('change', checkWindowSize)
-    }
-
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation, true)
-      window.removeEventListener('resize', checkWindowSize)
-      window.removeEventListener('orientationchange', checkWindowSize)
-      if (window.screen?.orientation) {
-        window.screen.orientation.removeEventListener('change', checkWindowSize)
-      }
     }
   }, [isOpen])
+
+  // Listener Deteksi Rotasi HP 90 Derajat Alami (Mengikuti Layar HP)
+  useEffect(() => {
+    const checkOrientation = () => {
+      const isLand = window.innerWidth > window.innerHeight
+      setIsDeviceLandscape(isLand)
+    }
+
+    window.addEventListener('resize', checkOrientation)
+    window.addEventListener('orientationchange', checkOrientation)
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', checkOrientation)
+    }
+    return () => {
+      window.removeEventListener('resize', checkOrientation)
+      window.removeEventListener('orientationchange', checkOrientation)
+      if (window.screen?.orientation) {
+        window.screen.orientation.removeEventListener('change', checkOrientation)
+      }
+    }
+  }, [])
 
   // Helper Konversi Singkatan Arah Kompas (Contoh: 227 -> SW)
   const getCompassShortDir = (deg) => {
@@ -1439,225 +1424,273 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         </div>
       )}
 
-      {/* Settings Panel Drawer Modal */}
+      {/* Settings Modal Dialog (Floating Center Modal dengan Backdrop Overlay agar Tampilan Tidak Terpotong) */}
       {isEditingTitle && (
         <div
           style={{
-            position: isDeviceLandscape ? 'fixed' : 'relative',
-            top: isDeviceLandscape ? '50%' : 'auto',
-            left: isDeviceLandscape ? '50%' : 'auto',
-            transform: isDeviceLandscape ? 'translate(-50%, -50%)' : 'none',
-            width: isDeviceLandscape ? '90%' : '100%',
-            maxWidth: '520px',
-            maxHeight: isDeviceLandscape ? '85vh' : 'auto',
-            overflowY: 'auto',
-            background: 'rgba(30, 41, 59, 0.98)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '16px',
-            padding: '1.2rem',
-            boxSizing: 'border-box',
-            marginTop: isDeviceLandscape ? 0 : '0.5rem',
-            color: 'white',
-            zIndex: 50,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.8)'
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            boxSizing: 'border-box'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsEditingTitle(false)
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-            <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#38BDF8' }}>⚙️ Pengaturan Desain & Watermark</span>
-            <button
-              onClick={() => setIsEditingTitle(false)}
-              style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '1rem', cursor: 'pointer' }}
-            >
-              ✕
-            </button>
-          </div>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.3rem' }}>
-              Judul Timemark / Status Presensi (Merubah teks Hadir, Selesai, dll.)
-            </label>
-            <input
-              type="text"
-              value={customTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Contoh: Selesai / Hadir / SMKN 1 MAKASSAR"
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.75rem',
-                borderRadius: '8px',
-                border: '1px solid #475569',
-                background: '#0F172A',
-                color: 'white',
-                fontSize: '0.85rem',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-
           <div
-            onClick={handleToggleTeacherName}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              padding: '0.5rem 0',
-              borderBottom: '1px solid rgba(255,255,255,0.1)'
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              background: '#1E293B',
+              border: '1.5px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '20px',
+              padding: '1.25rem',
+              boxSizing: 'border-box',
+              color: 'white',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
-            <span style={{ fontSize: '0.85rem' }}>Tampilkan Nama Guru di Foto</span>
-            {showTeacherName ? (
-              <CheckSquare size={20} color="#10B981" />
-            ) : (
-              <Square size={20} color="#94A3B8" />
-            )}
-          </div>
-
-          {/* Rasio Foto (3:4, 9:16, 1:1, 16:9) */}
-          <div style={{ marginTop: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.4rem' }}>
-              📐 Rasio Foto (Ukuran Bingkai)
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.35rem' }}>
-              {[
-                { id: '3:4', label: '3:4' },
-                { id: '9:16', label: '9:16 Full' },
-                { id: '1:1', label: '1:1 Kotak' },
-                { id: '16:9', label: '16:9 Lebar' }
-              ].map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => handleAspectRatioChange(r.id)}
-                  style={{
-                    padding: '0.45rem 0.1rem',
-                    borderRadius: '8px',
-                    border: aspectRatio === r.id ? '1px solid #38BDF8' : '1px solid #475569',
-                    background: aspectRatio === r.id ? '#0284C7' : '#0F172A',
-                    color: 'white',
-                    fontSize: '0.72rem',
-                    fontWeight: aspectRatio === r.id ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    textAlign: 'center'
-                  }}
-                >
-                  {r.label}
-                </button>
-              ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.6rem' }}>
+              <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                ⚙️ Pengaturan Desain & Watermark
+              </span>
+              <button
+                onClick={() => setIsEditingTitle(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                ✕
+              </button>
             </div>
-          </div>
 
-          {/* Pengaturan Ukuran Teks / Memperbesar Watermark */}
-          <div style={{ marginTop: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.4rem' }}>
-              🔍 Ukuran Watermark (Perbesar Teks)
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.35rem' }}>
-              {[
-                { id: 'small', label: 'Ringkas' },
-                { id: 'normal', label: 'Standar' },
-                { id: 'large', label: 'Besar' },
-                { id: 'xlarge', label: 'Ekstra' }
-              ].map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => handleScaleChange(s.id)}
-                  style={{
-                    padding: '0.45rem 0.1rem',
-                    borderRadius: '8px',
-                    border: watermarkScale === s.id ? '1px solid #F59E0B' : '1px solid #475569',
-                    background: watermarkScale === s.id ? '#D97706' : '#0F172A',
-                    color: 'white',
-                    fontSize: '0.72rem',
-                    fontWeight: watermarkScale === s.id ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    textAlign: 'center'
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
+            <div style={{ marginBottom: '0.85rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.35rem', fontWeight: '500' }}>
+                Judul Timemark / Status Presensi (Merubah teks Hadir, Selesai, dll.)
+              </label>
+              <input
+                type="text"
+                value={customTitle}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="Contoh: Selesai / Hadir / SMKN 1 MAKASSAR"
+                style={{
+                  width: '100%',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '8px',
+                  border: '1px solid #475569',
+                  background: '#0F172A',
+                  color: 'white',
+                  fontSize: '0.85rem',
+                  boxSizing: 'border-box'
+                }}
+              />
             </div>
-          </div>
 
-          {/* Pilihan Ikon Utama Watermark */}
-          <div style={{ marginTop: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.4rem' }}>
-              ✨ Pilihan Ikon Watermark
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.35rem' }}>
-              {[
-                { icon: '🎓', label: 'Guru' },
-                { icon: '🏫', label: 'Sekolah' },
-                { icon: '🪪', label: 'ID' },
-                { icon: '🏛️', label: 'Dinas' },
-                { icon: '⭐', label: 'Bintang' },
-                { icon: '🇮🇩', label: 'RI' }
-              ].map((item) => (
-                <button
-                  key={item.icon}
-                  type="button"
-                  onClick={() => handleIconChange(item.icon)}
-                  title={item.label}
-                  style={{
-                    padding: '0.4rem 0.2rem',
-                    borderRadius: '8px',
-                    border: customIcon === item.icon ? '1px solid #10B981' : '1px solid #475569',
-                    background: customIcon === item.icon ? '#059669' : '#0F172A',
-                    color: 'white',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    textAlign: 'center'
-                  }}
-                >
-                  {item.icon}
-                </button>
-              ))}
+            <div
+              onClick={handleToggleTeacherName}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                padding: '0.6rem 0',
+                borderBottom: '1px solid rgba(255,255,255,0.1)'
+              }}
+            >
+              <span style={{ fontSize: '0.85rem' }}>Tampilkan Nama Guru di Foto</span>
+              {showTeacherName ? (
+                <CheckSquare size={20} color="#10B981" />
+              ) : (
+                <Square size={20} color="#94A3B8" />
+              )}
             </div>
-          </div>
 
-          {/* Template Layout Watermark */}
-          <div style={{ marginTop: '0.75rem' }}>
-            <label style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'block', marginBottom: '0.4rem' }}>
-              🎨 Desain Watermark (Tema Cetak)
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
-              {[
-                { id: 'panritaedu', label: '⭐ PanritaEdu' },
-                { id: 'panrita_split', label: '⭐ Panrita Split' },
-                { id: 'geotag', label: '🧭 Geo Tag' },
-                { id: 'logo', label: '🏫 Logo Sekolah' },
-                { id: 'modern', label: 'Modern Strip' },
-                { id: 'card', label: 'Badge Card' },
-                { id: 'academic', label: '🎓 Akademik' },
-                { id: 'stamp', label: '🏛️ Stempel Sah' },
-                { id: 'idbadge', label: '🪪 ID Card ASN' },
-                { id: 'classic', label: '📷 Klasik Drop' }
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleLayoutChange(t.id)}
-                  style={{
-                    padding: '0.5rem 0.2rem',
-                    borderRadius: '8px',
-                    border: layoutTemplate === t.id ? '1px solid #38BDF8' : '1px solid #475569',
-                    background: layoutTemplate === t.id ? '#0284C7' : '#0F172A',
-                    color: 'white',
-                    fontSize: '0.72rem',
-                    fontWeight: layoutTemplate === t.id ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    textAlign: 'center'
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
+            {/* Rasio Foto (3:4, 9:16, 1:1, 16:9) */}
+            <div style={{ marginTop: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.45rem', fontWeight: '500' }}>
+                📐 Rasio Foto (Ukuran Bingkai)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
+                {[
+                  { id: '3:4', label: '3:4' },
+                  { id: '9:16', label: '9:16 Full' },
+                  { id: '1:1', label: '1:1 Kotak' },
+                  { id: '16:9', label: '16:9 Lebar' }
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => handleAspectRatioChange(r.id)}
+                    style={{
+                      padding: '0.5rem 0.1rem',
+                      borderRadius: '8px',
+                      border: aspectRatio === r.id ? '1px solid #38BDF8' : '1px solid #475569',
+                      background: aspectRatio === r.id ? '#0284C7' : '#0F172A',
+                      color: 'white',
+                      fontSize: '0.75rem',
+                      fontWeight: aspectRatio === r.id ? 'bold' : 'normal',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Pengaturan Ukuran Teks / Memperbesar Watermark */}
+            <div style={{ marginTop: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.45rem', fontWeight: '500' }}>
+                🔍 Ukuran Watermark (Perbesar Teks)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
+                {[
+                  { id: 'small', label: 'Ringkas' },
+                  { id: 'normal', label: 'Standar' },
+                  { id: 'large', label: 'Besar' },
+                  { id: 'xlarge', label: 'Ekstra' }
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => handleScaleChange(s.id)}
+                    style={{
+                      padding: '0.5rem 0.1rem',
+                      borderRadius: '8px',
+                      border: watermarkScale === s.id ? '1px solid #F59E0B' : '1px solid #475569',
+                      background: watermarkScale === s.id ? '#D97706' : '#0F172A',
+                      color: 'white',
+                      fontSize: '0.75rem',
+                      fontWeight: watermarkScale === s.id ? 'bold' : 'normal',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pilihan Ikon Utama Watermark */}
+            <div style={{ marginTop: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.45rem', fontWeight: '500' }}>
+                ✨ Pilihan Ikon Watermark
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.4rem' }}>
+                {[
+                  { icon: '🎓', label: 'Guru' },
+                  { icon: '🏫', label: 'Sekolah' },
+                  { icon: '🪪', label: 'ID' },
+                  { icon: '🏛️', label: 'Dinas' },
+                  { icon: '⭐', label: 'Bintang' },
+                  { icon: '🇮🇩', label: 'RI' }
+                ].map((item) => (
+                  <button
+                    key={item.icon}
+                    type="button"
+                    onClick={() => handleIconChange(item.icon)}
+                    title={item.label}
+                    style={{
+                      padding: '0.45rem 0.2rem',
+                      borderRadius: '8px',
+                      border: customIcon === item.icon ? '1px solid #10B981' : '1px solid #475569',
+                      background: customIcon === item.icon ? '#059669' : '#0F172A',
+                      color: 'white',
+                      fontSize: '1.05rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {item.icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Template Layout Watermark */}
+            <div style={{ marginTop: '0.85rem', marginBottom: '0.5rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.45rem', fontWeight: '500' }}>
+                🎨 Desain Watermark (Tema Cetak)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                {[
+                  { id: 'panritaedu', label: '⭐ PanritaEdu' },
+                  { id: 'panrita_split', label: '⭐ Panrita Split' },
+                  { id: 'geotag', label: '🧭 Geo Tag' },
+                  { id: 'logo', label: '🏫 Logo Sekolah' },
+                  { id: 'modern', label: 'Modern Strip' },
+                  { id: 'card', label: 'Badge Card' },
+                  { id: 'academic', label: '🎓 Akademik' },
+                  { id: 'stamp', label: '🏛️ Stempel Sah' },
+                  { id: 'idbadge', label: '🪪 ID Card ASN' },
+                  { id: 'classic', label: '📷 Klasik Drop' }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleLayoutChange(t.id)}
+                    style={{
+                      padding: '0.55rem 0.2rem',
+                      borderRadius: '8px',
+                      border: layoutTemplate === t.id ? '1px solid #38BDF8' : '1px solid #475569',
+                      background: layoutTemplate === t.id ? '#0284C7' : '#0F172A',
+                      color: 'white',
+                      fontSize: '0.75rem',
+                      fontWeight: layoutTemplate === t.id ? 'bold' : 'normal',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsEditingTitle(false)}
+              style={{
+                width: '100%',
+                marginTop: '1rem',
+                padding: '0.65rem',
+                background: '#0284C7',
+                border: 'none',
+                borderRadius: '10px',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              ✓ Simpan & Tutup Pengaturan
+            </button>
           </div>
         </div>
       )}
