@@ -15,6 +15,7 @@ import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { Preferences } from '@capacitor/preferences'
+import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
 
 const getLocalPref = async (key, fallback = null) => {
@@ -666,6 +667,16 @@ export default function DashboardGuru() {
   }
 
   const handleAbsen = async (jenis) => {
+    // Kebijakan Keamanan: Presensi kehadiran hanya diizinkan melalui aplikasi Android (APK)
+    if (!Capacitor.isNativePlatform() && (jenis === 'masuk' || jenis === 'pulang')) {
+      showPopup(
+        "Presensi Kehadiran Hanya Melalui Aplikasi Android",
+        "Silakan buka aplikasi PanritaEdu di ponsel Android Anda untuk melakukan presensi.",
+        "error"
+      )
+      return
+    }
+
     setLoading(true)
     try {
       const position = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
