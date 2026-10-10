@@ -1046,24 +1046,24 @@ export default function DashboardGuru() {
         </div>
       )}
 
-      {/* Header ID Card */}
-      <div className="card-gradient" style={{ padding: '2.5rem 1.5rem 2rem 1.5rem', borderRadius: '0 0 32px 32px', marginBottom: '1.5rem', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.18)', padding: '0.35rem 0.8rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
-          <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</span>
+      {/* Header ID Card (Compact & Space-Saving) */}
+      <div className="card-gradient" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.65rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
+          <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+          <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</span>
         </div>
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
+        <div className="flex justify-between items-center mb-2.5">
+          <div className="flex items-center gap-3">
             {profile?.foto_profil ? (
-              <img src={profile.foto_profil} alt="Profil" style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)', background: 'white' }} />
+              <img src={profile.foto_profil} alt="Profil" style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)', background: 'white', flexShrink: 0 }} />
             ) : (
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <UserCircle size={36} color="var(--primary)" />
+              <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <UserCircle size={28} color="var(--primary)" />
               </div>
             )}
             <div>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', marginBottom: '0.1rem' }}>{getGreeting()},</p>
-              <h2 style={{ fontSize: '1.3rem', marginTop: 0, letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+              <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.75rem', marginBottom: '0px', lineHeight: 1.2 }}>{getGreeting()},</p>
+              <h2 style={{ fontSize: '1.05rem', margin: '2px 0 0 0', fontWeight: '700', letterSpacing: '0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px', lineHeight: 1.2 }}>
                 {profile?.full_name || user?.email?.split('@')[0]}
               </h2>
             </div>
@@ -1075,9 +1075,9 @@ export default function DashboardGuru() {
               style={{
                 background: 'rgba(255,255,255,0.15)',
                 border: 'none',
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1086,7 +1086,7 @@ export default function DashboardGuru() {
                 transition: 'all 0.2s'
               }}
             >
-              {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#E0E7FF" />}
+              {darkMode ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#E0E7FF" />}
             </button>
             <button
               onClick={() => setShowCameraModal(true)}
@@ -1094,9 +1094,9 @@ export default function DashboardGuru() {
               style={{
                 background: 'rgba(255,255,255,0.15)',
                 border: 'none',
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1105,7 +1105,7 @@ export default function DashboardGuru() {
                 transition: 'all 0.2s'
               }}
             >
-              <Camera size={20} />
+              <Camera size={17} />
             </button>
             <button
               onClick={() => setActiveTab('pengumuman')}
@@ -1113,9 +1113,9 @@ export default function DashboardGuru() {
               style={{
                 background: activeTab === 'pengumuman' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
                 border: 'none',
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1124,19 +1124,19 @@ export default function DashboardGuru() {
                 position: 'relative'
               }}
             >
-              <Bell size={20} />
-              {unreadCount > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#EF4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>}
+              <Bell size={17} />
+              {unreadCount > 0 && <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#EF4444', width: '8px', height: '8px', borderRadius: '50%' }}></span>}
             </button>
           </div>
         </div>
-        <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '1rem 1.25rem', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
-          <div className="flex items-center gap-3">
-            <Clock size={20} />
-            <span style={{ fontSize: '1rem', fontWeight: '500', letterSpacing: '1px' }}>
+        <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '0.45rem 0.85rem', borderRadius: '12px', backdropFilter: 'blur(10px)' }}>
+          <div className="flex items-center gap-2">
+            <Clock size={16} />
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.5px' }}>
               {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           </div>
-          <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.9)' }}>
+          <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.92)' }}>
             {currentTime.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
           </span>
         </div>
