@@ -482,6 +482,9 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
 
   /* Sembunyikan elemen non-cetak */
   .no-print,
+  .card-gradient,
+  header,
+  .guru-header,
   button,
   .btn,
   nav,
