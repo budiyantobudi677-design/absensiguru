@@ -14,7 +14,8 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const isAdmin = activeProfile.role === 'admin' || 
                   user?.role === 'admin' || 
                   window.location.pathname.startsWith('/admin')
-  const isGuruMapel = !isAdmin && (activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
+  const guruTipe = localStorage.getItem(`guru_tipe_${activeProfile.id || user?.id}`) || activeProfile.penugasan_tipe || activeProfile.role
+  const isGuruMapel = !isAdmin && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
   // Admin & Wali Kelas berhak mengelola siswa; Guru Mapel dibatasi (Read Only)
   const canManageStudents = isAdmin || !isGuruMapel
   // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
@@ -60,9 +61,20 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     try {
       const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (error) throw error
-      setClasses(data || [])
-      if (data && data.length > 0 && !selectedClassId) {
-        setSelectedClassId(data[0].id)
+      
+      let filtered = data || []
+      // Jika bukan Admin, saring sesuai penugasan guru
+      if (!isAdmin) {
+        const uId = activeProfile.id || user?.id
+        const assigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${uId}`) || '[]')
+        if (assigned.length > 0) {
+          filtered = filtered.filter(c => assigned.includes(c.id))
+        }
+      }
+
+      setClasses(filtered)
+      if (filtered && filtered.length > 0 && !selectedClassId) {
+        setSelectedClassId(filtered[0].id)
       }
     } catch (err) {
       console.error(err)

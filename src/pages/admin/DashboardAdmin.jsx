@@ -1025,7 +1025,8 @@ export default function DashboardAdmin() {
                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
                   {filteredPegawai.map(p => {
-                    const isMapel = p.role === 'guru_mapel';
+                    const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
+                    const isMapel = guruTipe === 'guru_mapel';
                     return (
                       <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                         <div className="flex gap-3 items-center" style={{ minWidth: 0, flex: 1 }}>
@@ -1136,28 +1137,20 @@ export default function DashboardAdmin() {
                       const assignedClasses = formData.getAll('assigned_classes')
                       localStorage.setItem(`guru_assigned_classes_${editingPegawai.id}`, JSON.stringify(assignedClasses))
 
-                      // Coba update dengan mata_pelajaran & role jika kolom tersedia, jika tidak fallback ke jabatan saja
+                      // Simpan tipe penugasan guru di localStorage
+                      localStorage.setItem(`guru_tipe_${editingPegawai.id}`, newRole)
+
+                      // Update profil di database (tanpa mengubah role utama agar tidak melanggar profiles_role_check)
                       let { error } = await supabase.from('profiles').update({
-                        role: newRole,
-                        mata_pelajaran: newMapel,
                         jabatan: formattedJabatan
                       }).eq('id', editingPegawai.id)
-
-                      if (error && (error.message?.includes('mata_pelajaran') || error.message?.includes('schema cache'))) {
-                        // Kolom mata_pelajaran belum ada di database, simpan role dan simpan mapel di jabatan
-                        const fallbackUpdate = await supabase.from('profiles').update({
-                          role: newRole,
-                          jabatan: formattedJabatan
-                        }).eq('id', editingPegawai.id)
-                        error = fallbackUpdate.error
-                      }
 
                       if (!error) {
                         // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
                         localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
                         setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
                           ...item, 
-                          role: newRole, 
+                          penugasan_tipe: newRole, 
                           mata_pelajaran: newMapel, 
                           jabatan: formattedJabatan 
                         } : item))
@@ -1173,7 +1166,7 @@ export default function DashboardAdmin() {
                         <select 
                           name="role" 
                           className="input" 
-                          defaultValue={editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'}
+                          defaultValue={localStorage.getItem(`guru_tipe_${editingPegawai.id}`) || (editingPegawai.penugasan_tipe === 'guru_mapel' || editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')}
                           onChange={(e) => {
                             const mapelBox = document.getElementById('admin-edit-mapel-box')
                             if (mapelBox) {

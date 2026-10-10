@@ -75,13 +75,13 @@ export default function DashboardGuru() {
   // Helper untuk mengecek apakah penugasan guru sudah lengkap
   const checkAssignmentConfigured = () => {
     if (!user) return true
-    const role = profile?.role || 'guru_kelas'
+    const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
     const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
     const assigned = assignedClasses.length > 0 
       ? assignedClasses 
       : JSON.parse(localStorage.getItem(`guru_assigned_classes_${user.id}`) || '[]')
     
-    if (role === 'guru_mapel') {
+    if (tipe === 'guru_mapel') {
       return Boolean(mapel) && assigned.length > 0
     }
     return assigned.length > 0
@@ -164,15 +164,13 @@ export default function DashboardGuru() {
 
     // Interval 10 Menit (600,000 ms) pengingat penugasan belum diatur
     const reminderTimer = setInterval(() => {
-      const u = supabase.auth.getUser()
       const stored = localStorage.getItem('lastActive_guru')
-      if (stored) {
-        const uId = localStorage.getItem('sb-current-user-id') // or check active state
+      if (stored && user?.id) {
         // Evaluasi apakah penugasan sudah diset
         const savedClasses = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user?.id}`) || '[]')
-        const role = profile?.role || 'guru_kelas'
+        const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
         const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user?.id}`) || ''
-        const configured = role === 'guru_mapel' 
+        const configured = tipe === 'guru_mapel' 
           ? (Boolean(mapel) && savedClasses.length > 0)
           : (savedClasses.length > 0)
 
@@ -258,9 +256,9 @@ export default function DashboardGuru() {
       setAssignedClasses(storedAssigned)
 
       // Cek apakah penugasan sudah diatur
-      const userRole = profile?.role || 'guru_kelas'
+      const userTipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
       const userMapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
-      const isConfigured = userRole === 'guru_mapel' 
+      const isConfigured = userTipe === 'guru_mapel' 
         ? (Boolean(userMapel) && storedAssigned.length > 0)
         : (storedAssigned.length > 0)
 
@@ -1481,50 +1479,44 @@ export default function DashboardGuru() {
                 }
                 setLoading(true);
                 const formData = new FormData(e.target);
-                const guruRole = formData.get('role') || 'guru_kelas';
-                const mataPelajaran = guruRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : '';
+                const guruTipe = formData.get('penugasan_tipe') || 'guru_kelas';
+                const mataPelajaran = guruTipe === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : '';
                 let formattedJabatan = formData.get('jabatan') || '';
-                if (guruRole === 'guru_mapel' && mataPelajaran && !formattedJabatan.includes(mataPelajaran)) {
+                if (guruTipe === 'guru_mapel' && mataPelajaran && !formattedJabatan.includes(mataPelajaran)) {
                   formattedJabatan = `Guru ${mataPelajaran} • ${formattedJabatan || 'Guru Mapel'}`;
                 }
 
                 // Ambil rombel yang dipilih
                 let selectedClasses = [];
-                if (guruRole === 'guru_kelas') {
+                if (guruTipe === 'guru_kelas') {
                   const kelasWali = formData.get('kelas_wali');
                   if (kelasWali) selectedClasses = [kelasWali];
                 } else {
                   selectedClasses = formData.getAll('assigned_classes') || [];
                 }
 
+                // Simpan role database asli (jangan ubah 'guru' atau 'admin' agar tidak melanggar constraint DB profiles_role_check)
                 const updates = { 
                   full_name: formData.get('full_name'), 
                   nip: formData.get('nip'), 
-                  jabatan: formattedJabatan,
-                  role: guruRole,
-                  mata_pelajaran: mataPelajaran
+                  jabatan: formattedJabatan
                 };
                 
                 let { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
 
-                if (error && (error.message?.includes('mata_pelajaran') || error.message?.includes('schema cache'))) {
-                  // Fallback: kolom mata_pelajaran belum ada di database
-                  const fallbackUpdates = {
-                    full_name: formData.get('full_name'),
-                    nip: formData.get('nip'),
-                    jabatan: formattedJabatan,
-                    role: guruRole
-                  };
-                  const res = await supabase.from('profiles').update(fallbackUpdates).eq('id', user.id);
-                  error = res.error;
-                }
-
                 if (!error) {
+                  localStorage.setItem(`guru_tipe_${user.id}`, guruTipe);
                   localStorage.setItem(`guru_mapel_${user.id}`, mataPelajaran);
                   localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(selectedClasses));
                   setAssignedClasses(selectedClasses);
                   setShowAssignmentReminder(false);
-                  setProfile({ ...profile, ...updates, jabatan: formattedJabatan });
+                  setProfile({ 
+                    ...profile, 
+                    ...updates, 
+                    penugasan_tipe: guruTipe, 
+                    mata_pelajaran: mataPelajaran, 
+                    jabatan: formattedJabatan 
+                  });
                   showPopup("Tersimpan!", "Profil dan penugasan kelas Anda berhasil diperbarui.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");
@@ -1547,9 +1539,9 @@ export default function DashboardGuru() {
                 <div className="input-group">
                   <label className="input-label">Tipe Penugasan Guru</label>
                   <select 
-                    name="role" 
+                    name="penugasan_tipe" 
                     className="input" 
-                    defaultValue={profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'}
+                    defaultValue={localStorage.getItem(`guru_tipe_${user?.id}`) || (profile?.penugasan_tipe === 'guru_mapel' || profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')}
                     onChange={(e) => {
                       const isMapel = e.target.value === 'guru_mapel';
                       const mapelBox = document.getElementById('mapel-select-box');
@@ -1571,7 +1563,7 @@ export default function DashboardGuru() {
                 <div 
                   id="mapel-select-box" 
                   className="input-group" 
-                  style={{ display: profile?.role === 'guru_mapel' ? 'block' : 'none' }}
+                  style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'block' : 'none' }}
                 >
                   <label className="input-label">Bidang Studi / Mata Pelajaran Utama</label>
                   <select 
@@ -1594,7 +1586,7 @@ export default function DashboardGuru() {
                   <label className="input-label">Penugasan Kelas / Rombel Belajar</label>
                   
                   {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
-                  <div id="kelas-wali-box" style={{ display: profile?.role === 'guru_mapel' ? 'none' : 'block' }}>
+                  <div id="kelas-wali-box" style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'none' : 'block' }}>
                     <select 
                       name="kelas_wali" 
                       className="input" 
@@ -1611,7 +1603,7 @@ export default function DashboardGuru() {
                   </div>
 
                   {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}
-                  <div id="kelas-mapel-box" style={{ display: profile?.role === 'guru_mapel' ? 'block' : 'none' }}>
+                  <div id="kelas-mapel-box" style={{ display: (localStorage.getItem(`guru_tipe_${user?.id}`) || profile?.penugasan_tipe || profile?.role) === 'guru_mapel' ? 'block' : 'none' }}>
                     <div style={{ fontSize: '0.78rem', color: '#475569', marginBottom: '6px' }}>
                       Centang semua kelas yang Anda ajar untuk mata pelajaran ini:
                     </div>
