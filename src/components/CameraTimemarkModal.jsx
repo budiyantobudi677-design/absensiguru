@@ -3,6 +3,7 @@ import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, 
 import { Capacitor } from '@capacitor/core'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
+import { getSecureServerDate, syncServerTime, getSecureLocation } from '../lib/security'
 
 export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', schoolLogo = '', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
@@ -15,7 +16,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
   const activePhoto = capturedPhotos[selectedPhotoIndex] || capturedPhotos[capturedPhotos.length - 1] || null
   const [locationText, setLocationText] = useState('Mencari lokasi GPS...')
-  const [currentDateTime, setCurrentDateTime] = useState(new Date())
+  const [currentDateTime, setCurrentDateTime] = useState(() => getSecureServerDate())
   const [cameraError, setCameraError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -253,8 +254,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
 
     startCamera(facingMode)
+    syncServerTime().then(() => setCurrentDateTime(getSecureServerDate()))
     fetchLocation()
-    const timer = setInterval(() => setCurrentDateTime(new Date()), 1000)
+    const timer = setInterval(() => setCurrentDateTime(getSecureServerDate()), 1000)
 
     return () => {
       clearInterval(timer)
@@ -289,39 +291,39 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return `Lat: ${latitude.toFixed(5)}, Long: ${longitude.toFixed(5)}`
   }
 
-  const fetchLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude
-          const lng = pos.coords.longitude
-          const alt = pos.coords.altitude
-          const acc = pos.coords.accuracy
-          const head = pos.coords.heading
+  const fetchLocation = async () => {
+    try {
+      const pos = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
+      const lat = pos.latitude
+      const lng = pos.longitude
+      const alt = pos.altitude
+      const acc = pos.accuracy
+      const head = pos.heading
 
-          setGeoData({
-            latitude: lat,
-            longitude: lng,
-            altitude: alt !== null && !isNaN(alt) ? Math.round(alt) : null,
-            accuracy: acc !== null && !isNaN(acc) ? Math.round(acc) : null,
-            heading: head !== null && !isNaN(head) ? Math.round(head) : null
-          })
+      if (pos.isMock) {
+        setLocationText('⚠️ PERINGATAN: Terdeteksi Fake GPS / Lokasi Palsu!')
+        setCameraError('Aplikasi mendeteksi lokasi palsu (Fake GPS/Mock Provider). Harap matikan aplikasi lokasi palsu untuk melanjutkan.')
+        return
+      }
 
-          if (head !== null && !isNaN(head)) {
-            setCompassHeading(Math.round(head))
-          }
+      setGeoData({
+        latitude: lat,
+        longitude: lng,
+        altitude: alt !== null && !isNaN(alt) ? Math.round(alt) : null,
+        accuracy: acc !== null && !isNaN(acc) ? Math.round(acc) : null,
+        heading: head !== null && !isNaN(head) ? Math.round(head) : null
+      })
 
-          setLocationText('Mendeteksi nama lokasi...')
-          const address = await fetchAddressName(lat, lng)
-          setLocationText(address)
-        },
-        () => {
-          setLocationText('GPS tidak aktif / Izin lokasi ditolak')
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-    } else {
-      setLocationText('Perangkat tidak mendukung geolokasi')
+      if (head !== null && !isNaN(head)) {
+        setCompassHeading(Math.round(head))
+      }
+
+      setLocationText('Mendeteksi nama lokasi...')
+      const address = await fetchAddressName(lat, lng)
+      setLocationText(address)
+    } catch (err) {
+      console.warn('Get location failed:', err)
+      setLocationText('GPS tidak aktif / Izin lokasi ditolak')
     }
   }
 
@@ -1327,7 +1329,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     setIsFlashActive(true)
     setTimeout(() => setIsFlashActive(false), 120)
 
-    const newPhoto = { id: Date.now(), dataUrl, timestamp: new Date() }
+    const newPhoto = { id: Date.now(), dataUrl, timestamp: getSecureServerDate() }
     setCapturedPhotos((prev) => {
       const nextList = [...prev, newPhoto]
       if (nextList.length >= 10) {

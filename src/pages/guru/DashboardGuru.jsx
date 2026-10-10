@@ -15,6 +15,7 @@ import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { Preferences } from '@capacitor/preferences'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -183,7 +184,8 @@ export default function DashboardGuru() {
     localStorage.setItem('lastActive_guru', now.toString())
 
     fetchUser()
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    syncServerTime().then(() => setCurrentTime(getSecureServerDate()))
+    const timer = setInterval(() => setCurrentTime(getSecureServerDate()), 1000)
     
     // Offline Listeners
     const handleOnline = () => { setIsOffline(false); syncOfflineData(); }
@@ -222,8 +224,7 @@ export default function DashboardGuru() {
   }, [])
 
   const getLocalDateString = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return getSecureLocalDateString()
   }
 
   const checkUnsynced = () => {
@@ -666,72 +667,80 @@ export default function DashboardGuru() {
 
   const handleAbsen = async (jenis) => {
     setLoading(true)
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        const userLat = position.coords.latitude
-        const userLng = position.coords.longitude
-        const loc = `${userLat}, ${userLng}`
-        const today = getLocalDateString()
-        const now = new Date().toISOString()
+    try {
+      const position = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
+      
+      // Deteksi Fake GPS / Mock Location
+      if (position.isMock) {
+        showPopup(
+          "Peringatan Fake GPS",
+          "Aplikasi mendeteksi penggunaan Fake GPS / Lokasi Palsu. Silakan matikan aplikasi Fake GPS untuk melakukan presensi.",
+          "error"
+        )
+        setLoading(false)
+        return
+      }
 
-        // Geofencing Validation (khusus absen masuk & pulang)
-        if (geofenceSettings.enabled && (jenis === 'masuk' || jenis === 'pulang')) {
-          const distance = calculateDistance(
-            userLat,
-            userLng,
-            geofenceSettings.lat,
-            geofenceSettings.lng
+      const userLat = position.latitude
+      const userLng = position.longitude
+      const loc = `${userLat}, ${userLng}`
+      const today = getLocalDateString()
+      const now = getSecureServerIsoString()
+
+      // Geofencing Validation (khusus absen masuk & pulang)
+      if (geofenceSettings.enabled && (jenis === 'masuk' || jenis === 'pulang')) {
+        const distance = calculateDistance(
+          userLat,
+          userLng,
+          geofenceSettings.lat,
+          geofenceSettings.lng
+        )
+
+        if (distance > geofenceSettings.radius) {
+          showPopup(
+            "Di Luar Radius Sekolah",
+            `Anda berada ${distance}m dari sekolah (maksimal ${geofenceSettings.radius}m). Mohon mendekat ke area sekolah.`,
+            "error"
           )
+          setLoading(false)
+          return
+        }
+      }
+      
+      if (isOffline) {
+         saveOffline(jenis, loc, now, today, keterangan)
+         return
+      }
 
-          if (distance > geofenceSettings.radius) {
-            showPopup(
-              "Di Luar Radius Sekolah",
-              `Anda berada ${distance}m dari sekolah (maksimal ${geofenceSettings.radius}m). Mohon mendekat ke area sekolah.`,
-              "error"
-            )
-            setLoading(false)
-            return
-          }
+      try {
+        if (jenis === 'masuk') {
+          const { data: insData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().maybeSingle()
+          if (error) throw error
+          setHasCheckedIn(true)
+          setTodayStatus('hadir')
+          setTodayAbsensi(insData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+          showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
+        } else if (jenis === 'pulang') {
+          const { data: updData, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().maybeSingle()
+          if (error) throw error
+          setTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
+          showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
+        } else if (jenis === 'sakit' || jenis === 'izin') {
+          const { data: izinData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().maybeSingle()
+          if (error) throw error
+          setHasCheckedIn(true)
+          setTodayStatus(jenis)
+          setTodayAbsensi(izinData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
+          setIzinMode(null)
+          showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
         }
-        
-        if (isOffline) {
-           saveOffline(jenis, loc, now, today, keterangan)
-           return
-        }
-
-        try {
-          if (jenis === 'masuk') {
-            const { data: insData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().maybeSingle()
-            if (error) throw error
-            setHasCheckedIn(true)
-            setTodayStatus('hadir')
-            setTodayAbsensi(insData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
-            showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
-          } else if (jenis === 'pulang') {
-            const { data: updData, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().maybeSingle()
-            if (error) throw error
-            setTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
-            showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
-          } else if (jenis === 'sakit' || jenis === 'izin') {
-            const { data: izinData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().maybeSingle()
-            if (error) throw error
-            setHasCheckedIn(true)
-            setTodayStatus(jenis)
-            setTodayAbsensi(izinData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
-            setIzinMode(null)
-            showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
-          }
-        } catch (error) {
-          // Fallback to offline if supabase fails
-          saveOffline(jenis, loc, now, today, keterangan)
-        }
-        setLoading(false)
-      }, () => {
-        showPopup("Akses Lokasi Ditolak", "Mohon izinkan akses GPS.", "error")
-        setLoading(false)
-      }, { timeout: 10000 })
-    } else {
-      showPopup("GPS Tidak Didukung", "Browser Anda tidak mendukung lokasi.", "error")
+      } catch (error) {
+        // Fallback to offline if supabase fails
+        saveOffline(jenis, loc, now, today, keterangan)
+      }
+      setLoading(false)
+    } catch (err) {
+      showPopup("Akses Lokasi Gagal", err?.message || "Mohon pastikan GPS aktif dan izin lokasi telah diberikan.", "error")
       setLoading(false)
     }
   }
@@ -784,17 +793,17 @@ export default function DashboardGuru() {
     const waktuPulang = jamPulangDate.toISOString()
 
     // Ambil koordinat GPS perangkat saat ini jika tersedia (tanpa geofence constraint)
-    const getCoordinates = () => new Promise((resolve) => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(`${pos.coords.latitude}, ${pos.coords.longitude}`),
-          () => resolve('Lokasi Tugas Luar'),
-          { timeout: 7000 }
-        )
-      } else {
-        resolve('Lokasi Tugas Luar')
+    const getCoordinates = async () => {
+      try {
+        const pos = await getSecureLocation({ timeout: 7000, enableHighAccuracy: true })
+        if (pos.isMock) {
+          return 'Lokasi Tugas Luar (Mock GPS Detected)'
+        }
+        return `${pos.latitude}, ${pos.longitude}`
+      } catch {
+        return 'Lokasi Tugas Luar'
       }
-    })
+    }
 
     const loc = await getCoordinates()
     const finalCatatan = `[Tugas Luar/Pelatihan] ${tugasLuarCatatan.trim()}`
