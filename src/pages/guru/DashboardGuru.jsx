@@ -2261,6 +2261,7 @@ export default function DashboardGuru() {
         profile={profile}
         user={user}
         schoolName={schoolName}
+        schoolLogo={schoolLogo}
         onSelectPhoto={cameraModeForTugasLuar ? async (photoUrl) => {
           const webp = await convertToWebP(photoUrl, 0.75, 1024)
           setTugasLuarFoto(webp)

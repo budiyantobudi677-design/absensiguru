@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, X, RefreshCw, Download, Share2, MapPin, Calendar, Clock, User, Settings, CheckSquare, Square } from 'lucide-react'
 
-export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', onSelectPhoto = null }) {
+export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', schoolLogo = '', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
   const [facingMode, setFacingMode] = useState('environment') // 'user' (selfie) or 'environment' (belakang)
   const [capturedPhoto, setCapturedPhoto] = useState(null)
@@ -10,6 +10,16 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [cameraError, setCameraError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Data Geolokasi Terperinci (Koordinat, Elevasi, Arah Kompas, Akurasi)
+  const [geoData, setGeoData] = useState({
+    latitude: null,
+    longitude: null,
+    altitude: null,
+    heading: null,
+    accuracy: null
+  })
+  const [compassHeading, setCompassHeading] = useState(0)
 
   // Judul paling atas kustom yang tersimpan di localStorage
   const [customTitle, setCustomTitle] = useState(() => {
@@ -23,10 +33,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return saved !== null ? saved === 'true' : true
   })
 
-  // Pengaturan Template Layout Watermark ('panritaedu' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
+  // Pengaturan Template Layout Watermark ('panritaedu' | 'geotag' | 'logo' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
   const [layoutTemplate, setLayoutTemplate] = useState(() => {
     const saved = localStorage.getItem('timemark_layout_template')
-    // Jika belum pernah diset atau masih menggunakan nilai lama 'modern', utamakan tema baru 'panritaedu'
     if (!saved || saved === 'modern') {
       localStorage.setItem('timemark_layout_template', 'panritaedu')
       return 'panritaedu'
@@ -55,6 +64,61 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     if (offset >= 8.5) return 'WIT'
     if (offset >= 7.5) return 'WITA'
     return 'WIB'
+  }
+
+  // Listener Sensor Orientasi Perangkat untuk Kompas Heading
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleOrientation = (e) => {
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        setCompassHeading(Math.round(e.webkitCompassHeading))
+      } else if (e.alpha !== null && e.alpha !== undefined) {
+        const heading = (360 - e.alpha) % 360
+        setCompassHeading(Math.round(heading))
+      }
+    }
+
+    window.addEventListener('deviceorientation', handleOrientation, true)
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation, true)
+    }
+  }, [isOpen])
+
+  // Helper Konversi Derajat Kompas ke Arah Mata Angin
+  const getCompassDirection = (deg) => {
+    if (deg === null || deg === undefined || isNaN(deg)) return 'U'
+    const directions = ['U', 'UTL', 'TL', 'TTL', 'T', 'TTG', 'TG', 'STG', 'S', 'SBD', 'BD', 'BBD', 'B', 'BBL', 'BL', 'UBL']
+    const idx = Math.round(((deg % 360) / 22.5)) % 16
+    return directions[idx] || 'U'
+  }
+
+  const getCompassDirectionLong = (deg) => {
+    if (deg === null || deg === undefined || isNaN(deg)) return 'Utara'
+    const d = getCompassDirection(deg)
+    switch (d) {
+      case 'U': return 'Utara'
+      case 'TL': case 'UTL': case 'TTL': return 'Timur Laut'
+      case 'T': return 'Timur'
+      case 'TG': case 'TTG': case 'STG': return 'Tenggara'
+      case 'S': return 'Selatan'
+      case 'BD': case 'SBD': case 'BBD': return 'Barat Daya'
+      case 'B': return 'Barat'
+      case 'BL': case 'BBL': case 'UBL': return 'Barat Laut'
+      default: return 'Utara'
+    }
+  }
+
+  // Format Koordinat ke Derajat Menit Detik (DMS)
+  const formatCoordDMS = (coord, isLat) => {
+    if (coord === null || coord === undefined || isNaN(coord)) return '-'
+    const absolute = Math.abs(coord)
+    const degrees = Math.floor(absolute)
+    const minutesNotTruncated = (absolute - degrees) * 60
+    const minutes = Math.floor(minutesNotTruncated)
+    const seconds = Math.floor((minutesNotTruncated - minutes) * 60)
+    const direction = isLat ? (coord >= 0 ? 'LU' : 'LS') : (coord >= 0 ? 'BT' : 'BB')
+    return `${degrees}°${minutes}'${seconds}" ${direction}`
   }
 
   const handleTitleChange = (newVal) => {
@@ -149,6 +213,22 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         async (pos) => {
           const lat = pos.coords.latitude
           const lng = pos.coords.longitude
+          const alt = pos.coords.altitude
+          const acc = pos.coords.accuracy
+          const head = pos.coords.heading
+
+          setGeoData({
+            latitude: lat,
+            longitude: lng,
+            altitude: alt !== null && !isNaN(alt) ? Math.round(alt) : null,
+            accuracy: acc !== null && !isNaN(acc) ? Math.round(acc) : null,
+            heading: head !== null && !isNaN(head) ? Math.round(head) : null
+          })
+
+          if (head !== null && !isNaN(head)) {
+            setCompassHeading(Math.round(head))
+          }
+
           setLocationText('Mendeteksi nama lokasi...')
           const address = await fetchAddressName(lat, lng)
           setLocationText(address)
@@ -193,7 +273,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     setFacingMode(nextMode)
   }
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current) return
     setIsProcessing(true)
 
@@ -219,7 +299,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     } else if (aspectRatio === '9:16') {
       // Potret 9:16 (Story / Layar Penuh HP Vertikal)
       if (targetWidth > targetHeight) {
-        // Source landscape, crop width to 9:16
         const calcWidth = Math.round((targetHeight * 9) / 16)
         sourceX = Math.round((targetWidth - calcWidth) / 2)
         sourceWidth = calcWidth
@@ -256,6 +335,23 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     canvas.height = targetHeight
     const ctx = canvas.getContext('2d')
 
+    // Muat logo sekolah jika ada (untuk template 'logo')
+    let loadedSchoolLogo = null
+    if (schoolLogo) {
+      try {
+        loadedSchoolLogo = await new Promise((resolve) => {
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => resolve(img)
+          img.onerror = () => resolve(null)
+          img.src = schoolLogo
+          setTimeout(() => resolve(null), 1800)
+        })
+      } catch {
+        loadedSchoolLogo = null
+      }
+    }
+
     // Draw video frame to canvas with aspect ratio cropping
     if (facingMode === 'user') {
       ctx.translate(targetWidth, 0)
@@ -288,13 +384,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const displayTitle = (customTitle || schoolName || 'PRESENSIA').toUpperCase()
     const activeIcon = customIcon || '🎓'
 
-    // 2. Render Watermark Based on layoutTemplate ('panritaedu' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
-    if (layoutTemplate === 'panritaedu') {
-      // ========================================================
-      // TEMA PANRITAEDU (Sesuai Desain Foto Asli Timemark)
-      // ========================================================
-      
-      // A. HEADER KANAN ATAS (Logo PanritaEdu & Subjudul "100% foto asli")
+    // Helper: Gambar Logo Teks PanritaEdu & Subjudul "100% foto asli" di Bagian Kanan Atas Foto
+    const drawPanritaEduBrand = () => {
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
       ctx.shadowBlur = 8 * baseFactor
@@ -304,11 +395,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const topMargin = 28 * baseFactor
       const rightMargin = targetWidth - (28 * baseFactor)
 
-      // Ukuran font header
       const brandFontSize = Math.round(28 * baseFactor)
       ctx.font = `bold ${brandFontSize}px Outfit, sans-serif`
-      
-      // Ukur lebar teks "Panrita" dan "Edu"
       const panritaWidth = ctx.measureText('Panrita').width
       ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
       const eduWidth = ctx.measureText('Edu').width
@@ -328,7 +416,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
       ctx.fillText('Edu', startBrandX + panritaWidth, topMargin)
 
-      // Gambar Subjudul "Foto 100% akurat" / "100% foto asli"
+      // Gambar Subjudul "100% foto asli"
       const subBrandFontSize = Math.round(14 * baseFactor)
       ctx.font = `500 ${subBrandFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
@@ -336,8 +424,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.fillText('100% foto asli', rightMargin, topMargin + brandFontSize + (4 * baseFactor))
 
       ctx.restore()
+    }
 
-      // B. KONTEN KIRI BAWAH
+    // 2. Render Watermark Based on layoutTemplate ('panritaedu' | 'geotag' | 'logo' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
+    if (layoutTemplate === 'panritaedu') {
+      // ========================================================
+      // TEMA PANRITAEDU (Sesuai Desain Foto Asli Timemark Pengguna)
+      // ========================================================
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
       ctx.shadowBlur = 6 * baseFactor
@@ -345,7 +438,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.shadowOffsetY = 2 * baseFactor
 
       const leftX = 26 * baseFactor
-      const bottomAreaY = targetHeight - (28 * baseFactor)
 
       // 1. Badge Jam Kotak Membulat + Lingkaran Ceklis Oranye
       const hoursMinutes = currentDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
@@ -360,9 +452,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const badgeWidth = timeTextWidth + (checkCircleRadius * 2) + (badgePaddingX * 2) + (10 * baseFactor)
       const badgeHeight = timeFontSize + (badgePaddingY * 2) + (4 * baseFactor)
       
-      // Hitung posisi vertikal dari bawah ke atas
-      // Estimasi tinggi teks bawah:
-      // Status (~26px) + Spasi (6) + Tanggal (~18px) + Spasi (6) + Alamat (2 baris ~36px) = ~95px
       const contentHeight = (135 * baseFactor) + badgeHeight
       const startBadgeY = targetHeight - contentHeight - (24 * baseFactor)
 
@@ -397,7 +486,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.textBaseline = 'middle'
       ctx.fillText('✓', checkCenterX, checkCenterY)
 
-      // 2. Garis Aksen Vertikal Oranye
+      // 2. Garis Aksen Vertikal Oranye & Detail Teks
       const lineX = leftX
       const lineStartY = startBadgeY + badgeHeight + (14 * baseFactor)
       const textStartX = lineX + (14 * baseFactor)
@@ -413,14 +502,14 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.fillText(statusTitle, textStartX, curTextY)
       curTextY += statusFontSize + (6 * baseFactor)
 
-      // 4. Hari dan Tanggal Lengkap (contoh: Sabtu, 10 Oktober 2026)
+      // 4. Hari dan Tanggal Lengkap
       const dateFontSize = Math.round(18 * baseFactor)
       ctx.font = `600 ${dateFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.96)'
       ctx.fillText(dateFormatted, textStartX, curTextY)
       curTextY += dateFontSize + (6 * baseFactor)
 
-      // 5. Nama Guru (jika diaktifkan)
+      // 5. Nama Guru
       if (showTeacherName) {
         const teacherFontSize = Math.round(16 * baseFactor)
         ctx.font = `500 ${teacherFontSize}px Outfit, sans-serif`
@@ -429,7 +518,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         curTextY += teacherFontSize + (4 * baseFactor)
       }
 
-      // 6. Alamat Lengkap Geotagging GPS (Bisa terbagi 1 atau 2 baris jika panjang)
+      // 6. Alamat Lengkap GPS
       const addressFontSize = Math.round(15 * baseFactor)
       ctx.font = `normal ${addressFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
@@ -454,15 +543,248 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         curTextY += addressFontSize + (4 * baseFactor)
       }
 
-      // Gambarkan garis vertikal oranye di sebelah kiri blok teks detail
+      // Garis vertikal oranye di sebelah kiri blok teks detail
       const lineEndY = curTextY
-      ctx.fillStyle = '#F59E0B' // Oranye Emas
+      ctx.fillStyle = '#F59E0B'
       ctx.beginPath()
       ctx.roundRect(lineX, lineStartY, 4 * baseFactor, Math.max(30 * baseFactor, lineEndY - lineStartY), 2 * baseFactor)
       ctx.fill()
 
       ctx.restore()
-      // Selesai template panritaedu: footer kode foto & sisi kanan kode foto ditiadakan
+    } else if (layoutTemplate === 'geotag') {
+      // ========================================================
+      // TEMA GEOTAG (KOMPAS, KETINGGIAN MDPL, KOORDINAT & GPS)
+      // ========================================================
+      ctx.save()
+      const boxWidth = Math.min(targetWidth - (36 * baseFactor), 640 * baseFactor)
+      const boxHeight = (showTeacherName ? 200 : 175) * baseFactor
+      const boxX = 18 * baseFactor
+      const boxY = targetHeight - boxHeight - (22 * baseFactor)
+
+      // Background Dark Slate Glassmorphism dengan border Cyan/Tosca
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.90)'
+      ctx.beginPath()
+      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 16 * baseFactor)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)'
+      ctx.lineWidth = 2 * baseFactor
+      ctx.stroke()
+
+      // Header Bar Geotag: Kompas, Ketinggian, Akurasi
+      let curY = boxY + (14 * baseFactor)
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+
+      // 1. Badge Kompas
+      const compassText = `🧭 ${compassHeading}° ${getCompassDirection(compassHeading)}`
+      ctx.font = `bold ${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+      const compWidth = ctx.measureText(compassText).width + (18 * baseFactor)
+      
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.18)'
+      ctx.beginPath()
+      ctx.roundRect(boxX + (14 * baseFactor), curY, compWidth, 24 * baseFactor, 6 * baseFactor)
+      ctx.fill()
+      ctx.fillStyle = '#22D3EE'
+      ctx.fillText(compassText, boxX + (22 * baseFactor), curY + (4 * baseFactor))
+
+      // 2. Badge Ketinggian (MDPL)
+      const altValue = geoData.altitude !== null ? geoData.altitude : 48
+      const altText = `⛰️ ${altValue} mdpl`
+      const altStartX = boxX + (14 * baseFactor) + compWidth + (8 * baseFactor)
+      ctx.font = `bold ${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+      const altWidth = ctx.measureText(altText).width + (18 * baseFactor)
+
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.18)'
+      ctx.beginPath()
+      ctx.roundRect(altStartX, curY, altWidth, 24 * baseFactor, 6 * baseFactor)
+      ctx.fill()
+      ctx.fillStyle = '#34D399'
+      ctx.fillText(altText, altStartX + (8 * baseFactor), curY + (4 * baseFactor))
+
+      // 3. Badge Akurasi GPS
+      const accValue = geoData.accuracy !== null ? geoData.accuracy : 5
+      const accText = `🎯 ±${accValue}m`
+      const accStartX = altStartX + altWidth + (8 * baseFactor)
+      if (accStartX + 70 * baseFactor < boxX + boxWidth) {
+        ctx.font = `bold ${Math.round(14 * baseFactor)}px Outfit, sans-serif`
+        const accW = ctx.measureText(accText).width + (16 * baseFactor)
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.18)'
+        ctx.beginPath()
+        ctx.roundRect(accStartX, curY, accW, 24 * baseFactor, 6 * baseFactor)
+        ctx.fill()
+        ctx.fillStyle = '#FBBF24'
+        ctx.fillText(accText, accStartX + (8 * baseFactor), curY + (4 * baseFactor))
+      }
+
+      curY += 30 * baseFactor
+
+      // Koordinat Lintang & Bujur (Desimal & Derajat Menit Detik)
+      const latVal = geoData.latitude !== null ? geoData.latitude.toFixed(6) : '-5.147829'
+      const lngVal = geoData.longitude !== null ? geoData.longitude.toFixed(6) : '119.432810'
+      const dmsLat = formatCoordDMS(geoData.latitude !== null ? geoData.latitude : -5.147829, true)
+      const dmsLng = formatCoordDMS(geoData.longitude !== null ? geoData.longitude : 119.432810, false)
+
+      ctx.font = `bold ${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#F8FAFC'
+      ctx.fillText(`🌐 Koordinat: ${latVal}, ${lngVal} (${dmsLat}, ${dmsLng})`, boxX + (16 * baseFactor), curY)
+      curY += 22 * baseFactor
+
+      // Tanggal & Waktu Presisi
+      ctx.font = `${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#E2E8F0'
+      ctx.fillText(`📅 ${dateFormatted} | ⏰ ${timeFormatted}`, boxX + (16 * baseFactor), curY)
+      curY += 22 * baseFactor
+
+      // Guru & Pegawai
+      if (showTeacherName) {
+        ctx.font = `600 ${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+        ctx.fillStyle = '#38BDF8'
+        ctx.fillText(`👤 ${teacherName}${nipText}`, boxX + (16 * baseFactor), curY)
+        curY += 22 * baseFactor
+      }
+
+      // Alamat GPS Lengkap
+      ctx.font = `${Math.round(14 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#94A3B8'
+      const maxW = boxWidth - (32 * baseFactor)
+      const words = locationText.split(' ')
+      let line = ''
+      for (let w = 0; w < words.length; w++) {
+        const test = line ? `${line} ${words[w]}` : words[w]
+        if (ctx.measureText(test).width > maxW && line) {
+          ctx.fillText(`📍 ${line}`, boxX + (16 * baseFactor), curY)
+          curY += 18 * baseFactor
+          line = words[w]
+          break // Tampilkan 1 atau 2 baris
+        } else {
+          line = test
+        }
+      }
+      if (line) {
+        ctx.fillText(`📍 ${line}`, boxX + (16 * baseFactor), curY)
+        curY += 18 * baseFactor
+      }
+
+      // Catatan / Agenda jika ada
+      if (customNote.trim()) {
+        ctx.font = `italic ${Math.round(13 * baseFactor)}px Outfit, sans-serif`
+        ctx.fillStyle = '#FBBF24'
+        ctx.fillText(`📝 ${customNote.trim()}`, boxX + (16 * baseFactor), curY)
+      }
+
+      ctx.restore()
+    } else if (layoutTemplate === 'logo') {
+      // ========================================================
+      // TEMA LOGO SEKOLAH (MENAMPILKAN LOGO SEKOLAH RESMI)
+      // ========================================================
+      ctx.save()
+      const boxWidth = Math.min(targetWidth - (36 * baseFactor), 640 * baseFactor)
+      const boxHeight = (showTeacherName ? 180 : 155) * baseFactor
+      const boxX = 18 * baseFactor
+      const boxY = targetHeight - boxHeight - (22 * baseFactor)
+
+      // Background Card Mewah
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)'
+      ctx.beginPath()
+      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 16 * baseFactor)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)'
+      ctx.lineWidth = 2 * baseFactor
+      ctx.stroke()
+
+      // Area Logo Sekolah di Sebelah Kiri
+      const logoBoxSize = 72 * baseFactor
+      const logoBoxX = boxX + (16 * baseFactor)
+      const logoBoxY = boxY + (boxHeight - logoBoxSize) / 2
+
+      if (loadedSchoolLogo) {
+        // Kotak putih bersih tempat logo
+        ctx.fillStyle = '#FFFFFF'
+        ctx.beginPath()
+        ctx.roundRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 12 * baseFactor)
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'
+        ctx.lineWidth = 1 * baseFactor
+        ctx.stroke()
+
+        // Gambar gambar logo sekolah
+        ctx.save()
+        ctx.beginPath()
+        ctx.roundRect(logoBoxX + (4 * baseFactor), logoBoxY + (4 * baseFactor), logoBoxSize - (8 * baseFactor), logoBoxSize - (8 * baseFactor), 8 * baseFactor)
+        ctx.clip()
+        ctx.drawImage(loadedSchoolLogo, logoBoxX + (4 * baseFactor), logoBoxY + (4 * baseFactor), logoBoxSize - (8 * baseFactor), logoBoxSize - (8 * baseFactor))
+        ctx.restore()
+      } else {
+        // Fallback: Emblem Bulat Emas dengan Ikon Sekolah
+        ctx.beginPath()
+        ctx.arc(logoBoxX + (logoBoxSize / 2), logoBoxY + (logoBoxSize / 2), logoBoxSize / 2, 0, Math.PI * 2)
+        ctx.fillStyle = '#D97706'
+        ctx.fill()
+        ctx.strokeStyle = '#FDE047'
+        ctx.lineWidth = 2 * baseFactor
+        ctx.stroke()
+
+        ctx.font = `${Math.round(32 * baseFactor)}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('🏫', logoBoxX + (logoBoxSize / 2), logoBoxY + (logoBoxSize / 2))
+      }
+
+      // Konten Teks di Samping Kanan Logo
+      const contentStartX = logoBoxX + logoBoxSize + (16 * baseFactor)
+      let curY = boxY + (16 * baseFactor)
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+
+      // 1. Nama Sekolah Resmi
+      ctx.font = `bold ${Math.round(20 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#FDE047'
+      ctx.fillText(displayTitle, contentStartX, curY)
+      curY += 26 * baseFactor
+
+      // 2. Guru / Pendidik
+      if (showTeacherName) {
+        ctx.font = `bold ${Math.round(16 * baseFactor)}px Outfit, sans-serif`
+        ctx.fillStyle = '#FFFFFF'
+        ctx.fillText(`👤 ${teacherName}${nipText}`, contentStartX, curY)
+        curY += 24 * baseFactor
+      }
+
+      // 3. Waktu & Tanggal
+      ctx.font = `${Math.round(15 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#E2E8F0'
+      ctx.fillText(`📅 ${dateFormatted} | ⏰ ${timeFormatted}`, contentStartX, curY)
+      curY += 22 * baseFactor
+
+      // 4. Alamat GPS
+      ctx.font = `${Math.round(14 * baseFactor)}px Outfit, sans-serif`
+      ctx.fillStyle = '#94A3B8'
+      const maxW = boxWidth - (logoBoxSize + (42 * baseFactor))
+      const words = locationText.split(' ')
+      let line = ''
+      for (let w = 0; w < words.length; w++) {
+        const test = line ? `${line} ${words[w]}` : words[w]
+        if (ctx.measureText(test).width > maxW && line) {
+          ctx.fillText(`📍 ${line}`, contentStartX, curY)
+          curY += 18 * baseFactor
+          line = words[w]
+          break
+        } else {
+          line = test
+        }
+      }
+      if (line) {
+        ctx.fillText(`📍 ${line}`, contentStartX, curY)
+        curY += 18 * baseFactor
+      }
+
+      if (customNote.trim()) {
+        ctx.font = `italic ${Math.round(13 * baseFactor)}px Outfit, sans-serif`
+        ctx.fillStyle = '#38BDF8'
+        ctx.fillText(`📝 ${customNote.trim()}`, contentStartX, curY)
+      }
+
+      ctx.restore()
     } else if (layoutTemplate === 'card') {
       // TEMA BADGE / KARTU (Box Mengambang Kanan Bawah)
       const boxWidth = Math.min(targetWidth - (30 * baseFactor), Math.round(500 * baseFactor))
@@ -801,6 +1123,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }
     }
 
+    // Render Watermark PanritaEdu ("PanritaEdu" & "100% foto asli") di Pojok Kanan Atas untuk SEMUA TEMPLATE
+    drawPanritaEduBrand()
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
     setCapturedPhoto(dataUrl)
     setIsProcessing(false)
@@ -1075,6 +1400,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
               {[
                 { id: 'panritaedu', label: '⭐ PanritaEdu' },
+                { id: 'geotag', label: '🧭 Geo Tag' },
+                { id: 'logo', label: '🏫 Logo Sekolah' },
                 { id: 'modern', label: 'Modern Strip' },
                 { id: 'card', label: 'Badge Card' },
                 { id: 'academic', label: '🎓 Akademik' },
@@ -1148,6 +1475,26 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
               }}
             />
+
+            {/* Header Kanan Atas: Logo PanritaEdu + 100% foto asli (Live Preview) */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '14px',
+                right: '16px',
+                textAlign: 'right',
+                textShadow: '0 2px 6px rgba(0,0,0,0.95)',
+                pointerEvents: 'none'
+              }}
+            >
+              <div style={{ fontSize: '1.2rem', lineHeight: '1.1', fontWeight: 'bold' }}>
+                <span style={{ color: '#FFFFFF', fontWeight: '800' }}>Panrita</span>
+                <span style={{ color: '#00B4D8', fontWeight: '800' }}>Edu</span>
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.92)', fontWeight: '500', marginTop: '2px' }}>
+                100% foto asli
+              </div>
+            </div>
 
             {/* Live Watermark Preview Pill disesuaikan dengan template & ukuran */}
             {layoutTemplate === 'panritaedu' ? (
@@ -1249,6 +1596,95 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   </div>
                 </div>
               </>
+            ) : layoutTemplate === 'geotag' ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '14px',
+                  left: '14px',
+                  right: '14px',
+                  background: 'rgba(15, 23, 42, 0.90)',
+                  border: '1.5px solid rgba(6, 182, 212, 0.6)',
+                  borderRadius: '12px',
+                  padding: '8px 12px',
+                  color: 'white',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                {/* Badge Bar: Kompas, Ketinggian, Akurasi */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ background: 'rgba(6, 182, 212, 0.2)', border: '1px solid rgba(6, 182, 212, 0.5)', color: '#22D3EE', fontSize: '0.68rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px' }}>
+                    🧭 {compassHeading}° {getCompassDirection(compassHeading)}
+                  </span>
+                  <span style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.5)', color: '#34D399', fontSize: '0.68rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px' }}>
+                    ⛰️ {geoData.altitude !== null ? geoData.altitude : 48} mdpl
+                  </span>
+                  <span style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.5)', color: '#FBBF24', fontSize: '0.68rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px' }}>
+                    🎯 ±{geoData.accuracy !== null ? geoData.accuracy : 5}m
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#F8FAFC' }}>
+                  🌐 {geoData.latitude !== null ? `${geoData.latitude.toFixed(5)}, ${geoData.longitude.toFixed(5)}` : '-5.14782, 119.43281'}
+                </div>
+                {showTeacherName && (
+                  <div style={{ fontSize: '0.68rem', color: '#38BDF8' }}>
+                    👤 {profile?.full_name || 'Guru'}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.65rem', color: '#CBD5E1' }}>
+                  📅 {currentDateTime.toLocaleDateString('id-ID')} • ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                </div>
+                <div style={{ fontSize: '0.62rem', color: '#94A3B8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  📍 {locationText}
+                </div>
+              </div>
+            ) : layoutTemplate === 'logo' ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '14px',
+                  left: '14px',
+                  right: '14px',
+                  background: 'rgba(15, 23, 42, 0.92)',
+                  border: '1.5px solid rgba(245, 158, 11, 0.6)',
+                  borderRadius: '12px',
+                  padding: '8px 12px',
+                  color: 'white',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}
+              >
+                {schoolLogo ? (
+                  <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: '#FFF', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                    <img src={schoolLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  </div>
+                ) : (
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
+                    🏫
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#FDE047', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                  </div>
+                  {showTeacherName && (
+                    <div style={{ fontSize: '0.7rem', color: '#FFFFFF' }}>
+                      👤 {profile?.full_name || 'Guru'}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.65rem', color: '#E2E8F0' }}>
+                    📅 {currentDateTime.toLocaleDateString('id-ID')} • ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: '#94A3B8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    📍 {locationText}
+                  </div>
+                </div>
+              </div>
             ) : layoutTemplate === 'card' ? (
               <div
                 style={{
