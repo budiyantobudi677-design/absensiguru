@@ -188,11 +188,8 @@ function GuruDesktopWrapper({
         {activeTab === 'absensi' && (
           <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '0.85rem 1.25rem', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: '#1E40AF', fontSize: '0.88rem' }}>
             <ShieldCheck size={20} color="#2563EB" style={{ flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <strong>Presensi Kehadiran Hanya Melalui Aplikasi Android</strong>
-              <div style={{ fontSize: '0.8rem', color: '#3B82F6', marginTop: '2px' }}>
-                Demi keamanan integritas lokasi dan anti-fake GPS, presensi Masuk & Pulang wajib dilakukan melalui Aplikasi Android PanritaEdu di ponsel Anda. Pengolahan nilai, presensi murid & jurnal KBM dapat leluasa dikelola di laptop ini.
-              </div>
+            <div style={{ flex: 1, fontWeight: '700' }}>
+              Presensi Kehadiran Hanya Melalui Aplikasi Android
             </div>
           </div>
         )}

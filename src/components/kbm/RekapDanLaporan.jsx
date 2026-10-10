@@ -113,7 +113,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
           setAttendanceRecords(attList || [])
 
           const { data: hList } = await supabase
-            .from('school_holidays')
+            .from('hari_libur')
             .select('*')
             .gte('tanggal', firstDay)
             .lte('tanggal', lastDay)
@@ -398,7 +398,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
         const rows = students.map((st, idx) => {
           const stats = getStudentMonthlyStats(st.id)
           const dailyStatuses = daysInMonthInfo.map(d => {
-            if (d.isSunday) return 'L'
+            if (d.isHoliday) return 'L'
             const stt = attendanceLookup[`${st.id}_${d.dateStr}`]
             if (stt === 'hadir') return '✓'
             if (stt === 'sakit') return 'S'

@@ -41,13 +41,29 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
       if (sErr) throw sErr
       setStudents(studentList || [])
 
-      // Cek Hari Libur
+      // Cek Hari Libur (Hari Minggu atau yang disetting oleh Admin di hari_libur)
+      const dateParts = selectedDate.split('-').map(Number)
+      const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2])
+      const isSunday = dateObj.getDay() === 0
+
+      // Ambil juga setting hari kerja sekolah jika ada
+      const { data: setRow } = await supabase.from('settings').select('hari_kerja').eq('id', 1).maybeSingle()
+      const hariKerja = setRow?.hari_kerja || 5
+      const isSaturday = dateObj.getDay() === 6 && hariKerja === 5
+
       const { data: holData } = await supabase
         .from('hari_libur')
         .select('*')
         .eq('tanggal', selectedDate)
         .maybeSingle()
-      if (holData) {
+
+      if (isSunday) {
+        setIsHoliday(true)
+        setHolidayReason('Libur Akhir Pekan (Hari Minggu)')
+      } else if (isSaturday) {
+        setIsHoliday(true)
+        setHolidayReason('Libur Akhir Pekan (Hari Sabtu)')
+      } else if (holData) {
         setIsHoliday(true)
         setHolidayReason(holData.keterangan || 'Libur Nasional / Sekolah')
       } else {
@@ -80,6 +96,10 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
   }
 
   const handleStatusChange = (studentId, status) => {
+    if (isHoliday) {
+      setMessage({ type: 'error', text: `Hari ini libur (${holidayReason}). Presensi siswa tidak dapat diubah.` })
+      return
+    }
     setAttendanceMap(prev => ({
       ...prev,
       [studentId]: status
@@ -87,6 +107,10 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
   }
 
   const handleMarkAllHadir = () => {
+    if (isHoliday) {
+      setMessage({ type: 'error', text: `Hari ini libur (${holidayReason}). Presensi siswa tidak dapat diisi.` })
+      return
+    }
     const updated = { ...attendanceMap }
     students.forEach(st => {
       updated[st.id] = 'hadir'
@@ -95,6 +119,10 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
   }
 
   const handleSaveAttendance = async () => {
+    if (isHoliday) {
+      setMessage({ type: 'error', text: `Hari ini libur (${holidayReason}). Presensi siswa dinonaktifkan.` })
+      return
+    }
     if (!students || students.length === 0) return
     setSaving(true)
     setMessage(null)
@@ -188,6 +216,13 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
             />
           </div>
         </div>
+
+        {isHoliday && (
+          <div style={{ marginTop: '0.85rem', padding: '0.75rem 1rem', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#B91C1C', fontSize: '0.82rem', fontWeight: '600' }}>
+            <ShieldAlert size={18} color="#DC2626" />
+            <span>Presensi dinonaktifkan karena <strong>{holidayReason}</strong>. Guru tidak dapat menginput atau mengubah kehadiran pada hari libur.</span>
+          </div>
+        )}
       </div>
 
       {/* Alert Notifikasi */}
@@ -463,12 +498,12 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
 
         {/* Footer Submit Button */}
         <div style={{ padding: '1rem 1.25rem', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Pastikan data kehadiran telah dicek sebelum disimpan.
+          <span style={{ fontSize: '0.75rem', color: isHoliday ? '#DC2626' : 'var(--text-muted)', fontWeight: isHoliday ? 'bold' : 'normal' }}>
+            {isHoliday ? `Hari Libur (${holidayReason}). Tombol simpan dinonaktifkan.` : 'Pastikan data kehadiran telah dicek sebelum disimpan.'}
           </span>
           <button
             onClick={handleSaveAttendance}
-            disabled={saving || students.length === 0}
+            disabled={saving || students.length === 0 || isHoliday}
             className="btn btn-primary"
             style={{
               width: 'auto',
@@ -478,11 +513,13 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
               fontWeight: 'bold',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              opacity: isHoliday ? 0.5 : 1,
+              cursor: isHoliday ? 'not-allowed' : 'pointer'
             }}
           >
             <Save size={16} />
-            <span>{saving ? 'Menyimpan...' : 'Simpan Presensi'}</span>
+            <span>{isHoliday ? 'Hari Libur' : (saving ? 'Menyimpan...' : 'Simpan Presensi')}</span>
           </button>
         </div>
       </div>
