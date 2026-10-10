@@ -74,45 +74,60 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return 'WIB'
   }
 
-  // Listener Sensor Arah Kompas Dinamis (Otomatis Berubah Mengikuti Gerakan / Arah HP)
+  // Listener Sensor Orientasi & Kompas (Mendeteksi Rotasi Fisik HP 90 Derajat Walau Auto-Rotate Layar Terkunci)
   useEffect(() => {
     if (!isOpen) return
 
     const handleOrientation = (e) => {
+      // 1. Arah Kompas Dinamis
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
         setCompassHeading(Math.round(e.webkitCompassHeading))
       } else if (e.alpha !== null && e.alpha !== undefined) {
         const heading = (360 - Math.round(e.alpha)) % 360
         setCompassHeading(heading)
       }
+
+      // 2. Deteksi Rotasi Fisik HP 90 Derajat (Landscape) via accelerometer gamma & beta
+      // HP Potret: |beta| tinggi (~70-90°), |gamma| rendah (~0-20°).
+      // HP Landscape (dimiringkan 90° mendatar): |gamma| tinggi (> 40°).
+      if (e.gamma !== null && e.gamma !== undefined && e.beta !== null && e.beta !== undefined) {
+        const absGamma = Math.abs(e.gamma)
+        const absBeta = Math.abs(e.beta)
+
+        if (absGamma > 38 && absBeta < 60) {
+          setIsDeviceLandscape(true)
+        } else if (absBeta > 50 && absGamma < 30) {
+          setIsDeviceLandscape(false)
+        } else if (typeof window !== 'undefined') {
+          // Fallback ke orientasi layar sistem
+          setIsDeviceLandscape(window.innerWidth > window.innerHeight)
+        }
+      }
+    }
+
+    const checkOrientation = () => {
+      if (typeof window !== 'undefined') {
+        const isLand = window.innerWidth > window.innerHeight
+        setIsDeviceLandscape(isLand)
+      }
     }
 
     window.addEventListener('deviceorientation', handleOrientation, true)
-    return () => {
-      window.removeEventListener('deviceorientation', handleOrientation, true)
-    }
-  }, [isOpen])
-
-  // Listener Deteksi Rotasi HP 90 Derajat Alami (Mengikuti Layar HP)
-  useEffect(() => {
-    const checkOrientation = () => {
-      const isLand = window.innerWidth > window.innerHeight
-      setIsDeviceLandscape(isLand)
-    }
-
     window.addEventListener('resize', checkOrientation)
     window.addEventListener('orientationchange', checkOrientation)
     if (window.screen?.orientation) {
       window.screen.orientation.addEventListener('change', checkOrientation)
     }
+
     return () => {
+      window.removeEventListener('deviceorientation', handleOrientation, true)
       window.removeEventListener('resize', checkOrientation)
       window.removeEventListener('orientationchange', checkOrientation)
       if (window.screen?.orientation) {
         window.screen.orientation.removeEventListener('change', checkOrientation)
       }
     }
-  }, [])
+  }, [isOpen])
 
   // Helper Konversi Singkatan Arah Kompas (Contoh: 227 -> SW)
   const getCompassShortDir = (deg) => {
