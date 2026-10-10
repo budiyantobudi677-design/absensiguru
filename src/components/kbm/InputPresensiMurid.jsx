@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Search, CheckCheck } from 'lucide-react'
+import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Search, CheckCheck, ShieldAlert } from 'lucide-react'
 
-export default function InputPresensiMurid({ selectedClass, classes, user, schoolInfo }) {
+export default function InputPresensiMurid({ selectedClass, classes, user, profile, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'))
   const [students, setStudents] = useState([])
@@ -283,10 +283,22 @@ export default function InputPresensiMurid({ selectedClass, classes, user, schoo
             Memuat daftar kehadiran siswa...
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            {students.length === 0
-              ? 'Belum ada data siswa di kelas ini. Tambahkan siswa lewat menu Master Siswa.'
-              : 'Tidak ditemukan siswa yang cocok dengan pencarian.'}
+          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            {students.length === 0 ? (
+              <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+                  <ShieldAlert size={26} />
+                </div>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+                  Daftar Siswa Belum Diatur
+                </h4>
+                <p style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: '1.4', margin: 0 }}>
+                  Daftar siswa untuk rombel ini belum diatur oleh <b>Wali Kelas</b> atau <b>Admin</b>. Silakan hubungi Wali Kelas yang bersangkutan untuk menginput data siswa terlebih dahulu di Master KBM.
+                </p>
+              </div>
+            ) : (
+              'Tidak ditemukan siswa yang cocok dengan pencarian.'
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -13,6 +13,7 @@ import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
 import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
+import { getCustomSubjects } from '../../lib/subjectsManager'
 
 
 export default function DashboardAdmin() {
@@ -54,6 +55,8 @@ export default function DashboardAdmin() {
   
   const [pegawaiSearch, setPegawaiSearch] = useState('')
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
+  const [editingPegawai, setEditingPegawai] = useState(null) // Pegawai yang sedang diedit perannya oleh Admin
+  const [savingPegawai, setSavingPegawai] = useState(false)
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   // KBM Pembelajaran States
@@ -1019,20 +1022,172 @@ export default function DashboardAdmin() {
              {loadingData ? <p className="text-center text-muted">Memuat data...</p> : (
                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
-                 {filteredPegawai.map(p => (
-                   <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                     <div className="flex gap-4 items-center">
-                       {p.foto_profil ? <img src={p.foto_profil} style={{ width:'42px', height:'42px', borderRadius:'50%', objectFit:'cover'}} /> : <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserCircle size={24} color="var(--text-muted)" /></div>}
-                       <div>
-                         <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>{p.full_name || p.email}</h4>
-                         <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
-                       </div>
-                     </div>
-                   </div>
-                 ))}
+                  {filteredPegawai.map(p => {
+                    const isMapel = p.role === 'guru_mapel';
+                    return (
+                      <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                        <div className="flex gap-3 items-center" style={{ minWidth: 0, flex: 1 }}>
+                          {p.foto_profil ? <img src={p.foto_profil} style={{ width:'42px', height:'42px', borderRadius:'50%', objectFit:'cover', flexShrink: 0 }} /> : <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><UserCircle size={24} color="var(--text-muted)" /></div>}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>{p.full_name || p.email}</h4>
+                              <span style={{
+                                fontSize: '0.65rem',
+                                fontWeight: '700',
+                                padding: '2px 7px',
+                                borderRadius: '8px',
+                                background: isMapel ? '#EEF2FF' : '#ECFDF5',
+                                color: isMapel ? '#4F46E5' : '#059669',
+                                border: `1px solid ${isMapel ? '#C7D2FE' : '#A7F3D0'}`
+                              }}>
+                                {isMapel ? 'Guru Mapel' : 'Guru Kelas'}
+                              </span>
+                            </div>
+                            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
+                            {isMapel && p.mata_pelajaran && (
+                              <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.72rem', color: '#6366F1', fontWeight: '600' }}>
+                                Mapel: {p.mata_pelajaran}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setEditingPegawai(p)}
+                          style={{
+                            padding: '0.45rem 0.65rem',
+                            borderRadius: '10px',
+                            background: '#F1F5F9',
+                            border: '1px solid #E2E8F0',
+                            color: '#475569',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Edit3 size={13} />
+                          <span>Atur</span>
+                        </button>
+                      </div>
+                    );
+                  })}
                </div>
              )}
-          </div>
+
+              {/* MODAL EDIT PENUGASAN PEGAWAI OLEH ADMIN */}
+              {editingPegawai && (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0,0,0,0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 9999
+                }}>
+                  <div className="card" style={{ maxWidth: '460px', width: '100%', background: 'white', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>Atur Peran & Mapel Guru</h3>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>{editingPegawai.full_name || editingPegawai.email}</p>
+                      </div>
+                      <button onClick={() => setEditingPegawai(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <form onSubmit={async (e) => {
+                      e.preventDefault()
+                      setSavingPegawai(true)
+                      const formData = new FormData(e.target)
+                      const newRole = formData.get('role')
+                      const newMapel = newRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : ''
+                      const newJabatan = formData.get('jabatan') || editingPegawai.jabatan
+
+                      const { error } = await supabase.from('profiles').update({
+                        role: newRole,
+                        mata_pelajaran: newMapel,
+                        jabatan: newJabatan
+                      }).eq('id', editingPegawai.id)
+
+                      if (!error) {
+                        setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { ...item, role: newRole, mata_pelajaran: newMapel, jabatan: newJabatan } : item))
+                        setEditingPegawai(null)
+                        alert("Penugasan guru berhasil diperbarui!")
+                      } else {
+                        alert("Gagal memperbarui: " + error.message)
+                      }
+                      setSavingPegawai(false)
+                    }}>
+                      <div className="input-group" style={{ marginBottom: '1rem' }}>
+                        <label className="input-label">Peran Penugasan</label>
+                        <select 
+                          name="role" 
+                          className="input" 
+                          defaultValue={editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'}
+                          onChange={(e) => {
+                            const mapelBox = document.getElementById('admin-edit-mapel-box')
+                            if (mapelBox) {
+                              mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none'
+                            }
+                          }}
+                        >
+                          <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
+                          <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
+                        </select>
+                      </div>
+
+                      <div 
+                        id="admin-edit-mapel-box" 
+                        className="input-group" 
+                        style={{ marginBottom: '1rem', display: editingPegawai.role === 'guru_mapel' ? 'block' : 'none' }}
+                      >
+                        <label className="input-label">Mata Pelajaran yang Diampu</label>
+                        <select 
+                          name="mata_pelajaran" 
+                          className="input" 
+                          defaultValue={editingPegawai.mata_pelajaran || ''}
+                        >
+                          <option value="">-- Pilih Mata Pelajaran --</option>
+                          {getCustomSubjects().map(sub => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                        <label className="input-label">Jabatan Struktural / Keterangan</label>
+                        <input 
+                          type="text" 
+                          name="jabatan" 
+                          className="input" 
+                          defaultValue={editingPegawai.jabatan || ''} 
+                          placeholder="Contoh: Guru PJOK / Wali Kelas IV-A" 
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button type="button" onClick={() => setEditingPegawai(null)} className="btn" style={{ width: 'auto', padding: '0.65rem 1rem', background: '#F1F5F9', color: '#475569', borderRadius: '10px', fontSize: '0.85rem' }}>
+                          Batal
+                        </button>
+                        <button type="submit" disabled={savingPegawai} className="btn btn-primary" style={{ width: 'auto', padding: '0.65rem 1.25rem', borderRadius: '10px', fontSize: '0.85rem' }}>
+                          {savingPegawai ? 'Menyimpan...' : 'Simpan Penugasan'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+           </div>
         )}
 
         {activeTab === 'laporan' && (

@@ -2,12 +2,21 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw } from 'lucide-react'
+import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
 
-export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
+export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
+
+  // Peran Guru & Hak Akses
+  const activeProfile = profile || user || {}
+  const isAdmin = activeProfile.role === 'admin'
+  const isGuruMapel = activeProfile.role === 'guru_mapel'
+  // Admin & Wali Kelas berhak mengelola siswa; Guru Mapel dibatasi (Read Only)
+  const canManageStudents = !isGuruMapel
+  // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
+  const canManageSubjects = isAdmin
 
   // State Kelas & Siswa
   const [classes, setClasses] = useState([])
@@ -266,50 +275,69 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
 
           {activeTab === 'siswa_kelas' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              <button
-                onClick={() => setShowAddClass(!showAddClass)}
-                type="button"
-                className="btn"
-                style={{
-                  width: 'auto',
-                  padding: '0.5rem 0.85rem',
-                  borderRadius: '12px',
-                  background: '#F1F5F9',
-                  color: '#1E293B',
-                  fontSize: '0.8rem',
-                  fontWeight: 'bold',
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAddClass(!showAddClass)}
+                  type="button"
+                  className="btn"
+                  style={{
+                    width: 'auto',
+                    padding: '0.5rem 0.85rem',
+                    borderRadius: '12px',
+                    background: '#F1F5F9',
+                    color: '#1E293B',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Plus size={15} />
+                  <span>Tambah Kelas</span>
+                </button>
+              )}
+              {canManageStudents ? (
+                <button
+                  onClick={() => setShowAddStudent(!showAddStudent)}
+                  type="button"
+                  className="btn"
+                  style={{
+                    width: 'auto',
+                    padding: '0.5rem 0.85rem',
+                    borderRadius: '12px',
+                    background: '#4F46E5',
+                    color: 'white',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Plus size={15} />
+                  <span>Tambah Siswa</span>
+                </button>
+              ) : (
+                <div style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <Plus size={15} />
-                <span>Tambah Kelas</span>
-              </button>
-              <button
-                onClick={() => setShowAddStudent(!showAddStudent)}
-                type="button"
-                className="btn"
-                style={{
-                  width: 'auto',
-                  padding: '0.5rem 0.85rem',
+                  gap: '6px',
+                  padding: '0.45rem 0.75rem',
                   borderRadius: '12px',
-                  background: '#4F46E5',
-                  color: 'white',
-                  fontSize: '0.8rem',
-                  fontWeight: 'bold',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <Plus size={15} />
-                <span>Tambah Siswa</span>
-              </button>
+                  background: '#FEF3C7',
+                  color: '#92400E',
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold'
+                }}>
+                  <Lock size={13} />
+                  <span>Mode Guru Mapel (Hanya Lihat)</span>
+                </div>
+              )}
             </div>
           )}
 
-          {activeTab === 'mapel' && (
+          {activeTab === 'mapel' && canManageSubjects && (
             <button
               onClick={handleResetDefaultSubjects}
               type="button"
@@ -493,55 +521,64 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
                 </select>
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                  Impor Siswa Massal (Excel)
-                </label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <label
-                    style={{
-                      flex: 1,
-                      padding: '0.6rem 0.75rem',
-                      background: '#F1F5F9',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      color: '#475569',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      border: '1px dashed #CBD5E1'
-                    }}
-                  >
-                    <Upload size={14} />
-                    <span>Pilih Excel</span>
-                    <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} style={{ display: 'none' }} />
+              {canManageStudents ? (
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Impor Siswa Massal (Excel)
                   </label>
-                  <button
-                    onClick={handleDownloadTemplate}
-                    type="button"
-                    style={{
-                      padding: '0.6rem 0.75rem',
-                      borderRadius: '12px',
-                      background: 'white',
-                      border: '1px solid #E2E8F0',
-                      color: '#64748B',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="Unduh Format Template Excel"
-                  >
-                    <Download size={14} />
-                    <span>Format</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <label
+                      style={{
+                        flex: 1,
+                        padding: '0.6rem 0.75rem',
+                        background: '#F1F5F9',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: 'bold',
+                        color: '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        border: '1px dashed #CBD5E1'
+                      }}
+                    >
+                      <Upload size={14} />
+                      <span>Pilih Excel</span>
+                      <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} style={{ display: 'none' }} />
+                    </label>
+                    <button
+                      onClick={handleDownloadTemplate}
+                      type="button"
+                      style={{
+                        padding: '0.6rem 0.75rem',
+                        borderRadius: '12px',
+                        background: 'white',
+                        border: '1px solid #E2E8F0',
+                        color: '#64748B',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: 'bold',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Unduh Format Template Excel"
+                    >
+                      <Download size={14} />
+                      <span>Format</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ background: '#F8FAFC', borderRadius: '12px', padding: '0.6rem 0.85rem', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldAlert size={18} color="#D97706" />
+                  <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                    Guru Mapel tidak memiliki akses mengubah rombel siswa.
+                  </span>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -549,12 +586,22 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
         {/* ===================== TAB 2: PENGATURAN MATA PELAJARAN ===================== */}
         {activeTab === 'mapel' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Form Tambah Mata Pelajaran Baru */}
-            <form onSubmit={handleAddSubject} style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '14px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <input
-                  type="text"
-                  placeholder="Ketik nama mata pelajaran baru (misal: IPAS, Bahasa Sunda, Robotik)..."
+            {!canManageSubjects && (
+              <div style={{ padding: '0.75rem 1rem', background: '#EFF6FF', borderRadius: '12px', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Info size={18} color="#2563EB" />
+                <span style={{ fontSize: '0.78rem', color: '#1E40AF', fontWeight: '500' }}>
+                  Daftar mata pelajaran di bawah ini diatur terpusat oleh Admin Sekolah. Guru dapat melihat mata pelajaran yang tersedia.
+                </span>
+              </div>
+            )}
+
+            {/* Form Tambah Mata Pelajaran Baru (Hanya Admin) */}
+            {canManageSubjects && (
+              <form onSubmit={handleAddSubject} style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '14px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <input
+                    type="text"
+                    placeholder="Ketik nama mata pelajaran baru (misal: IPAS, Bahasa Sunda, Robotik)..."
                   value={newSubjectName}
                   onChange={(e) => setNewSubjectName(e.target.value)}
                   className="input"
@@ -581,6 +628,7 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
                 <span>Tambah Mapel</span>
               </button>
             </form>
+          )}
 
             {/* List Mata Pelajaran */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.65rem' }}>
@@ -633,24 +681,26 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
                           {subj}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditSubject(idx, subj)}
-                          style={{ padding: '5px', borderRadius: '6px', border: 'none', background: '#F1F5F9', color: '#475569', cursor: 'pointer' }}
-                          title="Ubah Nama"
-                        >
-                          <Edit3 size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSubject(idx, subj)}
-                          style={{ padding: '5px', borderRadius: '6px', border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer' }}
-                          title="Hapus Mapel"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                      {canManageSubjects && (
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditSubject(idx, subj)}
+                            style={{ padding: '5px', borderRadius: '6px', border: 'none', background: '#F1F5F9', color: '#475569', cursor: 'pointer' }}
+                            title="Ubah Nama"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubject(idx, subj)}
+                            style={{ padding: '5px', borderRadius: '6px', border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer' }}
+                            title="Hapus Mapel"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -726,24 +776,26 @@ export default function MasterSiswaDanKelas({ user, schoolInfo, onRefresh }) {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteStudent(student.id, student.name)}
-                    style={{
-                      background: '#FEF2F2',
-                      border: '1px solid #FECACA',
-                      color: '#EF4444',
-                      cursor: 'pointer',
-                      padding: '6px',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      transition: 'all 0.15s'
-                    }}
-                    title="Hapus Siswa"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {canManageStudents && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStudent(student.id, student.name)}
+                      style={{
+                        background: '#FEF2F2',
+                        border: '1px solid #FECACA',
+                        color: '#EF4444',
+                        cursor: 'pointer',
+                        padding: '6px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        transition: 'all 0.15s'
+                      }}
+                      title="Hapus Siswa"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

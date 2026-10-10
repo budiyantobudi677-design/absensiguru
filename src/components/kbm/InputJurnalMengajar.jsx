@@ -5,7 +5,8 @@ import { supabase } from '../../lib/supabase'
 import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter } from 'lucide-react'
 import { getCustomSubjects } from '../../lib/subjectsManager'
 
-export default function InputJurnalMengajar({ selectedClass, classes, user, schoolInfo }) {
+export default function InputJurnalMengajar({ selectedClass, classes, user, profile, schoolInfo }) {
+  const activeProfile = profile || user || {}
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [journals, setJournals] = useState([])
   const [loading, setLoading] = useState(false)
@@ -16,7 +17,7 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, scho
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toLocaleDateString('en-CA'),
-    mata_pelajaran: user?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika',
+    mata_pelajaran: activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika',
     topik: '',
     teknik: 'Tatap Muka (Luring)',
     kegiatan: '',

@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Award, Save, RefreshCw, Layers, Sparkles, Filter, CheckCircle2, TrendingUp, HelpCircle } from 'lucide-react'
+import { Award, Save, RefreshCw, Layers, Sparkles, Filter, CheckCircle2, TrendingUp, HelpCircle, ShieldAlert } from 'lucide-react'
 import { getCustomSubjects } from '../../lib/subjectsManager'
 
-export default function InputNilaiSiswa({ selectedClass, classes, user, schoolInfo }) {
+export default function InputNilaiSiswa({ selectedClass, classes, user, profile, schoolInfo }) {
+  const activeProfile = profile || user || {}
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [students, setStudents] = useState([])
   const [availableSubjects, setAvailableSubjects] = useState(getCustomSubjects())
-  const [subject, setSubject] = useState(user?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
+  const [subject, setSubject] = useState(activeProfile?.mata_pelajaran || getCustomSubjects()[0] || 'Matematika')
   const [semester, setSemester] = useState('ganjil')
   const [academicYear, setAcademicYear] = useState('2026/2027')
   const [assessmentType, setAssessmentType] = useState('tp') // 'tp' | 'sts' | 'sas'
@@ -312,8 +313,18 @@ export default function InputNilaiSiswa({ selectedClass, classes, user, schoolIn
             Memuat data siswa dan nilai...
           </div>
         ) : students.length === 0 ? (
-          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Belum ada data siswa di kelas ini.
+          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+                <ShieldAlert size={26} />
+              </div>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
+                Daftar Siswa Belum Diatur
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: '1.4', margin: 0 }}>
+                Daftar siswa untuk rombel ini belum diatur oleh <b>Wali Kelas</b> atau <b>Admin</b>. Silakan hubungi Wali Kelas yang bersangkutan untuk menginput data siswa terlebih dahulu di Master KBM.
+              </p>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>

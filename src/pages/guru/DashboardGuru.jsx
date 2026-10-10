@@ -12,6 +12,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { getCustomSubjects } from '../../lib/subjectsManager'
 
 export default function DashboardGuru() {
   const [user, setUser] = useState(null)
@@ -1320,12 +1321,20 @@ export default function DashboardGuru() {
                 }
                 setLoading(true);
                 const formData = new FormData(e.target);
-                const updates = { full_name: formData.get('full_name'), nip: formData.get('nip'), jabatan: formData.get('jabatan') };
+                const guruRole = formData.get('role') || 'guru_kelas';
+                const mataPelajaran = guruRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : '';
+                const updates = { 
+                  full_name: formData.get('full_name'), 
+                  nip: formData.get('nip'), 
+                  jabatan: formData.get('jabatan'),
+                  role: guruRole,
+                  mata_pelajaran: mataPelajaran
+                };
                 
                 const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
                 if (!error) {
                   setProfile({ ...profile, ...updates });
-                  showPopup("Tersimpan!", "Profil Anda berhasil diperbarui.", "success");
+                  showPopup("Tersimpan!", "Profil dan bidang studi Anda berhasil diperbarui.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");
                 }
@@ -1340,9 +1349,52 @@ export default function DashboardGuru() {
                   <input type="text" name="nip" className="input" defaultValue={profile?.nip || ''} placeholder="Contoh: 198012312005011002" />
                 </div>
                 <div className="input-group">
-                  <label className="input-label">Jabatan / Guru Mapel</label>
-                  <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Matematika" />
+                  <label className="input-label">Jabatan Struktural / Keterangan</label>
+                  <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Kelas V / Pembina OSIS" />
                 </div>
+
+                <div className="input-group">
+                  <label className="input-label">Tipe Penugasan Guru</label>
+                  <select 
+                    name="role" 
+                    className="input" 
+                    defaultValue={profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'}
+                    onChange={(e) => {
+                      const mapelBox = document.getElementById('mapel-select-box');
+                      if (mapelBox) {
+                        mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none';
+                      }
+                    }}
+                  >
+                    <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
+                    <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
+                  </select>
+                  <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                    *Guru Kelas mengelola data siswa rombelnya, sedangkan Guru Mapel mengajar mapel spesifik di lintas kelas.
+                  </small>
+                </div>
+
+                <div 
+                  id="mapel-select-box"
+                  className="input-group" 
+                  style={{ display: profile?.role === 'guru_mapel' ? 'block' : 'none' }}
+                >
+                  <label className="input-label">Bidang Studi / Mata Pelajaran Utama</label>
+                  <select 
+                    name="mata_pelajaran" 
+                    className="input" 
+                    defaultValue={profile?.mata_pelajaran || ''}
+                  >
+                    <option value="">-- Pilih Mata Pelajaran --</option>
+                    {getCustomSubjects().map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                  <small style={{ fontSize: '0.72rem', color: '#6366F1', marginTop: '4px', display: 'block' }}>
+                    Tersinkron otomatis dari daftar mata pelajaran di Master KBM.
+                  </small>
+                </div>
+
                 <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.5rem' }} disabled={loading}>
                   {loading ? 'Menyimpan...' : 'Simpan Profil'}
                 </button>
@@ -1842,7 +1894,8 @@ export default function DashboardGuru() {
                 {kbmSubTab === 'presensi_siswa' && (
                   <InputPresensiMurid
                     classes={classesList}
-                    user={user}
+                    user={{ ...user, ...profile }}
+                    profile={profile}
                     schoolInfo={schoolInfoData}
                   />
                 )}
@@ -1850,7 +1903,8 @@ export default function DashboardGuru() {
                 {kbmSubTab === 'jurnal' && (
                   <InputJurnalMengajar
                     classes={classesList}
-                    user={user}
+                    user={{ ...user, ...profile }}
+                    profile={profile}
                     schoolInfo={schoolInfoData}
                   />
                 )}
@@ -1858,7 +1912,8 @@ export default function DashboardGuru() {
                 {kbmSubTab === 'nilai' && (
                   <InputNilaiSiswa
                     classes={classesList}
-                    user={user}
+                    user={{ ...user, ...profile }}
+                    profile={profile}
                     schoolInfo={schoolInfoData}
                   />
                 )}
@@ -1866,14 +1921,16 @@ export default function DashboardGuru() {
                 {kbmSubTab === 'rekap' && (
                   <RekapDanLaporan
                     classes={classesList}
-                    user={user}
+                    user={{ ...user, ...profile }}
+                    profile={profile}
                     schoolInfo={schoolInfoData}
                   />
                 )}
 
                 {kbmSubTab === 'master_siswa' && (
                   <MasterSiswaDanKelas
-                    user={user}
+                    user={{ ...user, ...profile }}
+                    profile={profile}
                     schoolInfo={schoolInfoData}
                     onRefresh={fetchUser}
                   />
