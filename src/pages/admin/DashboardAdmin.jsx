@@ -15,6 +15,10 @@ import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { Capacitor } from '@capacitor/core'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
+import CameraTimemarkModal from '../../components/CameraTimemarkModal'
+import { Fingerprint, Check } from 'lucide-react'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState({ role: 'admin' })
@@ -44,6 +48,14 @@ export default function DashboardAdmin() {
   // Theme Mode & Sidebar state
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  
+  // State Presensi Mandiri Khusus Kepala Sekolah / Admin
+  const [showCameraModal, setShowCameraModal] = useState(false)
+  const [kepsekTodayAbsensi, setKepsekTodayAbsensi] = useState(null)
+  const [kepsekHasCheckedIn, setKepsekHasCheckedIn] = useState(false)
+  const [kepsekTodayStatus, setKepsekTodayStatus] = useState(null)
+  const [kepsekAbsenLoading, setKepsekAbsenLoading] = useState(false)
+  const [kepsekPopup, setKepsekPopup] = useState({ show: false, title: '', message: '', type: 'success' })
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [absensiData, setAbsensiData] = useState([])
@@ -178,8 +190,78 @@ export default function DashboardAdmin() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return navigate('/')
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-    setAdmin({ ...user, ...(profile || {}), role: profile?.role || 'admin' })
+    const fullUser = { ...user, ...(profile || {}), role: profile?.role || 'admin' }
+    setAdmin(fullUser)
     setGeminiApiKey(getSavedGeminiKey(user.id))
+    loadKepsekTodayAbsensi(user.id)
+  }
+
+  const loadKepsekTodayAbsensi = async (userId) => {
+    const today = getSecureLocalDateString()
+    const { data } = await supabase.from('absensi').select('*').eq('user_id', userId).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
+    if (data && data.length > 0) {
+      setKepsekTodayAbsensi(data[0])
+      setKepsekHasCheckedIn(true)
+      setKepsekTodayStatus(data[0].status)
+    }
+  }
+
+  const handleKepsekAbsen = async (jenis) => {
+    if (!Capacitor.isNativePlatform() && (jenis === 'masuk' || jenis === 'pulang')) {
+      setKepsekPopup({
+        show: true,
+        title: "Presensi Kehadiran Hanya Melalui Aplikasi Android",
+        message: "Silakan buka aplikasi PanritaEdu di ponsel Android Anda untuk melakukan presensi mandiri.",
+        type: "error"
+      })
+      return
+    }
+
+    setKepsekAbsenLoading(true)
+    try {
+      const pos = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
+      if (pos.isMock) {
+        setKepsekPopup({
+          show: true,
+          title: "Peringatan Fake GPS",
+          message: "Aplikasi mendeteksi penggunaan Fake GPS. Matikan aplikasi Fake GPS untuk presensi.",
+          type: "error"
+        })
+        setKepsekAbsenLoading(false)
+        return
+      }
+
+      const loc = `${pos.latitude}, ${pos.longitude}`
+      const today = getSecureLocalDateString()
+      const now = getSecureServerIsoString()
+
+      if (jenis === 'masuk') {
+        const { data, error } = await supabase.from('absensi').insert({
+          user_id: admin.id,
+          waktu_masuk: now,
+          tanggal: today,
+          lokasi_masuk: loc,
+          status: 'hadir'
+        }).select().maybeSingle()
+        if (error) throw error
+        setKepsekHasCheckedIn(true)
+        setKepsekTodayStatus('hadir')
+        setKepsekTodayAbsensi(data || { user_id: admin.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+        setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan.", type: "success" })
+      } else if (jenis === 'pulang') {
+        const { data, error } = await supabase.from('absensi').update({
+          waktu_pulang: now,
+          lokasi_pulang: loc
+        }).eq('user_id', admin.id).eq('tanggal', today).select().maybeSingle()
+        if (error) throw error
+        setKepsekTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
+        setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
+      }
+    } catch (err) {
+      setKepsekPopup({ show: true, title: "Gagal Mengambil Lokasi", message: err.message || "Pastikan GPS aktif dan izin diberikan.", type: "error" })
+    } finally {
+      setKepsekAbsenLoading(false)
+    }
   }
 
   const fetchOverviewStats = async () => {
@@ -945,8 +1027,65 @@ export default function DashboardAdmin() {
         <main className="admin-content">
           {activeTab === 'overview' && (
             <div className="fade-in">
+              {/* Kartu Presensi Mandiri Khusus Kepala Sekolah */}
+              {(admin?.role === 'kepsek' || admin?.role === 'admin') && (
+                <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ShieldCheck size={28} color="#A5B4FC" />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#C7D2FE', fontWeight: 'bold' }}>Presensi Mandiri Pimpinan</span>
+                        <h3 style={{ margin: '2px 0 0 0', fontSize: '1.15rem', color: 'white' }}>{admin?.full_name || 'Kepala Sekolah'}</h3>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#E0E7FF' }}>
+                          Status Hari Ini: {kepsekTodayAbsensi ? `Tercatat Hadir (Masuk: ${kepsekTodayAbsensi.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'})` : 'Belum Melakukan Presensi'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {!kepsekHasCheckedIn ? (
+                        <button
+                          onClick={() => handleKepsekAbsen('masuk')}
+                          disabled={kepsekAbsenLoading}
+                          className="btn"
+                          style={{ background: '#10B981', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
+                        >
+                          <Fingerprint size={18} />
+                          <span>Clock In Saya</span>
+                        </button>
+                      ) : !kepsekTodayAbsensi?.waktu_pulang ? (
+                        <button
+                          onClick={() => handleKepsekAbsen('pulang')}
+                          disabled={kepsekAbsenLoading}
+                          className="btn"
+                          style={{ background: '#F59E0B', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
+                        >
+                          <Fingerprint size={18} />
+                          <span>Clock Out Saya</span>
+                        </button>
+                      ) : (
+                        <div style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.6rem 1rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <CheckCircle2 size={18} />
+                          <span>Presensi Hari Ini Lengkap</span>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => setShowCameraModal(true)}
+                        title="Kamera Timemark"
+                        style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Camera size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Real-time Dashboard Metrics (Lega 4 Kolom di Monitor Laptop) */}
-              <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Kehadiran Hari Ini</h3>
+              <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Kehadiran Guru Hari Ini</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
                  <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.12)' }}>
                     <Activity size={28} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
@@ -2351,6 +2490,32 @@ export default function DashboardAdmin() {
           </div>
         </div>
       )}
+
+      {/* Popup Dialog untuk Kepsek Presensi */}
+      {kepsekPopup.show && (
+        <div className="popup-overlay" style={{ zIndex: 99999 }}>
+          <div className="popup-content">
+             <div style={{ margin: '0 auto 1rem auto', width: '64px', height: '64px', background: kepsekPopup.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: kepsekPopup.type === 'success' ? '#059669' : '#DC2626', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={32} strokeWidth={3} />
+             </div>
+             <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>{kepsekPopup.title}</h2>
+             <p className="text-muted" style={{ fontSize: '0.95rem', marginBottom: '1.25rem' }}>{kepsekPopup.message}</p>
+             <button onClick={() => setKepsekPopup({ show: false, title: '', message: '', type: 'success' })} className="btn btn-primary" style={{ width: '100%' }}>
+               Tutup
+             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Timemark Modal untuk Kepala Sekolah */}
+      <CameraTimemarkModal
+        isOpen={showCameraModal}
+        onClose={() => setShowCameraModal(false)}
+        profile={admin}
+        user={admin}
+        schoolName={namaSekolah}
+        schoolLogo={logoSekolah}
+      />
       </div>
     </div>
   )

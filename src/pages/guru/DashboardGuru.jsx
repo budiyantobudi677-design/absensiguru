@@ -105,6 +105,17 @@ export default function DashboardGuru() {
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
 
+  // Responsive Layout (Otomatis deteksi layar Laptop/PC vs HP)
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 1024 : false)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const navigate = useNavigate()
 
   // Helper untuk mengecek apakah penugasan guru sudah lengkap
@@ -992,7 +1003,141 @@ export default function DashboardGuru() {
   }
 
   return (
-    <div className="guru-container" style={{ paddingBottom: '90px' }}>
+    <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: isDesktop ? '2rem' : '90px' }}>
+      {isDesktop && (
+        <div className="guru-desktop-shell">
+          {/* Desktop Left Sidebar for Teacher */}
+          <aside className="guru-desktop-sidebar">
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
+                <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '12px', objectFit: 'contain' }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</h4>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600' }}>Portal Pendidik (KBM Web)</span>
+                </div>
+              </div>
+
+              {/* Sidebar Navigation */}
+              <nav className="guru-desktop-sidebar-nav">
+                <button
+                  className={`guru-desktop-nav-btn ${activeTab === 'absensi' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('absensi')}
+                >
+                  <Clock size={18} />
+                  <span>Presensi & Kehadiran</span>
+                </button>
+                <button
+                  className={`guru-desktop-nav-btn ${activeTab === 'kbm' ? 'active' : ''}`}
+                  onClick={() => {
+                    if (!checkAssignmentConfigured()) {
+                      setShowAssignmentReminder(true);
+                      showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
+                      return;
+                    }
+                    setActiveTab('kbm');
+                  }}
+                >
+                  <BookOpen size={18} />
+                  <span>Sistem KBM (Jurnal, Nilai, Siswa)</span>
+                </button>
+                <button
+                  className={`guru-desktop-nav-btn ${activeTab === 'riwayat' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveTab('riwayat')
+                    loadHistory()
+                  }}
+                >
+                  <History size={18} />
+                  <span>Riwayat Kehadiran</span>
+                </button>
+                <button
+                  className={`guru-desktop-nav-btn ${activeTab === 'pengumuman' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('pengumuman')}
+                >
+                  <Bell size={18} />
+                  <span>Pengumuman Sekolah</span>
+                </button>
+                <button
+                  className={`guru-desktop-nav-btn ${activeTab === 'pengaturan' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('pengaturan')}
+                >
+                  <UserCircle size={18} />
+                  <span>Profil & Penugasan</span>
+                </button>
+              </nav>
+            </div>
+
+            {/* User Profile Info Footer */}
+            <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                  {profile?.foto_profil ? (
+                    <img src={profile.foto_profil} alt="User" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <UserCircle size={22} color="var(--primary)" />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+                      {profile?.full_name || user?.email?.split('@')[0]}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      {profile?.role === 'guru_mapel' ? 'Guru Mapel' : (profile?.role === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')}
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                  <LogOut size={16} />
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          {/* Desktop Right Main Area */}
+          <div className="guru-desktop-main">
+            {/* Desktop Top Header Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 0.25rem 0' }}>
+                  {activeTab === 'absensi' && 'Presensi & Kehadiran Pendidik'}
+                  {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM)'}
+                  {activeTab === 'riwayat' && 'Riwayat & Rekap Kehadiran'}
+                  {activeTab === 'pengumuman' && 'Pengumuman & Notifikasi'}
+                  {activeTab === 'pengaturan' && 'Profil Pendidik & Pengaturan Penugasan'}
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {schoolLogo ? schoolName : 'PanritaEdu'} • {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.4rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600' }}>
+                  <Clock size={16} color="var(--primary)" />
+                  <span>{currentTime.toLocaleTimeString('id-ID')}</span>
+                </div>
+                <button
+                  onClick={toggleTheme}
+                  title={darkMode ? "Mode Terang" : "Mode Gelap"}
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: '38px', height: '38px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  {darkMode ? <Sun size={18} color="#FBBF24" /> : <Moon size={18} color="var(--primary)" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Web Laptop Alert Banner for Attendance */}
+            {activeTab === 'absensi' && (
+              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '0.85rem 1.25rem', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: '#1E40AF', fontSize: '0.88rem' }}>
+                <ShieldCheck size={20} color="#2563EB" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <strong>Akses Presensi Kehadiran di Laptop/Web:</strong> Demi keamanan anti-fake GPS, presensi Masuk & Pulang dianjurkan melalui Aplikasi Android PanritaEdu di ponsel Anda. Pengolahan nilai, presensi murid & jurnal KBM dapat leluasa dikelola di laptop ini.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Custom Popup Modal */}
       {popup.show && (
@@ -1105,8 +1250,9 @@ export default function DashboardGuru() {
         </div>
       )}
 
-      {/* Header ID Card (Compact & Space-Saving, Hidden on Print) */}
-      <div className="card-gradient no-print" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
+      {/* Header ID Card (Hanya Tampil di Mode HP, di Desktop sudah ada Sidebar + Topbar) */}
+      {!isDesktop && (
+        <div className="card-gradient no-print" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.65rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
           <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
           <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</span>
@@ -1200,8 +1346,9 @@ export default function DashboardGuru() {
           </span>
         </div>
       </div>
+      )}
 
-      <div style={{ padding: '0 1.5rem' }}>
+      <div style={{ padding: isDesktop ? '0' : '0 1.5rem', width: '100%' }}>
         
         {/* Offline & Sync Indicators */}
         {isOffline && (
@@ -2415,6 +2562,8 @@ export default function DashboardGuru() {
           </p>
         </footer>
       </div>
+
+
 
       {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
       <nav className="bottom-nav">

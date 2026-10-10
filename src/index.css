@@ -89,7 +89,7 @@ body {
   overflow-x: clip;
 }
 
-/* 📱 Tampilan Khusus Guru (Mobile-First App Shell) */
+/* 📱 Tampilan Khusus Guru (Mobile-First App Shell yang Adaptif Desktop) */
 .guru-container {
   width: 100%;
   max-width: 440px;
@@ -107,6 +107,86 @@ body {
   .guru-container {
     max-width: 100%;
     box-shadow: none;
+  }
+}
+
+/* 💻 Saat Guru Membuka di Layar Laptop / Komputer (Desktop Mode) */
+@media (min-width: 1024px) {
+  .guru-container.desktop-mode {
+    max-width: 1280px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    margin: 1.5rem auto;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .guru-desktop-shell {
+    display: flex;
+    min-height: calc(100vh - 3rem);
+    width: 100%;
+  }
+
+  .guru-desktop-sidebar {
+    width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.5rem 1rem;
+    flex-shrink: 0;
+  }
+
+  .guru-desktop-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--background);
+    padding: 1.75rem 2.25rem;
+    overflow-y: auto;
+  }
+
+  .guru-desktop-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 1.5rem;
+  }
+
+  .guru-desktop-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1rem;
+    border-radius: 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+  }
+
+  .guru-desktop-nav-btn:hover {
+    background: var(--primary-light);
+    color: var(--primary);
+  }
+
+  .guru-desktop-nav-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+  }
+
+  .guru-container.desktop-mode .bottom-nav {
+    display: none !important;
   }
 }
 
