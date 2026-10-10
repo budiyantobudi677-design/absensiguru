@@ -460,3 +460,92 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
 [data-theme="dark"] .guru-footer-branding {
   border-top-color: rgba(255, 255, 255, 0.1);
 }
+
+/* ============================================================== */
+/* PRINT STYLES FOR REKAP & CETAK PDF LAPORAN KBM                 */
+/* ============================================================== */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm 8mm 10mm 8mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 10pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Sembunyikan elemen non-cetak */
+  .no-print,
+  button,
+  .btn,
+  nav,
+  aside,
+  .bottom-nav,
+  .login-header-brand,
+  .guru-footer-branding,
+  input[type="month"],
+  input[type="date"],
+  select,
+  .input {
+    display: none !important;
+  }
+
+  .container,
+  .guru-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  .print-header-area {
+    display: block !important;
+    margin-bottom: 12px !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  th, td {
+    border: 1px solid #64748B !important;
+    padding: 4px 3px !important;
+    color: black !important;
+  }
+
+  .print-signature-area {
+    display: flex !important;
+    justify-content: space-between !important;
+    margin-top: 24px !important;
+    page-break-inside: avoid;
+    font-size: 9pt !important;
+  }
+}

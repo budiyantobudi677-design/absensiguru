@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { FileSpreadsheet, Printer, Calendar, BookOpen, Award, CheckCircle, ChevronDown, Check, X, Filter } from 'lucide-react'
+import { FileSpreadsheet, Printer, Calendar, BookOpen, Award, CheckCircle, ChevronDown, Check, X, Filter, School } from 'lucide-react'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects } from '../../lib/subjectsManager'
 
@@ -10,7 +10,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
   const [rekapType, setRekapType] = useState('kehadiran') // 'kehadiran' | 'nilai' | 'jurnal'
 
-  // Sub-tipe Kehadiran: 'bulanan' | 'harian'
+  // Sub-tipe Kehadiran: 'bulanan' | 'harian' | 'semester'
   const [attendanceViewMode, setAttendanceViewMode] = useState('bulanan')
   const [selectedDayDate, setSelectedDayDate] = useState(new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM
@@ -29,9 +29,9 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const activeClassName = classes?.find(c => c.id === activeClassId)?.name || 'Kelas'
+  const activeClassName = classes?.find(c => c.id === activeClassId)?.name || 'Semua Kelas'
 
-  // Pastikan activeClassId terisi
+  // Pastikan activeClassId terisi atau default ke kelas pertama
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {
       setActiveClassId(classes[0].id)
@@ -77,6 +77,19 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
             .select('*')
             .eq('class_id', activeClassId)
             .eq('tanggal', selectedDayDate)
+          setAttendanceRecords(attList || [])
+        } else if (attendanceViewMode === 'semester') {
+          // Rekap 1 Semester Penuh (Ganjil: Jul-Des, Genap: Jan-Jun)
+          const baseYear = Number(academicYear.split('/')[0]) || new Date().getFullYear()
+          const startMonth = semester === 'ganjil' ? `${baseYear}-07-01` : `${baseYear + 1}-01-01`
+          const endMonth = semester === 'ganjil' ? `${baseYear}-12-31` : `${baseYear + 1}-06-30`
+
+          const { data: attList } = await supabase
+            .from('student_attendance')
+            .select('*')
+            .eq('class_id', activeClassId)
+            .gte('tanggal', startMonth)
+            .lte('tanggal', endMonth)
           setAttendanceRecords(attList || [])
         } else {
           // Rekap Bulanan
@@ -181,11 +194,20 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
     return { h, s, i, a }
   }
 
-  // Quick switcher bulan September
-  const handleSetSeptember = () => {
-    const currentYear = month ? month.split('-')[0] : new Date().getFullYear()
-    setMonth(`${currentYear}-09`)
-    setAttendanceViewMode('bulanan')
+  // Akumulasi semester per siswa
+  const getStudentSemesterStats = (studentId) => {
+    let h = 0, s = 0, i = 0, a = 0
+    attendanceRecords.forEach(att => {
+      if (att.student_id === studentId) {
+        if (att.status === 'hadir') h++
+        else if (att.status === 'sakit') s++
+        else if (att.status === 'izin') i++
+        else if (att.status === 'alpha') a++
+      }
+    })
+    const total = h + s + i + a
+    const pct = total > 0 ? ((h / total) * 100).toFixed(1) : '100.0'
+    return { h, s, i, a, total, pct }
   }
 
   // ===================== LOGIKA NILAI PER MAPEL =====================
@@ -280,9 +302,8 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
     })
   }, [students, gradeRecords, tpNumbers, lmNumbers, gradesViewMode, subject])
 
-  // ===================== LOGIKA LEGGER NILAI LENGKAP (SEMUA MAPEL + RANKING) =====================
+  // ===================== LOGIKA LEGGER NILAI LENGKAP =====================
   const activeLeggerSubjects = useMemo(() => {
-    // Ambil semua mata pelajaran yang ada di availableSubjects
     return availableSubjects
   }, [availableSubjects])
 
@@ -315,7 +336,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
       }
     })
 
-    // Hitung Peringkat / Rank Kelas berdasarkan overallAvgNum (descending)
     const sorted = [...rawList].sort((a, b) => b.overallAvgNum - a.overallAvgNum)
     const rankMap = {}
     sorted.forEach((item, index) => {
@@ -328,7 +348,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
     }))
   }, [students, gradeRecords, activeLeggerSubjects])
 
-  // ===================== EKSPOR EXCEL =====================
+  // ===================== EKSPOR EXCEL DENGAN CENTANG ✓ IDENTIK =====================
   const handleExportExcel = () => {
     const schoolInfoObj = {
       schoolName: schoolInfo?.schoolName || 'Presensia SD/SMP',
@@ -353,14 +373,28 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           schoolInfo: schoolInfoObj,
           dataGrid: { headers, rows }
         })
+      } else if (attendanceViewMode === 'semester') {
+        const headers = ['No', 'NISN', 'Nama Siswa', 'Hadir (H)', 'Sakit (S)', 'Izin (I)', 'Alpha (A)', 'Total', '% Hadir']
+        const rows = students.map((st, idx) => {
+          const stats = getStudentSemesterStats(st.id)
+          return [idx + 1, st.nisn || '-', st.name, stats.h, stats.s, stats.i, stats.a, stats.total, `${stats.pct}%`]
+        })
+        exportAttendanceRecapExcel({
+          title: 'REKAPITULASI PRESENSI SEMESTER',
+          className: activeClassName,
+          periodText: `Semester ${semester.toUpperCase()} ${academicYear}`,
+          schoolInfo: schoolInfoObj,
+          dataGrid: { headers, rows }
+        })
       } else {
+        // Bulanan: gunakan tanda centang "✓" persis tinjauan
         const headers = ['No', 'NISN', 'Nama Siswa', ...daysInMonthInfo.map(d => String(d.dayNumber)), 'H', 'S', 'I', 'A']
         const rows = students.map((st, idx) => {
           const stats = getStudentMonthlyStats(st.id)
           const dailyStatuses = daysInMonthInfo.map(d => {
             if (d.isSunday) return 'L'
             const stt = attendanceLookup[`${st.id}_${d.dateStr}`]
-            if (stt === 'hadir') return 'H'
+            if (stt === 'hadir') return '✓'
             if (stt === 'sakit') return 'S'
             if (stt === 'izin') return 'I'
             if (stt === 'alpha') return 'A'
@@ -380,7 +414,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
     } else if (rekapType === 'nilai') {
       if (gradesViewMode === 'legger_semua') {
-        // Legger Semua Mapel
         const headers = ['No', 'NISN', 'Nama Siswa', ...activeLeggerSubjects, 'Rata-rata', 'Rank']
         const rows = leggerDataCalculated.map((st, idx) => [
           idx + 1,
@@ -399,7 +432,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           dataGrid: { headers, rows }
         })
       } else {
-        // Nilai Per Mapel
         const headers = [
           'No',
           'NISN',
@@ -447,12 +479,34 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-      {/* Control Card Filter */}
-      <div className="card" style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+      {/* ===================== KOP LAPORAN UNTUK CETAK PDF ===================== */}
+      <div className="print-header-area" style={{ display: 'none', textAlign: 'center', borderBottom: '2px double #000', paddingBottom: '8px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '14pt', margin: 0, textTransform: 'uppercase', fontWeight: 'bold' }}>
+          {schoolInfo?.schoolName || 'PANRITA EDU APPLICATION'}
+        </h2>
+        <h3 style={{ fontSize: '11pt', margin: '3px 0', textTransform: 'uppercase' }}>
+          {rekapType === 'kehadiran' && attendanceViewMode === 'bulanan' && `REKAPITULASI PRESENSI BULANAN SISWA - KELAS ${activeClassName?.toUpperCase()}`}
+          {rekapType === 'kehadiran' && attendanceViewMode === 'semester' && `REKAPITULASI PRESENSI SEMESTER SISWA - KELAS ${activeClassName?.toUpperCase()}`}
+          {rekapType === 'kehadiran' && attendanceViewMode === 'harian' && `PRESENSI HARIAN SISWA - KELAS ${activeClassName?.toUpperCase()}`}
+          {rekapType === 'nilai' && gradesViewMode === 'legger_semua' && `LEGGER NILAI KELAS (SEMUA MATA PELAJARAN) - KELAS ${activeClassName?.toUpperCase()}`}
+          {rekapType === 'nilai' && gradesViewMode === 'per_mapel' && `REKAPITULASI NILAI ${subject?.toUpperCase()} - KELAS ${activeClassName?.toUpperCase()}`}
+          {rekapType === 'jurnal' && `REKAPITULASI JURNAL PEMBELAJARAN GURU - KELAS ${activeClassName?.toUpperCase()}`}
+        </h3>
+        <p style={{ fontSize: '9pt', margin: 0 }}>
+          {rekapType === 'kehadiran' && attendanceViewMode === 'bulanan' && `Periode: Bulan ${month}`}
+          {rekapType === 'kehadiran' && attendanceViewMode === 'semester' && `Periode: Semester ${semester?.toUpperCase()} ${academicYear}`}
+          {rekapType === 'kehadiran' && attendanceViewMode === 'harian' && `Tanggal: ${selectedDayDate}`}
+          {rekapType === 'nilai' && `Semester: ${semester?.toUpperCase()} ${academicYear}`}
+          {rekapType === 'jurnal' && `Tahun Ajaran: ${academicYear}`}
+        </p>
+      </div>
+
+      {/* Control Card Filter (Non-Cetak) */}
+      <div className="card no-print" style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
           <div>
             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#EA580C', background: '#FFEDD5', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Pusat Rekapitulasi & Legger Nilai
+              Pusat Rekapitulasi & Unduh Berkas
             </span>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
               Rekapitulasi, Ekspor Excel & Cetak PDF
@@ -563,29 +617,12 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           </button>
         </div>
 
-        {/* Sub-Switcher untuk Kehadiran (Harian, Bulanan, September) */}
+        {/* Sub-Switcher untuk Kehadiran (Harian, Bulanan, Semester) */}
         {rekapType === 'kehadiran' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: 'var(--text-muted)', marginRight: '4px' }}>
               Mode Tinjauan:
             </span>
-            <button
-              type="button"
-              onClick={() => setAttendanceViewMode('bulanan')}
-              style={{
-                padding: '5px 12px',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '0.76rem',
-                fontWeight: '700',
-                cursor: 'pointer',
-                background: attendanceViewMode === 'bulanan' ? '#4F46E5' : '#FFFFFF',
-                color: attendanceViewMode === 'bulanan' ? 'white' : '#475569',
-                boxShadow: attendanceViewMode === 'bulanan' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
-              }}
-            >
-              📅 Bulanan
-            </button>
             <button
               type="button"
               onClick={() => setAttendanceViewMode('harian')}
@@ -601,23 +638,41 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                 boxShadow: attendanceViewMode === 'harian' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
               }}
             >
-              🗓️ Harian
+              🗓️ Rekap Harian
             </button>
             <button
               type="button"
-              onClick={handleSetSeptember}
+              onClick={() => setAttendanceViewMode('bulanan')}
               style={{
                 padding: '5px 12px',
                 borderRadius: '8px',
-                border: '1px solid #E0E7FF',
+                border: 'none',
                 fontSize: '0.76rem',
                 fontWeight: '700',
                 cursor: 'pointer',
-                background: month?.endsWith('-09') && attendanceViewMode === 'bulanan' ? '#EEF2FF' : '#FFFFFF',
-                color: '#4F46E5'
+                background: attendanceViewMode === 'bulanan' ? '#4F46E5' : '#FFFFFF',
+                color: attendanceViewMode === 'bulanan' ? 'white' : '#475569',
+                boxShadow: attendanceViewMode === 'bulanan' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
               }}
             >
-              🍂 Cek September
+              📅 Rekap Bulanan
+            </button>
+            <button
+              type="button"
+              onClick={() => setAttendanceViewMode('semester')}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '0.76rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                background: attendanceViewMode === 'semester' ? '#4F46E5' : '#FFFFFF',
+                color: attendanceViewMode === 'semester' ? 'white' : '#475569',
+                boxShadow: attendanceViewMode === 'semester' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
+              }}
+            >
+              🎓 Rekap Semester
             </button>
           </div>
         )}
@@ -665,8 +720,8 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
           </div>
         )}
 
-        {/* Filter Controls Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem' }}>
+        {/* Filter Controls Row: Pilihan Kelas dari Semua Akun */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
               Pilih Rombel / Kelas
@@ -713,52 +768,50 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
             </div>
           )}
 
-          {rekapType === 'nilai' && (
-            <>
-              {gradesViewMode === 'per_mapel' && (
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Mata Pelajaran
-                  </label>
-                  <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="input"
-                    style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-                  >
-                    {availableSubjects.map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
-                  Semester & Tahun
-                </label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <select
-                    value={semester}
-                    onChange={(e) => setSemester(e.target.value)}
-                    className="input"
-                    style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-                  >
-                    <option value="ganjil">Ganjil</option>
-                    <option value="genap">Genap</option>
-                  </select>
-                  <select
-                    value={academicYear}
-                    onChange={(e) => setAcademicYear(e.target.value)}
-                    className="input"
-                    style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
-                  >
-                    <option value="2026/2027">2026/2027</option>
-                    <option value="2025/2026">2025/2026</option>
-                  </select>
-                </div>
+          {(rekapType === 'nilai' || (rekapType === 'kehadiran' && attendanceViewMode === 'semester')) && (
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Semester & Tahun Ajaran
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <select
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value)}
+                  className="input"
+                  style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+                >
+                  <option value="ganjil">Ganjil</option>
+                  <option value="genap">Genap</option>
+                </select>
+                <select
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  className="input"
+                  style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+                >
+                  <option value="2026/2027">2026/2027</option>
+                  <option value="2025/2026">2025/2026</option>
+                </select>
               </div>
-            </>
+            </div>
+          )}
+
+          {rekapType === 'nilai' && gradesViewMode === 'per_mapel' && (
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Mata Pelajaran
+              </label>
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="input"
+                style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
+              >
+                {availableSubjects.map(sub => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            </div>
           )}
 
           {rekapType === 'jurnal' && (
@@ -800,10 +853,11 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
 
       {/* Main Table Preview Container */}
       <div className="card" style={{ padding: 0, background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '0.85rem 1.25rem', background: '#F8FAFC', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="no-print" style={{ padding: '0.85rem 1.25rem', background: '#F8FAFC', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: '800', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               {rekapType === 'kehadiran' && attendanceViewMode === 'bulanan' && `Daftar Hadir Bulanan - Kelas ${activeClassName} (${month})`}
+              {rekapType === 'kehadiran' && attendanceViewMode === 'semester' && `Daftar Hadir Semester - Kelas ${activeClassName} (${semester.toUpperCase()} ${academicYear})`}
               {rekapType === 'kehadiran' && attendanceViewMode === 'harian' && `Presensi Harian - Kelas ${activeClassName} (${selectedDayDate})`}
               {rekapType === 'nilai' && gradesViewMode === 'per_mapel' && `Rekap Nilai ${subject} - Kelas ${activeClassName} (${semester.toUpperCase()} ${academicYear})`}
               {rekapType === 'nilai' && gradesViewMode === 'legger_semua' && `Legger Nilai Lengkap (Semua Mapel) - Kelas ${activeClassName} (${semester.toUpperCase()} ${academicYear})`}
@@ -884,6 +938,77 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                           }}>
                             {stt === 'belum' ? 'Belum Diisi' : stt}
                           </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : rekapType === 'kehadiran' && attendanceViewMode === 'semester' ? (
+          /* ========================================================================= */
+          /* 1C. REKAP HADIR SEMESTER                                                  */
+          /* ========================================================================= */
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: 'var(--text)', fontWeight: 'bold' }}>
+                  <th style={{ padding: '10px 12px', width: '40px', textAlign: 'center' }}>No</th>
+                  <th style={{ padding: '10px 12px', width: '120px', color: 'var(--text-muted)' }}>NISN</th>
+                  <th style={{ padding: '10px 14px' }}>Nama Siswa</th>
+                  <th style={{ padding: '10px 12px', width: '70px', textAlign: 'center', color: '#059669', background: '#F0FDF4' }}>Hadir</th>
+                  <th style={{ padding: '10px 12px', width: '70px', textAlign: 'center', color: '#D97706', background: '#FFFBEB' }}>Sakit</th>
+                  <th style={{ padding: '10px 12px', width: '70px', textAlign: 'center', color: '#2563EB', background: '#EFF6FF' }}>Izin</th>
+                  <th style={{ padding: '10px 12px', width: '70px', textAlign: 'center', color: '#DC2626', background: '#FEF2F2' }}>Alpha</th>
+                  <th style={{ padding: '10px 12px', width: '80px', textAlign: 'center', fontWeight: 'bold' }}>Total</th>
+                  <th style={{ padding: '10px 12px', width: '90px', textAlign: 'center', fontWeight: 'bold', color: '#4F46E5' }}>% Hadir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      Belum ada siswa di kelas ini.
+                    </td>
+                  </tr>
+                ) : (
+                  students.map((st, idx) => {
+                    const stats = getStudentSemesterStats(st.id)
+                    return (
+                      <tr
+                        key={st.id}
+                        style={{
+                          borderBottom: '1px solid #F1F5F9',
+                          background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.45)'
+                        }}
+                      >
+                        <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600' }}>
+                          {idx + 1}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {st.nisn || '-'}
+                        </td>
+                        <td style={{ padding: '10px 14px', fontWeight: '700', color: 'var(--text)' }}>
+                          {st.name}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#059669', background: '#F0FDF4' }}>
+                          {stats.h}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#D97706', background: '#FFFBEB' }}>
+                          {stats.s}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#2563EB', background: '#EFF6FF' }}>
+                          {stats.i}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#DC2626', background: '#FEF2F2' }}>
+                          {stats.a}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold' }}>
+                          {stats.total}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#4F46E5' }}>
+                          {stats.pct}%
                         </td>
                       </tr>
                     )
@@ -1050,19 +1175,16 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                   <th style={{ padding: '11px 8px', width: '95px', textAlign: 'center', color: 'var(--text-muted)' }}>NISN</th>
                   <th style={{ padding: '11px 14px', textAlign: 'left', minWidth: '190px' }}>Nama Siswa</th>
 
-                  {/* Header Kolom Semua Mapel */}
                   {activeLeggerSubjects.map(sub => (
                     <th key={sub} style={{ padding: '11px 8px', minWidth: '95px', color: 'var(--text)', fontWeight: '800' }}>
                       {sub}
                     </th>
                   ))}
 
-                  {/* Header Rata-rata */}
                   <th style={{ padding: '11px 10px', width: '85px', color: '#B45309', background: '#FEF3C7', fontWeight: '900' }}>
                     Rata-rata
                   </th>
 
-                  {/* Header Peringkat / Rank */}
                   <th style={{ padding: '11px 10px', width: '65px', color: '#047857', background: '#ECFDF5', fontWeight: '900' }}>
                     Rank
                   </th>
@@ -1094,7 +1216,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                         {st.name}
                       </td>
 
-                      {/* Nilai Masing-masing Mapel */}
                       {activeLeggerSubjects.map(sub => {
                         const val = st.subjectAverages[sub]
                         return (
@@ -1104,12 +1225,10 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                         )
                       })}
 
-                      {/* Rata-rata Nilai Keseluruhan */}
                       <td style={{ padding: '9px 6px', fontWeight: '900', color: '#92400E', background: '#FEF3C7' }}>
                         {st.overallAverage}
                       </td>
 
-                      {/* Peringkat Kelas */}
                       <td style={{ padding: '9px 6px', fontWeight: '900', color: '#047857', background: '#ECFDF5', fontSize: '0.88rem' }}>
                         {st.rank}
                       </td>
@@ -1131,7 +1250,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                   <th style={{ padding: '11px 8px', width: '95px', textAlign: 'center', color: 'var(--text-muted)' }}>NISN</th>
                   <th style={{ padding: '11px 14px', textAlign: 'left', minWidth: '190px' }}>Nama Siswa</th>
 
-                  {/* Header Kolom TP 1..N */}
                   {tpNumbers.map(n => (
                     <th key={`tp_${n}`} style={{ padding: '11px 8px', width: '52px', color: '#1E293B', fontWeight: '800' }}>
                       TP {n}
@@ -1142,7 +1260,6 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
                     RTP
                   </th>
 
-                  {/* Header Kolom LM 1..N */}
                   {lmNumbers.map(n => (
                     <th key={`lm_${n}`} style={{ padding: '11px 8px', width: '52px', color: '#7C3AED', fontWeight: '800' }}>
                       LM {n}
@@ -1305,6 +1422,24 @@ export default function RekapDanLaporan({ selectedClass, classes, user, schoolIn
             </table>
           </div>
         )}
+      </div>
+
+      {/* ===================== AREA TANDA TANGAN (HANYA MUNCUL DI PRINT/PDF) ===================== */}
+      <div className="print-signature-area" style={{ display: 'none' }}>
+        <div style={{ textAlign: 'center', width: '220px' }}>
+          <div>Mengetahui,</div>
+          <div style={{ fontWeight: 'bold' }}>Kepala Sekolah</div>
+          <div style={{ height: '55px' }}></div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{schoolInfo?.principalName || '...........................................'}</div>
+          <div>NIP. {schoolInfo?.principalNIP || '...........................................'}</div>
+        </div>
+        <div style={{ textAlign: 'center', width: '220px' }}>
+          <div>Dicetak: {new Date().toLocaleDateString('id-ID')}</div>
+          <div style={{ fontWeight: 'bold' }}>{schoolInfo?.appMode === 'SMP' ? 'Guru Mata Pelajaran' : 'Guru Kelas'}</div>
+          <div style={{ height: '55px' }}></div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{user?.full_name || schoolInfo?.teacherName || '...........................................'}</div>
+          <div>NIP. {user?.nip || schoolInfo?.teacherNIP || '...........................................'}</div>
+        </div>
       </div>
     </div>
   )

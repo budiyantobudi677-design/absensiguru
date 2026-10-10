@@ -1292,72 +1292,33 @@ export default function DashboardAdmin() {
                   </div>
                 </div>
 
-                {/* Grid Menu Cards: Sesuai Persis Tampilan Menu Akses Cepat App */}
-                <h3 style={{ margin: '0.5rem 0 0 0', fontSize: '1.15rem' }}>Menu Modul Pembelajaran</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
-                  {/* Card 1: Presensi Siswa */}
-                  <div
-                    onClick={() => setKbmAdminSubTab('presensi')}
-                    className="card"
-                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
-                  >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.25)' }}>
-                      <CheckCircle2 size={32} color="white" />
-                    </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Presensi Siswa</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Monitoring & kontrol absensi kelas harian</p>
-                  </div>
-
-                  {/* Card 2: Jurnal Mengajar */}
-                  <div
-                    onClick={() => setKbmAdminSubTab('jurnal')}
-                    className="card"
-                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
-                  >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #0D9488 0%, #2DD4BF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(13, 148, 136, 0.25)' }}>
-                      <BookOpen size={32} color="white" />
-                    </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Jurnal Mengajar Guru</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Pemantauan agenda materi & evaluasi KBM</p>
-                  </div>
-
-                  {/* Card 3: Penilaian & Leger */}
-                  <div
-                    onClick={() => setKbmAdminSubTab('nilai')}
-                    className="card"
-                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
-                  >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #9333EA 0%, #A855F7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(147, 51, 234, 0.25)' }}>
-                      <Award size={32} color="white" />
-                    </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Input & Leger Nilai</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Nilai tugas, kuis, STS, SAS & predikat</p>
-                  </div>
-
-                  {/* Card 4: Rekapitulasi & Cetak */}
+                {/* Grid Menu Cards Admin KBM: Hanya Rekapitulasi & Master KBM */}
+                <h3 style={{ margin: '0.5rem 0 0 0', fontSize: '1.15rem' }}>Menu Modul Pembelajaran (Admin)</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
+                  {/* Card 1: Rekapitulasi & Cetak Laporan */}
                   <div
                     onClick={() => setKbmAdminSubTab('rekap')}
                     className="card"
-                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1.25rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(245, 158, 11, 0.25)' }}>
-                      <FileSpreadsheet size={32} color="white" />
+                    <div style={{ width: '68px', height: '68px', borderRadius: '22px', background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(245, 158, 11, 0.25)' }}>
+                      <FileSpreadsheet size={34} color="white" />
                     </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Rekapitulasi & Cetak</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Unduh rekap berkas Excel & cetak laporan</p>
+                    <h3 style={{ fontSize: '1.05rem', margin: 0, fontWeight: '700' }}>Rekapitulasi KBM & Cetak</h3>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0.35rem 0 0 0' }}>Unduh rekap presensi (harian/bulanan/semester), legger nilai & jurnal semua kelas</p>
                   </div>
 
-                  {/* Card 5: Master KBM (Siswa, Rombel & Mapel) */}
+                  {/* Card 2: Master KBM (Siswa, Rombel & Mapel) */}
                   <div
                     onClick={() => setKbmAdminSubTab('master_siswa')}
                     className="card"
-                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
+                    style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1.25rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}
                   >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(79, 70, 229, 0.25)' }}>
-                      <Users size={32} color="white" />
+                    <div style={{ width: '68px', height: '68px', borderRadius: '22px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', boxShadow: '0 8px 16px rgba(79, 70, 229, 0.25)' }}>
+                      <Users size={34} color="white" />
                     </div>
-                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Master KBM</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola rombel kelas, siswa & mata pelajaran</p>
+                    <h3 style={{ fontSize: '1.05rem', margin: 0, fontWeight: '700' }}>Master KBM</h3>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0.35rem 0 0 0' }}>Kelola rombongan belajar kelas, siswa & pengaturan mata pelajaran</p>
                   </div>
                 </div>
               </div>
@@ -1387,57 +1348,6 @@ export default function DashboardAdmin() {
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', padding: '2px 0' }}>
                     <button
-                      onClick={() => setKbmAdminSubTab('presensi')}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '10px',
-                        fontSize: '0.78rem',
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmAdminSubTab === 'presensi' ? '#4F46E5' : '#F1F5F9',
-                        color: kbmAdminSubTab === 'presensi' ? 'white' : '#475569',
-                        boxShadow: kbmAdminSubTab === 'presensi' ? '0 2px 5px rgba(79, 70, 229, 0.25)' : 'none'
-                      }}
-                    >
-                      📝 Presensi
-                    </button>
-                    <button
-                      onClick={() => setKbmAdminSubTab('jurnal')}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '10px',
-                        fontSize: '0.78rem',
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmAdminSubTab === 'jurnal' ? '#0D9488' : '#F1F5F9',
-                        color: kbmAdminSubTab === 'jurnal' ? 'white' : '#475569',
-                        boxShadow: kbmAdminSubTab === 'jurnal' ? '0 2px 5px rgba(13, 148, 136, 0.25)' : 'none'
-                      }}
-                    >
-                      📓 Jurnal
-                    </button>
-                    <button
-                      onClick={() => setKbmAdminSubTab('nilai')}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '10px',
-                        fontSize: '0.78rem',
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmAdminSubTab === 'nilai' ? '#9333EA' : '#F1F5F9',
-                        color: kbmAdminSubTab === 'nilai' ? 'white' : '#475569',
-                        boxShadow: kbmAdminSubTab === 'nilai' ? '0 2px 5px rgba(147, 51, 234, 0.25)' : 'none'
-                      }}
-                    >
-                      ✍️ Nilai
-                    </button>
-                    <button
                       onClick={() => setKbmAdminSubTab('rekap')}
                       style={{
                         padding: '6px 14px',
@@ -1452,7 +1362,7 @@ export default function DashboardAdmin() {
                         boxShadow: kbmAdminSubTab === 'rekap' ? '0 2px 5px rgba(234, 88, 12, 0.25)' : 'none'
                       }}
                     >
-                      📊 Rekap
+                      📊 Rekapitulasi & Cetak
                     </button>
                     <button
                       onClick={() => setKbmAdminSubTab('master_siswa')}
@@ -1475,30 +1385,6 @@ export default function DashboardAdmin() {
                 </div>
 
                 {/* Sub-Modul Content */}
-                {kbmAdminSubTab === 'presensi' && (
-                  <InputPresensiMurid
-                    classes={kbmClasses}
-                    user={admin}
-                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
-                  />
-                )}
-
-                {kbmAdminSubTab === 'jurnal' && (
-                  <InputJurnalMengajar
-                    classes={kbmClasses}
-                    user={admin}
-                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
-                  />
-                )}
-
-                {kbmAdminSubTab === 'nilai' && (
-                  <InputNilaiSiswa
-                    classes={kbmClasses}
-                    user={admin}
-                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
-                  />
-                )}
-
                 {kbmAdminSubTab === 'rekap' && (
                   <RekapDanLaporan
                     classes={kbmClasses}
