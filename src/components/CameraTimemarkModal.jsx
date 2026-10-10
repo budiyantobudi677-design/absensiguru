@@ -74,45 +74,60 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return 'WIB'
   }
 
-  // Listener Sensor Arah Kompas Dinamis (Otomatis Berubah Mengikuti Gerakan / Arah HP)
+  // Listener Sensor Orientasi & Gyroscope HP (Mendeteksi Rotasi Fisik HP bahkan saat Auto-Rotate Layar Dikunci)
   useEffect(() => {
     if (!isOpen) return
 
     const handleOrientation = (e) => {
+      // 1. Arah Kompas Dinamis
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
         setCompassHeading(Math.round(e.webkitCompassHeading))
       } else if (e.alpha !== null && e.alpha !== undefined) {
         const heading = (360 - Math.round(e.alpha)) % 360
         setCompassHeading(heading)
       }
+
+      // 2. Deteksi Rotasi Fisik HP 90 Derajat Mandiri (Menggunakan kemiringan gamma & beta)
+      // Gamma: kemiringan kiri/kanan (-90 ke 90). Saat HP dimiringkan 90 derajat mendatar, |gamma| mendekati 50-90.
+      if (e.gamma !== null && e.gamma !== undefined && e.beta !== null && e.beta !== undefined) {
+        const absGamma = Math.abs(e.gamma)
+        const absBeta = Math.abs(e.beta)
+        if (absGamma > 45 && absBeta < 65) {
+          setIsDeviceLandscape(true)
+        } else if (absBeta > 55 && absGamma < 40) {
+          setIsDeviceLandscape(false)
+        } else {
+          // Fallback ke rasio ukuran jendela browser
+          if (typeof window !== 'undefined') {
+            setIsDeviceLandscape(window.innerWidth > window.innerHeight)
+          }
+        }
+      }
+    }
+
+    const checkWindowSize = () => {
+      if (typeof window !== 'undefined') {
+        const isLand = window.innerWidth > window.innerHeight
+        setIsDeviceLandscape(isLand)
+      }
     }
 
     window.addEventListener('deviceorientation', handleOrientation, true)
+    window.addEventListener('resize', checkWindowSize)
+    window.addEventListener('orientationchange', checkWindowSize)
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', checkWindowSize)
+    }
+
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation, true)
-    }
-  }, [isOpen])
-
-  // Listener Deteksi Rotasi HP 90 Derajat (Landscape Alami saat HP Diputar)
-  useEffect(() => {
-    const checkOrientation = () => {
-      const isLand = window.innerWidth > window.innerHeight
-      setIsDeviceLandscape(isLand)
-    }
-
-    window.addEventListener('resize', checkOrientation)
-    window.addEventListener('orientationchange', checkOrientation)
-    if (window.screen?.orientation) {
-      window.screen.orientation.addEventListener('change', checkOrientation)
-    }
-    return () => {
-      window.removeEventListener('resize', checkOrientation)
-      window.removeEventListener('orientationchange', checkOrientation)
+      window.removeEventListener('resize', checkWindowSize)
+      window.removeEventListener('orientationchange', checkWindowSize)
       if (window.screen?.orientation) {
-        window.screen.orientation.removeEventListener('change', checkOrientation)
+        window.screen.orientation.removeEventListener('change', checkWindowSize)
       }
     }
-  }, [])
+  }, [isOpen])
 
   // Helper Konversi Singkatan Arah Kompas (Contoh: 227 -> SW)
   const getCompassShortDir = (deg) => {
@@ -407,9 +422,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
     }
 
-    // Hitung Skala Proporsional Canvas (Memperbesar Teks Watermark)
+    // Hitung Skala Proporsional Canvas (Memastikan ukuran watermark tetap kecil dan konsisten baik potret maupun landscape)
     const scaleMultiplier = getScaleMultiplier(watermarkScale)
-    const baseFactor = (targetWidth / 720) * scaleMultiplier
+    const referenceDim = isLandscape ? Math.min(targetWidth, targetHeight) : targetWidth
+    const baseFactor = (referenceDim / (isLandscape ? 680 : 720)) * scaleMultiplier * (isLandscape ? 0.72 : 1.0)
 
     // Format Text
     const teacherName = profile?.full_name || user?.email?.split('@')[0] || 'Guru'
@@ -503,8 +519,37 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const badgeWidth = timeTextWidth + (checkCircleRadius * 2) + (badgePaddingX * 2) + (10 * baseFactor)
       const badgeHeight = timeFontSize + (badgePaddingY * 2) + (4 * baseFactor)
       
-      const contentHeight = (135 * baseFactor) + badgeHeight
-      const startBadgeY = targetHeight - contentHeight - (24 * baseFactor)
+      // Hitung teks detail alamat terlebih dahulu untuk penempatan presisi di kiri bawah
+      const statusFontSize = Math.round(24 * baseFactor)
+      const dateFontSize = Math.round(18 * baseFactor)
+      const teacherFontSize = Math.round(16 * baseFactor)
+      const addressFontSize = Math.round(15 * baseFactor)
+      const textStartX = leftX + (14 * baseFactor)
+      const maxAddrWidth = targetWidth - textStartX - (35 * baseFactor)
+      const words = displayAddress.split(' ')
+      let lines = []
+      let tempLine = ''
+
+      ctx.font = `normal ${addressFontSize}px Outfit, sans-serif`
+      for (let w = 0; w < words.length; w++) {
+        const testLine = tempLine ? `${tempLine} ${words[w]}` : words[w]
+        if (ctx.measureText(testLine).width > maxAddrWidth && tempLine) {
+          lines.push(tempLine)
+          tempLine = words[w]
+        } else {
+          tempLine = testLine
+        }
+      }
+      if (tempLine) lines.push(tempLine)
+
+      // Hitung tinggi total aktual konten watermark di kiri bawah
+      let detailContentHeight = statusFontSize + (6 * baseFactor) + dateFontSize + (6 * baseFactor)
+      if (showTeacherName) detailContentHeight += teacherFontSize + (4 * baseFactor)
+      detailContentHeight += lines.length * (addressFontSize + (4 * baseFactor))
+
+      const totalActualHeight = badgeHeight + (14 * baseFactor) + detailContentHeight
+      const bottomMargin = 20 * baseFactor
+      const startBadgeY = targetHeight - totalActualHeight - bottomMargin
 
       // Background Badge Jam (Kotak gelap rounded)
       ctx.fillStyle = 'rgba(38, 24, 18, 0.88)'
@@ -539,21 +584,18 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
       // 2. Garis Aksen Vertikal Oranye & Detail Teks
       const lineX = leftX
-      const lineStartY = startBadgeY + badgeHeight + (14 * baseFactor)
-      const textStartX = lineX + (14 * baseFactor)
+      const lineStartY = startBadgeY + badgeHeight + (12 * baseFactor)
       let curTextY = lineStartY
 
       // 3. Teks Status (contoh: Selesai / Hadir)
-      const statusFontSize = Math.round(24 * baseFactor)
-      ctx.font = `bold ${statusFontSize}px Outfit, sans-serif`
       ctx.fillStyle = '#FFFFFF'
+      ctx.font = `bold ${statusFontSize}px Outfit, sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
       ctx.fillText(displayStatus, textStartX, curTextY)
       curTextY += statusFontSize + (6 * baseFactor)
 
       // 4. Hari dan Tanggal Lengkap
-      const dateFontSize = Math.round(18 * baseFactor)
       ctx.font = `600 ${dateFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.96)'
       ctx.fillText(dateFormatted, textStartX, curTextY)
@@ -561,7 +603,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
       // 5. Nama Guru
       if (showTeacherName) {
-        const teacherFontSize = Math.round(16 * baseFactor)
         ctx.font = `500 ${teacherFontSize}px Outfit, sans-serif`
         ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
         ctx.fillText(`Guru: ${teacherName}${nipText}`, textStartX, curTextY)
@@ -569,27 +610,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }
 
       // 6. Alamat Lengkap GPS
-      const addressFontSize = Math.round(15 * baseFactor)
       ctx.font = `normal ${addressFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
-      
-      const maxAddrWidth = targetWidth - textStartX - (35 * baseFactor)
-      const words = displayAddress.split(' ')
-      let currentLine = ''
-      
-      for (let w = 0; w < words.length; w++) {
-        const testLine = currentLine ? `${currentLine} ${words[w]}` : words[w]
-        const testWidth = ctx.measureText(testLine).width
-        if (testWidth > maxAddrWidth && currentLine) {
-          ctx.fillText(currentLine, textStartX, curTextY)
-          curTextY += addressFontSize + (4 * baseFactor)
-          currentLine = words[w]
-        } else {
-          currentLine = testLine
-        }
-      }
-      if (currentLine) {
-        ctx.fillText(currentLine, textStartX, curTextY)
+      for (let l = 0; l < lines.length; l++) {
+        ctx.fillText(lines[l], textStartX, curTextY)
         curTextY += addressFontSize + (4 * baseFactor)
       }
 
