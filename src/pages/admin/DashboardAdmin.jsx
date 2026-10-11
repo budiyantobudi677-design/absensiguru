@@ -19,6 +19,7 @@ import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTa
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
+import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState({ role: 'admin' })
@@ -58,6 +59,7 @@ export default function DashboardAdmin() {
   const [kepsekPopup, setKepsekPopup] = useState({ show: false, title: '', message: '', type: 'success' })
   
   const [pegawaiData, setPegawaiData] = useState([])
+  const [deviceBindings, setDeviceBindings] = useState({})
   const [absensiData, setAbsensiData] = useState([])
   const [pengumumanData, setPengumumanData] = useState([])
   const [targetType, setTargetType] = useState('all')
@@ -286,8 +288,12 @@ export default function DashboardAdmin() {
     loadKbmClasses()
     syncCloudSubjects(supabase)
     await syncCloudTeacherAssignments(supabase)
-    const { data } = await supabase.from('profiles').select('*')
-    if (data) setPegawaiData(data)
+    const [profRes, bindRes] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      fetchDeviceBindings(supabase)
+    ])
+    if (profRes.data) setPegawaiData(profRes.data)
+    if (bindRes) setDeviceBindings(bindRes)
     setLoadingData(false)
   }
 
@@ -1221,27 +1227,89 @@ export default function DashboardAdmin() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setEditingPegawai(p)}
-                          style={{
-                            padding: '0.45rem 0.65rem',
-                            borderRadius: '10px',
-                            background: '#F1F5F9',
-                            border: '1px solid #E2E8F0',
-                            color: '#475569',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            flexShrink: 0
-                          }}
-                        >
-                          <Edit3 size={13} />
-                          <span>Atur</span>
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          {(() => {
+                            const b = deviceBindings[p.id]
+                            if (b && b.deviceId) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const teacherName = p.full_name || p.email
+                                    if (window.confirm(`Reset kunci HP untuk ${teacherName}? Guru ini akan bisa mendaftarkan HP barunya saat presensi berikutnya.`)) {
+                                      const ok = await resetDeviceBinding({ userId: p.id, supabase })
+                                      if (ok) {
+                                        setDeviceBindings(prev => {
+                                          const copy = { ...prev }
+                                          delete copy[p.id]
+                                          return copy
+                                        })
+                                        alert(`Kunci HP untuk ${teacherName} berhasil di-reset!`)
+                                      } else {
+                                        alert("Gagal mereset kunci HP.")
+                                      }
+                                    }
+                                  }}
+                                  title={`Terkunci di: ${b.deviceName || 'HP Guru'}. Klik untuk reset kunci jika guru ganti HP.`}
+                                  style={{
+                                    padding: '0.45rem 0.65rem',
+                                    borderRadius: '10px',
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECACA',
+                                    color: '#DC2626',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <Fingerprint size={12} />
+                                  <span>Reset HP</span>
+                                </button>
+                              )
+                            }
+                            return (
+                              <span 
+                                title="Akun ini belum terikat ke HP manapun. Akan otomatis terkunci ke HP pertama saat guru presensi."
+                                style={{
+                                  fontSize: '0.7rem',
+                                  color: '#94A3B8',
+                                  background: '#F8FAFC',
+                                  border: '1px solid #E2E8F0',
+                                  padding: '0.4rem 0.55rem',
+                                  borderRadius: '8px',
+                                  fontWeight: '600'
+                                }}
+                              >
+                                HP Terbuka
+                              </span>
+                            )
+                          })()}
+
+                          <button
+                            type="button"
+                            onClick={() => setEditingPegawai(p)}
+                            style={{
+                              padding: '0.45rem 0.65rem',
+                              borderRadius: '10px',
+                              background: '#F1F5F9',
+                              border: '1px solid #E2E8F0',
+                              color: '#475569',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              flexShrink: 0
+                            }}
+                          >
+                            <Edit3 size={13} />
+                            <span>Atur</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

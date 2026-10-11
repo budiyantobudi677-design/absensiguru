@@ -18,6 +18,7 @@ import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTa
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
+import { verifyOrBindDevice } from '../../lib/deviceManager'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -918,6 +919,32 @@ export default function DashboardGuru() {
 
     setLoading(true)
     try {
+      // Validasi Kunci Perangkat (1 Akun = 1 HP - Anti Titip Absen Antar Guru)
+      const deviceCheck = await verifyOrBindDevice({ userId: user?.id, supabase })
+      if (!deviceCheck.success) {
+        if (deviceCheck.error === 'DEVICE_MISMATCH') {
+          showPopup(
+            "Presensi Ditolak (Kunci Perangkat)",
+            `Akun Anda telah terikat pada perangkat lain (${deviceCheck.boundDeviceName || 'HP Pribadi Anda'}). Anda dilarang menitipkan absensi menggunakan HP guru lain. Silakan gunakan HP pribadi Anda atau hubungi Admin/Kepsek jika Anda mengganti HP baru.`,
+            "error"
+          )
+        } else if (deviceCheck.error === 'PHONE_ALREADY_USED') {
+          showPopup(
+            "Presensi Ditolak (HP Milik Guru Lain)",
+            `Ponsel ini sudah terikat secara permanen untuk akun guru lain. Satu ponsel hanya diizinkan untuk 1 akun guru demi integritas presensi sekolah.`,
+            "error"
+          )
+        } else {
+          showPopup(
+            "Presensi Ditolak",
+            "Perangkat ini tidak diizinkan untuk melakukan presensi akun ini.",
+            "error"
+          )
+        }
+        setLoading(false)
+        return
+      }
+
       const position = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
       
       // Deteksi Fake GPS / Mock Location
