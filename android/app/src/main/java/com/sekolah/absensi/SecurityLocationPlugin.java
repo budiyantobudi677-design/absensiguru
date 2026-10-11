@@ -141,4 +141,72 @@ public class SecurityLocationPlugin extends Plugin {
 
         call.resolve(ret);
     }
+
+    @PluginMethod
+    public void saveImageToGallery(PluginCall call) {
+        String base64Data = call.getString("base64");
+        String fileName = call.getString("fileName");
+
+        if (base64Data == null || base64Data.isEmpty()) {
+            call.reject("Data gambar (base64) tidak boleh kosong");
+            return;
+        }
+
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = "Timemark_" + System.currentTimeMillis() + ".jpg";
+        }
+
+        try {
+            byte[] imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            Context context = getContext();
+
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName);
+            values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/GammaraApp");
+                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
+            }
+
+            android.net.Uri uri = context.getContentResolver().insert(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, 
+                values
+            );
+
+            if (uri == null) {
+                call.reject("Gagal membuat entri di MediaStore Galeri");
+                return;
+            }
+
+            try (java.io.OutputStream out = context.getContentResolver().openOutputStream(uri)) {
+                if (out != null) {
+                    out.write(imageBytes);
+                    out.flush();
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear();
+                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
+                context.getContentResolver().update(uri, values, null, null);
+            } else {
+                // Untuk Android 9 kebawah, beritahu MediaScanner agar langsung muncul di Galeri
+                android.media.MediaScannerConnection.scanFile(
+                    context, 
+                    new String[]{ uri.getPath() }, 
+                    new String[]{ "image/jpeg" }, 
+                    null
+                );
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("uri", uri.toString());
+            call.resolve(ret);
+
+        } catch (Exception e) {
+            call.reject("Gagal menyimpan ke galeri: " + e.getMessage());
+        }
+    }
 }

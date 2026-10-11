@@ -2698,8 +2698,57 @@ export default function DashboardAdmin() {
         </div>
       )}
 
+        {/* Mobile Bottom Navigation Bar (Muncul di Layar HP) */}
+        <div className="mobile-admin-bottom-nav" style={{
+          display: 'none',
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: 'var(--surface)',
+          borderTop: '1px solid var(--border)',
+          zIndex: 40,
+          padding: '0.4rem 0.5rem 0.6rem 0.5rem',
+          justifyContent: 'space-around',
+          alignItems: 'center',
+          boxShadow: '0 -4px 12px rgba(0,0,0,0.06)'
+        }}>
+          {[
+            { id: 'overview', label: 'Ringkasan', icon: Activity },
+            { id: 'pegawai', label: 'Pegawai', icon: Users },
+            { id: 'kbm', label: 'KBM', icon: BookOpen },
+            { id: 'laporan', label: 'Laporan', icon: FileText },
+            { id: 'pengaturan', label: 'Profil', icon: Settings },
+          ].map(m => {
+            const Icon = m.icon
+            const isActive = activeTab === m.id
+            return (
+              <button
+                key={m.id}
+                onClick={() => handleMenuClick(m.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '3px',
+                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
+                  fontSize: '0.68rem',
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: 'pointer',
+                  padding: '4px 6px'
+                }}
+              >
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                <span>{m.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* Footer Admin GammaraApp */}
-        <footer style={{ marginTop: '3rem', padding: '1.75rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
+        <footer style={{ marginTop: '3rem', padding: '1.75rem 1rem 5rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
           <div className="gammara-logo" style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>
             <span className="gammara">Gammara</span><span className="app">App</span>
           </div>

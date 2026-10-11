@@ -9,6 +9,7 @@ import PullToRefresh from './components/PullToRefresh'
 import Login from './pages/Login'
 import DashboardGuru from './pages/guru/DashboardGuru'
 import DashboardAdmin from './pages/admin/DashboardAdmin'
+import DashboardKepsek from './pages/kepsek/DashboardKepsek'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
 
@@ -216,7 +217,7 @@ function App() {
       backHandle = await CapApp.addListener('backButton', ({ canGoBack }) => {
         const path = window.location.pathname
         // Jika sedang di dashboard utama atau halaman root, keluar aplikasi tanpa logout
-        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/' || path === '/pengembang' || path === '/pengembang/') {
+        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/' || path === '/kepsek' || path === '/kepsek/' || path === '/pengembang' || path === '/pengembang/') {
           CapApp.exitApp()
         } else if (canGoBack) {
           window.history.back()
@@ -246,7 +247,8 @@ function App() {
   }
 
   const isDevRole = role === 'pengembang' || role === 'developer'
-  const isAdminRole = role === 'admin' || role === 'kepsek'
+  const isKepsekRole = role === 'kepsek'
+  const isAdminRole = role === 'admin'
 
   return (
     <PullToRefresh>
@@ -259,11 +261,14 @@ function App() {
                 ? <Login /> 
                 : (isDevRole 
                     ? <Navigate to="/pengembang" /> 
-                    : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />))
+                    : (isKepsekRole 
+                        ? <Navigate to="/kepsek" /> 
+                        : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />)))
             } 
           />
           <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
           <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
+          <Route path="/kepsek/*" element={session ? <DashboardKepsek /> : <Navigate to="/" />} />
           <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" />} />
         </Routes>
       </Router>

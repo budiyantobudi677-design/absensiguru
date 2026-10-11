@@ -32,9 +32,14 @@ export default function Login() {
   
   // State Khusus Registrasi Tendik
   const [tendikCategory, setTendikCategory] = useState('operator') // 'operator' | 'non_operator'
-  const [tendikPenugasan, setTendikPenugasan] = useState('Operator Dapodik') // 'Operator Dapodik' | 'Pustakawan' | 'Bujang' | 'Satpam'
   const [fullNameInput, setFullNameInput] = useState('')
   
+  // State Verifikasi OTP Email
+  const [otpCode, setOtpCode] = useState('')
+  const [otpSentEmail, setOtpSentEmail] = useState('')
+  const [pendingUserData, setPendingUserData] = useState(null)
+  const [resendTimer, setResendTimer] = useState(0)
+
   // Developer Key States
   const [devKey, setDevKey] = useState('')
   const [showDevKey, setShowDevKey] = useState(false)
@@ -181,52 +186,56 @@ export default function Login() {
           throw new Error('Akses ditolak: Akun Anda bukan Kepala Sekolah. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (isAdmin || isKepsek) {
+        if (isAdmin) {
           navigate('/admin')
+        } else if (isKepsek) {
+          navigate('/kepsek')
         } else {
           navigate('/guru')
         }
         
       } else if (mode === 'register') {
+        if (selectedRole === 'admin' || selectedRole === 'kepsek') {
+          throw new Error('Pendaftaran akun Kepala Sekolah dan Administrator hanya dapat dilakukan melalui Akun Pengembang Sistem.')
+        }
+
+        const formattedJabatan = selectedRole === 'tendik' 
+          ? (tendikCategory === 'operator' ? 'Operator Dapodik' : 'Tenaga Kependidikan') 
+          : 'Guru Kelas'
+
         const signUpData = {
           email,
           password,
           options: {
             data: {
-              role: selectedRole === 'tendik' ? 'tendik' : (selectedRole === 'admin' ? 'admin' : (selectedRole === 'kepsek' ? 'kepsek' : 'guru')),
+              role: selectedRole === 'tendik' ? 'tendik' : 'guru',
               full_name: fullNameInput.trim() || email.split('@')[0],
-              penugasan_tipe: selectedRole === 'tendik' ? 'tendik' : (selectedRole === 'guru' ? 'guru_kelas' : selectedRole),
+              penugasan_tipe: selectedRole === 'tendik' ? 'tendik' : 'guru_kelas',
               tendik_kategori: selectedRole === 'tendik' ? tendikCategory : null,
-              jabatan: selectedRole === 'tendik' ? tendikPenugasan : (selectedRole === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')
+              jabatan: formattedJabatan
             }
           }
         }
         const { data: authData, error } = await supabase.auth.signUp(signUpData)
         if (error) throw error
 
-        if (authData?.user?.id) {
-          // Sinkronisasi profil langsung
-          const formattedJabatan = selectedRole === 'tendik' ? tendikPenugasan : (selectedRole === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')
-          const assignedRole = selectedRole === 'tendik' ? 'guru' : (selectedRole === 'admin' ? 'admin' : (selectedRole === 'kepsek' ? 'kepsek' : 'guru'))
-          
-          await supabase.from('profiles').upsert({
-            id: authData.user.id,
-            email,
-            full_name: fullNameInput.trim() || email.split('@')[0],
-            role: assignedRole,
-            jabatan: formattedJabatan
-          }).catch(() => {})
+        // Simpan data pending untuk verifikasi OTP
+        setOtpSentEmail(email)
+        setOtpCode('')
+        setPendingUserData({
+          userId: authData?.user?.id,
+          email,
+          fullName: fullNameInput.trim() || email.split('@')[0],
+          role: 'guru', // profiles_role_check constraint DB
+          penugasan_tipe: selectedRole === 'tendik' ? 'tendik' : 'guru_kelas',
+          tendik_kategori: selectedRole === 'tendik' ? tendikCategory : null,
+          jabatan: formattedJabatan
+        })
 
-          if (selectedRole === 'tendik') {
-            localStorage.setItem(`guru_tipe_${authData.user.id}`, 'tendik')
-            localStorage.setItem(`tendik_kategori_${authData.user.id}`, tendikCategory)
-            localStorage.setItem(`tendik_penugasan_${authData.user.id}`, tendikPenugasan)
-          }
-        }
-
-        setSuccess('Pendaftaran berhasil! Akun Anda telah dibuat. Silakan masuk.')
-        setMode('login')
-        setPassword('')
+        // Beralih ke layar input verifikasi OTP
+        setMode('verify_otp')
+        setResendTimer(60)
+        setSuccess(`Kode verifikasi 6-digit telah dikirim ke email ${email}. Masukkan kode di bawah untuk mengaktifkan akun Anda.`)
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -241,6 +250,78 @@ export default function Login() {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Hitung mundur kirim ulang OTP
+  useEffect(() => {
+    let t = null
+    if (resendTimer > 0) {
+      t = setInterval(() => setResendTimer(prev => prev - 1), 1000)
+    }
+    return () => clearInterval(t)
+  }, [resendTimer])
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const cleanOtp = otpCode.trim()
+      if (!cleanOtp || cleanOtp.length < 6) {
+        throw new Error('Silakan masukkan 6 digit kode verifikasi dengan benar.')
+      }
+
+      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+        email: otpSentEmail,
+        token: cleanOtp,
+        type: 'signup'
+      })
+      if (verifyError) throw verifyError
+
+      const userId = verifyData?.user?.id || pendingUserData?.userId
+      if (userId && pendingUserData) {
+        await supabase.from('profiles').upsert({
+          id: userId,
+          email: pendingUserData.email,
+          full_name: pendingUserData.fullName,
+          role: pendingUserData.role,
+          jabatan: pendingUserData.jabatan
+        }).catch(() => {})
+
+        if (pendingUserData.penugasan_tipe === 'tendik') {
+          localStorage.setItem(`guru_tipe_${userId}`, 'tendik')
+          if (pendingUserData.tendik_kategori) {
+            localStorage.setItem(`tendik_kategori_${userId}`, pendingUserData.tendik_kategori)
+          }
+        }
+      }
+
+      setSuccess('Verifikasi berhasil! Akun Anda telah aktif.')
+      navigate('/guru')
+    } catch (err) {
+      setError(err.message || 'Kode verifikasi tidak valid atau telah kedaluwarsa.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return
+    setError(null)
+    setSuccess(null)
+    try {
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: otpSentEmail
+      })
+      if (resendErr) throw resendErr
+      setResendTimer(60)
+      setSuccess(`Kode verifikasi baru telah dikirimkan ke ${otpSentEmail}`)
+    } catch (err) {
+      setError(err.message || 'Gagal mengirim ulang kode verifikasi.')
     }
   }
 
@@ -371,11 +452,19 @@ export default function Login() {
             )}
 
             <h2>
-              {mode === 'register' ? 'Daftar Akun Baru' : mode === 'forgot' ? 'Lupa Password?' : <>Masuk ke <span style={{ color: '#00A8B0' }}>GammaraApp</span></>}
+              {mode === 'verify_otp' 
+                ? 'Verifikasi Kode Email' 
+                : mode === 'register' 
+                ? 'Daftar Akun Baru' 
+                : mode === 'forgot' 
+                ? 'Lupa Password?' 
+                : <>Masuk ke <span style={{ color: '#00A8B0' }}>GammaraApp</span></>}
             </h2>
             <p className="subheading">
-              {mode === 'register' 
-                ? 'Lengkapi email dan kata sandi untuk mendaftar akun.' 
+              {mode === 'verify_otp'
+                ? `Masukkan 6-digit kode verifikasi yang dikirimkan ke ${otpSentEmail}`
+                : mode === 'register' 
+                ? 'Lengkapi data pendaftaran akun Anda.' 
                 : mode === 'forgot' 
                 ? 'Masukkan email untuk menerima tautan pemulihan.' 
                 : 'Sudah punya akun? Pilih tipe login di bawah.'}
@@ -393,7 +482,7 @@ export default function Login() {
               </div>
             )}
 
-            {/* Pilihan 5 Role (Sesuai Prototipe) */}
+            {/* Pilihan Role di Mode Login */}
             {mode === 'login' && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div className="role-heading">TIPE LOGIN</div>
@@ -418,8 +507,127 @@ export default function Login() {
               </div>
             )}
 
-            {/* Form Input Sesuai Role Terpilih */}
-            <form onSubmit={handleSubmit}>
+            {/* Pilihan Role di Mode Register (Hanya Guru & Tendik) */}
+            {mode === 'register' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div className="role-heading">TIPE AKUN YANG DIDAFTARKAN</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                  {[
+                    { id: 'guru', label: 'Guru', icon: BookOpen },
+                    { id: 'tendik', label: 'Tendik', icon: Briefcase }
+                  ].map((role) => {
+                    const Icon = role.icon
+                    const isSelected = selectedRole === role.id
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => setSelectedRole(role.id)}
+                        className={`role-tile-proto ${isSelected ? 'selected' : ''}`}
+                        style={{ padding: '0.85rem 0.5rem' }}
+                      >
+                        <Icon size={20} />
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{role.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p style={{ margin: '0.65rem 0 0 0', fontSize: '0.73rem', color: '#64748B', lineHeight: 1.4 }}>
+                  ℹ️ Akun <strong>Kepala Sekolah</strong> dan <strong>Admin</strong> didaftarkan secara resmi oleh Pengembang Sistem.
+                </p>
+              </div>
+            )}
+
+            {mode === 'verify_otp' ? (
+              /* Tampilan Verifikasi Kode OTP Email */
+              <div style={{ marginTop: '1rem' }}>
+                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#E0F7FA', color: '#00838F', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem', fontSize: '1.5rem' }}>
+                    ✉️
+                  </div>
+                  <h3 style={{ margin: '0 0 0.35rem 0', color: '#092C50', fontSize: '1.1rem', fontWeight: 800 }}>Verifikasi Kode Email</h3>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+                    Kode 6-digit telah dikirim ke <strong>{otpSentEmail}</strong>
+                  </p>
+                </div>
+
+                <form onSubmit={handleVerifyOtp}>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#38516a', marginBottom: '0.4rem', textAlign: 'center' }}>
+                      Masukkan 6 Digit Kode OTP
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Contoh: 123456"
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        padding: '0.85rem 1rem',
+                        borderRadius: '12px',
+                        border: '2px solid #00AFD0',
+                        background: '#FFFFFF',
+                        fontSize: '1.4rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.4rem',
+                        textAlign: 'center',
+                        color: '#092C50',
+                        outline: 'none'
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || otpCode.length < 6}
+                    style={{
+                      width: '100%',
+                      padding: '0.95rem 1.25rem',
+                      background: 'linear-gradient(100deg, #0d446f, #0ba6b0)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '0.95rem',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      cursor: (loading || otpCode.length < 6) ? 'not-allowed' : 'pointer',
+                      opacity: (loading || otpCode.length < 6) ? 0.6 : 1,
+                      boxShadow: '0 10px 23px rgba(0, 125, 145, 0.17)',
+                      marginBottom: '1rem'
+                    }}
+                  >
+                    {loading ? 'Memverifikasi...' : 'Konfirmasi & Aktifkan Akun'}
+                  </button>
+                </form>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #E2E8F0' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setMode('register'); setOtpCode(''); setError(null); }}
+                    style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    ← Ubah Email / Kembali
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={resendTimer > 0 || loading}
+                    style={{ background: 'none', border: 'none', color: resendTimer > 0 ? '#94A3B8' : '#058F9B', cursor: resendTimer > 0 ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                  >
+                    {resendTimer > 0 ? `Kirim Ulang (${resendTimer}s)` : 'Kirim Ulang Kode'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Form Input Sesuai Role Terpilih */}
+                <form onSubmit={handleSubmit}>
               {selectedRole === 'pengembang' ? (
                 /* Role Pengembang: Master Key Akses Khusus */
                 <div style={{ marginBottom: '1.4rem' }}>
@@ -564,44 +772,10 @@ export default function Login() {
                         </div>
                       </div>
 
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#092C50', marginBottom: '0.35rem' }}>
-                          Tugas & Jabatan Tendik
-                        </label>
-                        <select
-                          value={tendikPenugasan}
-                          onChange={(e) => setTendikPenugasan(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.65rem 0.75rem',
-                            borderRadius: '8px',
-                            border: '1px solid #7DD3E0',
-                            background: '#FFFFFF',
-                            fontSize: '0.85rem',
-                            fontWeight: 700,
-                            color: '#0F172A',
-                            outline: 'none',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {tendikCategory === 'operator' ? (
-                            <>
-                              <option value="Operator Dapodik">💻 Operator Dapodik</option>
-                              <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
-                            </>
-                          ) : (
-                            <>
-                              <option value="Pustakawan">📚 Pustakawan</option>
-                              <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
-                              <option value="Satpam">🛡️ Satpam (Keamanan)</option>
-                            </>
-                          )}
-                        </select>
-                        <small style={{ display: 'block', marginTop: '4px', fontSize: '0.72rem', color: '#058F9B' }}>
-                          {tendikCategory === 'operator' 
-                            ? 'Akses: Presensi, Master KBM (tambah/hapus siswa & kelas), Riwayat & Profil.' 
-                            : 'Akses: Presensi, Tambah/Hapus Siswa & Kelas, Riwayat & Profil (Tanpa KBM).'}
-                        </small>
+                      <div style={{ background: '#E0F7FA', border: '1px dashed #00ACC1', borderRadius: '8px', padding: '0.65rem 0.8rem', marginTop: '0.6rem' }}>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#006064', fontWeight: 600 }}>
+                          ℹ️ Tugas & Penempatan (Pustakawan, Satpam, Kebersihan, Operator Dapodik/Sekolah) dapat dipilih di halaman <strong>Profil / Penugasan</strong> setelah berhasil login.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -776,6 +950,8 @@ export default function Login() {
                   Masuk di sini
                 </span>
               </p>
+            )}
+              </>
             )}
 
           </div>

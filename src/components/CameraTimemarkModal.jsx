@@ -1396,21 +1396,38 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           ? activePhoto.dataUrl.split('base64,')[1]
           : activePhoto.dataUrl
 
+        let savedToGallery = false
         try {
-          await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Documents
-          })
-        } catch {
-          await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Cache
-          })
+          const { registerPlugin } = await import('@capacitor/core')
+          const SecurityLocation = registerPlugin('SecurityLocation')
+          if (SecurityLocation && SecurityLocation.saveImageToGallery) {
+            await SecurityLocation.saveImageToGallery({
+              base64: base64Data,
+              fileName: fileName
+            })
+            savedToGallery = true
+          }
+        } catch (pluginErr) {
+          console.warn('SecurityLocation.saveImageToGallery fallback:', pluginErr)
         }
 
-        alert('Foto berhasil disimpan ke penyimpanan perangkat Anda!')
+        if (!savedToGallery) {
+          try {
+            await Filesystem.writeFile({
+              path: fileName,
+              data: base64Data,
+              directory: Directory.Documents
+            })
+          } catch {
+            await Filesystem.writeFile({
+              path: fileName,
+              data: base64Data,
+              directory: Directory.Cache
+            })
+          }
+        }
+
+        alert('Foto berhasil disimpan ke Galeri perangkat Anda!')
         return
       }
 

@@ -1755,7 +1755,7 @@ export default function DashboardGuru() {
                     <ShieldAlert size={20} style={{ flexShrink: 0, marginTop: '2px', color: '#DC2626' }} />
                     <div>
                       <strong style={{ display: 'block', marginBottom: '2px', fontSize: '0.85rem', color: '#B91C1C' }}>
-                        Presensi Wajib via Aplikasi Resmi (APK)
+                        Presensi Wajib via Smartphone / HP
                       </strong>
                       <span>{platformStatus.message}</span>
                     </div>

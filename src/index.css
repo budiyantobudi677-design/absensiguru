@@ -317,6 +317,9 @@ body {
   .admin-content {
     padding: 1.25rem;
   }
+  .mobile-admin-bottom-nav {
+    display: flex !important;
+  }
 }
 
 [data-theme="dark"] .admin-sidebar,
