@@ -574,10 +574,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.shadowOffsetX = 1.5 * baseFactor
       ctx.shadowOffsetY = 1.5 * baseFactor
 
-      const topMargin = 18 * baseFactor
-      const rightMargin = targetWidth - (20 * baseFactor)
+      const topMargin = 22 * baseFactor
+      const rightMargin = targetWidth - (24 * baseFactor)
 
-      const brandFontSize = Math.round(18 * baseFactor)
+      const brandFontSize = Math.round(25 * baseFactor)
       ctx.font = `800 ${brandFontSize}px Poppins, sans-serif`
       const gammaraWidth = ctx.measureText('Gammara').width
       const appWidth = ctx.measureText('App').width
@@ -596,11 +596,11 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.fillText('App', startBrandX + gammaraWidth, topMargin)
 
       // Gambar Subjudul "100% foto asli"
-      const subBrandFontSize = Math.round(9.5 * baseFactor)
+      const subBrandFontSize = Math.round(13 * baseFactor)
       ctx.font = `500 ${subBrandFontSize}px Poppins, sans-serif`
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
       ctx.textAlign = 'right'
-      ctx.fillText('100% foto asli', rightMargin, topMargin + brandFontSize + (3 * baseFactor))
+      ctx.fillText('100% foto asli', rightMargin, topMargin + brandFontSize + (4 * baseFactor))
 
       ctx.restore()
     }
@@ -2135,22 +2135,22 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               }
             />
 
-            {/* Header Kanan Atas: Logo PanritaEdu + 100% foto asli (Live Preview, Ukuran Kecil Elegan) */}
+            {/* Header Kanan Atas: Logo GammaraApp + 100% foto asli (Live Preview, Ukuran Pas & Jelas) */}
             <div
               style={{
                 position: 'absolute',
-                top: '12px',
-                right: '14px',
+                top: '14px',
+                right: '16px',
                 textAlign: 'right',
                 textShadow: '0 2px 6px rgba(0,0,0,0.95)',
                 pointerEvents: 'none'
               }}
             >
-              <div style={{ fontSize: '0.98rem', lineHeight: '1.1', fontWeight: '800', fontFamily: 'Poppins, sans-serif', letterSpacing: '-0.035em' }}>
+              <div style={{ fontSize: '1.25rem', lineHeight: '1.1', fontWeight: '800', fontFamily: 'Poppins, sans-serif', letterSpacing: '-0.035em' }}>
                 <span style={{ color: '#FFFFFF', fontWeight: '800' }}>Gammara</span>
                 <span style={{ color: '#00BEA5', fontWeight: '800' }}>App</span>
               </div>
-              <div style={{ fontSize: '0.56rem', color: 'rgba(255,255,255,0.92)', fontWeight: '500', marginTop: '1px' }}>
+              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.95)', fontWeight: '500', marginTop: '2px' }}>
                 100% foto asli
               </div>
             </div>
