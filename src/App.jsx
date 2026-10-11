@@ -9,6 +9,8 @@ import PullToRefresh from './components/PullToRefresh'
 import Login from './pages/Login'
 import DashboardGuru from './pages/guru/DashboardGuru'
 import DashboardAdmin from './pages/admin/DashboardAdmin'
+import DashboardPengembang from './pages/developer/DashboardPengembang'
+import { getDeveloperSession } from './lib/developerManager'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -79,18 +81,46 @@ function App() {
     }
 
     // Ambil sesi awal secara definitif
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!isMounted) return
-      setSession(session)
-      if (session) {
-        syncUserRole(session)
-      } else {
+    const devSession = getDeveloperSession()
+    if (devSession) {
+      setSession(devSession)
+      setRole('pengembang')
+      setLoading(false)
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!isMounted) return
+        setSession(session)
+        if (session) {
+          syncUserRole(session)
+        } else {
+          setLoading(false)
+        }
+      }).catch((err) => {
+        console.error('Session get error:', err)
+        if (isMounted) setLoading(false)
+      })
+    }
+
+    const handleDevSessionUpdate = () => {
+      const activeDev = getDeveloperSession()
+      if (activeDev) {
+        setSession(activeDev)
+        setRole('pengembang')
         setLoading(false)
+      } else {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!isMounted) return
+          setSession(session)
+          if (session) syncUserRole(session)
+          else {
+            setRole(null)
+            setLoading(false)
+          }
+        })
       }
-    }).catch((err) => {
-      console.error('Session get error:', err)
-      if (isMounted) setLoading(false)
-    })
+    }
+
+    window.addEventListener('developer_session_updated', handleDevSessionUpdate)
 
     const {
       data: { subscription },
@@ -100,6 +130,13 @@ function App() {
       if (event === 'INITIAL_SESSION') return
 
       if (event === 'SIGNED_OUT') {
+        const activeDev = getDeveloperSession()
+        if (activeDev) {
+          setSession(activeDev)
+          setRole('pengembang')
+          setLoading(false)
+          return
+        }
         setSession(null)
         setRole(null)
         setLoading(false)
@@ -111,6 +148,7 @@ function App() {
 
     return () => {
       isMounted = false
+      window.removeEventListener('developer_session_updated', handleDevSessionUpdate)
       subscription.unsubscribe()
     }
   }, [])
@@ -178,7 +216,7 @@ function App() {
       backHandle = await CapApp.addListener('backButton', ({ canGoBack }) => {
         const path = window.location.pathname
         // Jika sedang di dashboard utama atau halaman root, keluar aplikasi tanpa logout
-        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/') {
+        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/' || path === '/pengembang' || path === '/pengembang/') {
           CapApp.exitApp()
         } else if (canGoBack) {
           window.history.back()
@@ -207,15 +245,26 @@ function App() {
     </div>
   }
 
-  const isAdminRole = role === 'admin' || role === 'kepsek' || role === 'pengembang' || role === 'developer'
+  const isDevRole = role === 'pengembang' || role === 'developer'
+  const isAdminRole = role === 'admin' || role === 'kepsek'
 
   return (
     <PullToRefresh>
       <Router>
         <Routes>
-          <Route path="/" element={!session ? <Login /> : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />)} />
+          <Route 
+            path="/" 
+            element={
+              !session 
+                ? <Login /> 
+                : (isDevRole 
+                    ? <Navigate to="/pengembang" /> 
+                    : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />))
+            } 
+          />
           <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
           <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
+          <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" />} />
         </Routes>
       </Router>
     </PullToRefresh>

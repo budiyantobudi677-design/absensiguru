@@ -6,14 +6,19 @@ import { Browser } from '@capacitor/browser'
 import { 
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
   ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
-  X, Check
+  X, Check, Eye, EyeOff, ShieldAlert, Key
 } from 'lucide-react'
+import { 
+  verifyDeveloperKey, 
+  checkBruteForceLockout,
+  getDeveloperSession
+} from '../lib/developerManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
   { id: 'guru', label: 'Guru', icon: BookOpen, placeholder: 'guru@sekolah.edu / NIP' },
   { id: 'admin', label: 'Admin', icon: SlidersHorizontal, placeholder: 'admin@sekolah.edu' },
-  { id: 'pengembang', label: 'Pengembang', icon: Code2, placeholder: 'developer@panrita.edu' },
+  { id: 'pengembang', label: 'Pengembang', icon: Code2, placeholder: 'Masukkan Kode Unik Akses Pengembang' },
 ]
 
 export default function Login() {
@@ -21,12 +26,47 @@ export default function Login() {
   const [selectedRole, setSelectedRole] = useState('guru')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  
+  // Developer Key States
+  const [devKey, setDevKey] = useState('')
+  const [showDevKey, setShowDevKey] = useState(false)
+  const [lockoutTimer, setLockoutTimer] = useState(0)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   
   const [namaSekolah, setNamaSekolah] = useState('Sistem Kehadiran')
   const navigate = useNavigate()
+
+  // Cek lockout status secara periodik jika role pengembang dipilih
+  useEffect(() => {
+    if (selectedRole === 'pengembang') {
+      const { isLocked, remainingSeconds } = checkBruteForceLockout()
+      if (isLocked) {
+        setLockoutTimer(remainingSeconds)
+      } else {
+        setLockoutTimer(0)
+      }
+    }
+  }, [selectedRole])
+
+  // Timer countdown untuk lockout jika sedang terkunci
+  useEffect(() => {
+    let interval = null
+    if (lockoutTimer > 0) {
+      interval = setInterval(() => {
+        setLockoutTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [lockoutTimer])
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -44,6 +84,34 @@ export default function Login() {
     setError(null)
     setSuccess(null)
 
+    // Khusus Role Pengembang: Menggunakan Kode Unik Akses Pengembang (Master Key)
+    if (selectedRole === 'pengembang') {
+      try {
+        if (!devKey.trim()) {
+          throw new Error('Silakan masukkan Kode Akses Pengembang.')
+        }
+
+        const res = await verifyDeveloperKey(devKey, supabase)
+        if (!res.success) {
+          // Periksa apakah menyebabkan lockout
+          const lockout = checkBruteForceLockout()
+          if (lockout.isLocked) {
+            setLockoutTimer(lockout.remainingSeconds)
+          }
+          throw new Error(res.error || 'Kode Akses Pengembang tidak valid.')
+        }
+
+        // Berhasil login pengembang -> Arahkan langsung ke Console Pengembang
+        navigate('/pengembang')
+        return
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     try {
       if (mode === 'login') {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -57,7 +125,6 @@ export default function Login() {
         const isGuru = userRole === 'guru' || userRole === 'guru_kelas' || userRole === 'guru_mapel'
         const isAdmin = userRole === 'admin'
         const isKepsek = userRole === 'kepsek'
-        const isDev = userRole === 'pengembang' || userRole === 'developer'
 
         if (selectedRole === 'guru' && !isGuru) {
           await supabase.auth.signOut()
@@ -74,12 +141,7 @@ export default function Login() {
           throw new Error('Akses ditolak: Akun Anda bukan Kepala Sekolah. Silakan pilih tipe login yang sesuai.')
         }
 
-        if (selectedRole === 'pengembang' && !isDev) {
-          await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda bukan Pengembang. Silakan pilih tipe login yang sesuai.')
-        }
-
-        if (isAdmin || isKepsek || isDev) {
+        if (isAdmin || isKepsek) {
           navigate('/admin')
         } else {
           navigate('/guru')
@@ -329,99 +391,187 @@ export default function Login() {
 
           {/* Form Login / Register / Forgot */}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1.15rem' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334E68', marginBottom: '0.4rem', marginLeft: '0.2rem' }}>
-                Email Instansi ({currentRoleObj.label})
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={currentRoleObj.placeholder}
-                  style={{ 
-                    width: '100%', 
-                    padding: '0.85rem 1rem 0.85rem 2.85rem', 
-                    borderRadius: '16px', 
-                    border: '1.5px solid #D9E2EC', 
-                    background: '#F8FAFC', 
-                    fontSize: '0.92rem', 
-                    color: '#102A43', 
-                    outline: 'none', 
-                    transition: 'all 0.2s' 
-                  }}
-                  onFocus={(e) => { 
-                    e.target.style.borderColor = '#00B4D8'
-                    e.target.style.background = '#FFFFFF'
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
-                  }}
-                  onBlur={(e) => { 
-                    e.target.style.borderColor = '#D9E2EC'
-                    e.target.style.background = '#F8FAFC'
-                    e.target.style.boxShadow = 'none'
-                  }}
-                  required 
-                />
-              </div>
-            </div>
-            
-            {mode !== 'forgot' && (
+            {selectedRole === 'pengembang' ? (
+              /* Tampilan Khusus Pengembang: Cukup Masukkan Kode Unik Pengembang */
               <div style={{ marginBottom: '1.4rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', paddingLeft: '0.2rem', paddingRight: '0.2rem' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334E68' }}>Password</label>
-                  {mode === 'login' && (
-                    <span 
-                      onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }} 
-                      style={{ fontSize: '0.78rem', color: '#0096C7', cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      Lupa Password?
-                    </span>
-                  )}
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334E68', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Key size={14} color="#0096C7" /> Kode Akses Kunci Pengembang
+                  </label>
+                  <span style={{ fontSize: '0.72rem', background: '#F1F5F9', padding: '0.2rem 0.5rem', borderRadius: '6px', color: '#64748B', fontWeight: 700 }}>
+                    Super Admin
+                  </span>
                 </div>
+
                 <div style={{ position: 'relative' }}>
                   <Lock size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
                   <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={mode === 'register' ? "Minimal 6 karakter" : "••••••••"}
-                    minLength={mode === 'register' ? 6 : 1}
+                    type={showDevKey ? "text" : "password"} 
+                    value={devKey}
+                    disabled={lockoutTimer > 0}
+                    onChange={(e) => setDevKey(e.target.value)}
+                    placeholder="Masukkan Kode Kunci Pengembang"
                     style={{ 
                       width: '100%', 
-                      padding: '0.85rem 1rem 0.85rem 2.85rem', 
+                      padding: '0.85rem 2.85rem 0.85rem 2.85rem', 
                       borderRadius: '16px', 
-                      border: '1.5px solid #D9E2EC', 
-                      background: '#F8FAFC', 
+                      border: lockoutTimer > 0 ? '1.5px solid #EF4444' : '1.5px solid #D9E2EC', 
+                      background: lockoutTimer > 0 ? '#FEF2F2' : '#F8FAFC', 
                       fontSize: '0.92rem', 
                       color: '#102A43', 
                       outline: 'none', 
-                      transition: 'all 0.2s' 
+                      transition: 'all 0.2s',
+                      letterSpacing: showDevKey ? 'normal' : '0.15em'
                     }}
                     onFocus={(e) => { 
-                      e.target.style.borderColor = '#00B4D8'
-                      e.target.style.background = '#FFFFFF'
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                      if (lockoutTimer === 0) {
+                        e.target.style.borderColor = '#00B4D8'
+                        e.target.style.background = '#FFFFFF'
+                        e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                      }
                     }}
                     onBlur={(e) => { 
-                      e.target.style.borderColor = '#D9E2EC'
-                      e.target.style.background = '#F8FAFC'
-                      e.target.style.boxShadow = 'none'
+                      if (lockoutTimer === 0) {
+                        e.target.style.borderColor = '#D9E2EC'
+                        e.target.style.background = '#F8FAFC'
+                        e.target.style.boxShadow = 'none'
+                      }
                     }}
                     required 
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowDevKey(!showDevKey)}
+                    style={{
+                      position: 'absolute',
+                      right: '0.9rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#64748B',
+                      padding: '0.2rem',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    {showDevKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
+
+                {/* Indikator Brute Force Lockout */}
+                {lockoutTimer > 0 ? (
+                  <div style={{ marginTop: '0.65rem', padding: '0.6rem 0.8rem', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#991B1B', fontWeight: 600 }}>
+                    <ShieldAlert size={16} color="#DC2626" />
+                    <span>Akses dibekukan demi keamanan. Tunggu {Math.floor(lockoutTimer / 60)}m {lockoutTimer % 60}s</span>
+                  </div>
+                ) : (
+                  <p style={{ margin: '0.45rem 0 0 0.2rem', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
+                    🔒 Dilindungi enkripsi SHA-256 + Salt. Maksimal 3 kali percobaan salah sebelum dibekukan 15 menit.
+                  </p>
+                )}
               </div>
+            ) : (
+              /* Tampilan Standar: Email & Password untuk Guru, Admin, Kepala Sekolah */
+              <>
+                <div style={{ marginBottom: '1.15rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334E68', marginBottom: '0.4rem', marginLeft: '0.2rem' }}>
+                    Email Instansi ({currentRoleObj.label})
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Mail size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input 
+                      type="email" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={currentRoleObj.placeholder}
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.85rem 1rem 0.85rem 2.85rem', 
+                        borderRadius: '16px', 
+                        border: '1.5px solid #D9E2EC', 
+                        background: '#F8FAFC', 
+                        fontSize: '0.92rem', 
+                        color: '#102A43', 
+                        outline: 'none', 
+                        transition: 'all 0.2s' 
+                      }}
+                      onFocus={(e) => { 
+                        e.target.style.borderColor = '#00B4D8'
+                        e.target.style.background = '#FFFFFF'
+                        e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                      }}
+                      onBlur={(e) => { 
+                        e.target.style.borderColor = '#D9E2EC'
+                        e.target.style.background = '#F8FAFC'
+                        e.target.style.boxShadow = 'none'
+                      }}
+                      required 
+                    />
+                  </div>
+                </div>
+                
+                {mode !== 'forgot' && (
+                  <div style={{ marginBottom: '1.4rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', paddingLeft: '0.2rem', paddingRight: '0.2rem' }}>
+                      <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334E68' }}>Password</label>
+                      {mode === 'login' && (
+                        <span 
+                          onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }} 
+                          style={{ fontSize: '0.78rem', color: '#0096C7', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          Lupa Password?
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                      <Lock size={18} color="#829AB1" style={{ position: 'absolute', left: '1.1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input 
+                        type="password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={mode === 'register' ? "Minimal 6 karakter" : "••••••••"}
+                        minLength={mode === 'register' ? 6 : 1}
+                        style={{ 
+                          width: '100%', 
+                          padding: '0.85rem 1rem 0.85rem 2.85rem', 
+                          borderRadius: '16px', 
+                          border: '1.5px solid #D9E2EC', 
+                          background: '#F8FAFC', 
+                          fontSize: '0.92rem', 
+                          color: '#102A43', 
+                          outline: 'none', 
+                          transition: 'all 0.2s' 
+                        }}
+                        onFocus={(e) => { 
+                          e.target.style.borderColor = '#00B4D8'
+                          e.target.style.background = '#FFFFFF'
+                          e.target.style.boxShadow = '0 0 0 4px rgba(0, 180, 216, 0.12)'
+                        }}
+                        onBlur={(e) => { 
+                          e.target.style.borderColor = '#D9E2EC'
+                          e.target.style.background = '#F8FAFC'
+                          e.target.style.boxShadow = 'none'
+                        }}
+                        required 
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             
             {/* Tombol Submit Utama */}
             <button 
               type="submit" 
-              disabled={loading}
+              disabled={loading || (selectedRole === 'pengembang' && lockoutTimer > 0)}
               style={{ 
                 width: '100%', 
                 padding: '0.95rem', 
-                background: 'linear-gradient(135deg, #0B2545 0%, #0077B6 60%, #00B4D8 100%)', 
+                background: selectedRole === 'pengembang'
+                  ? 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0284C7 100%)'
+                  : 'linear-gradient(135deg, #0B2545 0%, #0077B6 60%, #00B4D8 100%)', 
                 color: 'white', 
                 border: 'none', 
                 borderRadius: '16px', 
@@ -431,18 +581,27 @@ export default function Login() {
                 alignItems: 'center', 
                 justifyContent: 'center', 
                 gap: '0.5rem', 
-                cursor: loading ? 'not-allowed' : 'pointer', 
+                cursor: (loading || (selectedRole === 'pengembang' && lockoutTimer > 0)) ? 'not-allowed' : 'pointer', 
+                opacity: (selectedRole === 'pengembang' && lockoutTimer > 0) ? 0.6 : 1,
                 boxShadow: '0 8px 20px -4px rgba(0, 119, 182, 0.45)', 
                 transition: 'all 0.2s'
               }}
             >
               {mode === 'login' ? <LogIn size={18} /> : mode === 'register' ? <UserPlus size={18} /> : <KeyRound size={18} />}
-              {loading ? 'Memproses...' : mode === 'login' ? `Masuk sebagai ${currentRoleObj.label}` : mode === 'register' ? 'Daftar Sekarang' : 'Kirim Link Reset'}
+              {loading 
+                ? 'Memproses...' 
+                : selectedRole === 'pengembang' 
+                ? (lockoutTimer > 0 ? `Dibekukan (${Math.ceil(lockoutTimer / 60)}m)` : 'Buka Console Pengembang')
+                : mode === 'login' 
+                ? `Masuk sebagai ${currentRoleObj.label}` 
+                : mode === 'register' 
+                ? 'Daftar Sekarang' 
+                : 'Kirim Link Reset'}
             </button>
           </form>
 
-          {/* Opsi Login Google & QR Scanner (Sesuai Referensi) */}
-          {mode === 'login' && (
+          {/* Opsi Login Google & QR Scanner (Disembunyikan jika role pengembang) */}
+          {mode === 'login' && selectedRole !== 'pengembang' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', margin: '1.25rem 0', color: '#94A3B8' }}>
                 <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
