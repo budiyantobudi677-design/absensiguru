@@ -1391,19 +1391,27 @@ export default function DashboardAdmin() {
                       const formData = new FormData(e.target)
                       const newRole = formData.get('role')
                       const newMapel = newRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : ''
-                      const newJabatan = formData.get('jabatan') || editingPegawai.jabatan
+                      const tendikJabatan = formData.get('tendik_jabatan')
+                      let newJabatan = formData.get('jabatan') || editingPegawai.jabatan
 
                       let formattedJabatan = newJabatan;
-                      if (newRole === 'guru_mapel' && newMapel) {
+                      if (newRole === 'tendik') {
+                        formattedJabatan = tendikJabatan || 'Operator Dapodik';
+                      } else if (newRole === 'guru_mapel' && newMapel) {
                         formattedJabatan = `Guru ${newMapel} • ${newJabatan || 'Guru Mapel'}`;
                       }
 
                       // Ambil assigned_classes dari formData
-                      const assignedClasses = formData.getAll('assigned_classes')
+                      const assignedClasses = newRole === 'tendik' ? [] : formData.getAll('assigned_classes')
                       localStorage.setItem(`guru_assigned_classes_${editingPegawai.id}`, JSON.stringify(assignedClasses))
 
-                      // Simpan tipe penugasan guru di localStorage
+                      // Simpan tipe penugasan di localStorage
                       localStorage.setItem(`guru_tipe_${editingPegawai.id}`, newRole)
+                      if (newRole === 'tendik') {
+                        const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(formattedJabatan)
+                        localStorage.setItem(`tendik_kategori_${editingPegawai.id}`, isNonOp ? 'non_operator' : 'operator')
+                        localStorage.setItem(`tendik_penugasan_${editingPegawai.id}`, formattedJabatan)
+                      }
 
                       // Simpan ke Cloud Supabase agar otomatis tersinkron ke semua perangkat guru
                       await saveTeacherAssignmentToCloud({
@@ -1441,17 +1449,54 @@ export default function DashboardAdmin() {
                         <select 
                           name="role" 
                           className="input" 
-                          defaultValue={localStorage.getItem(`guru_tipe_${editingPegawai.id}`) || (editingPegawai.penugasan_tipe === 'guru_mapel' || editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')}
+                          defaultValue={localStorage.getItem(`guru_tipe_${editingPegawai.id}`) || (editingPegawai.penugasan_tipe === 'guru_mapel' || editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' ? 'tendik' : 'guru_kelas'))}
                           onChange={(e) => {
                             const mapelBox = document.getElementById('admin-edit-mapel-box')
-                            if (mapelBox) {
-                              mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none'
-                            }
+                            const classBox = document.getElementById('admin-edit-class-box')
+                            const tendikBox = document.getElementById('admin-edit-tendik-box')
+                            if (mapelBox) mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none'
+                            if (classBox) classBox.style.display = e.target.value === 'tendik' ? 'none' : 'block'
+                            if (tendikBox) tendikBox.style.display = e.target.value === 'tendik' ? 'block' : 'none'
                           }}
                         >
                           <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
                           <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
+                          <option value="tendik">Tenaga Kependidikan (Tendik)</option>
                         </select>
+                      </div>
+
+                      <div 
+                        id="admin-edit-tendik-box" 
+                        className="input-group" 
+                        style={{ 
+                          marginBottom: '1rem', 
+                          display: (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(editingPegawai.jabatan)) ? 'block' : 'none',
+                          background: '#F0F9FF',
+                          padding: '0.85rem',
+                          borderRadius: '14px',
+                          border: '1.5px solid #BAE6FD'
+                        }}
+                      >
+                        <label className="input-label" style={{ color: '#0369A1', fontWeight: 800 }}>Tugas & Jabatan Tendik</label>
+                        <select 
+                          name="tendik_jabatan" 
+                          className="input" 
+                          defaultValue={editingPegawai.jabatan || 'Operator Dapodik'}
+                          style={{ fontWeight: 700 }}
+                        >
+                          <optgroup label="Akun Operator (Presensi & Master KBM)">
+                            <option value="Operator Dapodik">💻 Operator Dapodik</option>
+                            <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
+                          </optgroup>
+                          <optgroup label="Akun Non-Operator (Presensi & Tambah/Hapus Siswa)">
+                            <option value="Pustakawan">📚 Pustakawan</option>
+                            <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
+                            <option value="Satpam">🛡️ Satpam (Keamanan)</option>
+                          </optgroup>
+                        </select>
+                        <small style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '4px', display: 'block' }}>
+                          *Tendik tidak perlu memilih kelas binaan rombel.
+                        </small>
                       </div>
 
                       <div 
@@ -1473,7 +1518,14 @@ export default function DashboardAdmin() {
                       </div>
 
                       {/* Penugasan Kelas / Rombel */}
-                      <div className="input-group" style={{ marginBottom: '1rem' }}>
+                      <div 
+                        id="admin-edit-class-box" 
+                        className="input-group" 
+                        style={{ 
+                          marginBottom: '1rem',
+                          display: (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(editingPegawai.jabatan)) ? 'none' : 'block'
+                        }}
+                      >
                         <label className="input-label">Penugasan Kelas / Rombel</label>
                         {(() => {
                           const savedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${editingPegawai.id}`) || '[]')

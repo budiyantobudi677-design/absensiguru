@@ -6,7 +6,7 @@ import { Browser } from '@capacitor/browser'
 import { 
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
   ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
-  X, Check, Eye, EyeOff, ShieldAlert, Key
+  X, Check, Eye, EyeOff, ShieldAlert, Key, Briefcase
 } from 'lucide-react'
 import { 
   verifyDeveloperKey, 
@@ -18,6 +18,7 @@ import {
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
   { id: 'guru', label: 'Guru', icon: BookOpen, placeholder: 'guru@sekolah.edu / NIP' },
+  { id: 'tendik', label: 'Tendik', icon: Briefcase, placeholder: 'tendik@sekolah.edu / NIP' },
   { id: 'admin', label: 'Admin', icon: SlidersHorizontal, placeholder: 'admin@sekolah.edu' },
   { id: 'pengembang', label: 'Pengembang', icon: Code2, placeholder: 'Masukkan Kode Unik Akses Pengembang' },
 ]
@@ -27,6 +28,11 @@ export default function Login() {
   const [selectedRole, setSelectedRole] = useState('guru')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  
+  // State Khusus Registrasi Tendik
+  const [tendikCategory, setTendikCategory] = useState('operator') // 'operator' | 'non_operator'
+  const [tendikPenugasan, setTendikPenugasan] = useState('Operator Dapodik') // 'Operator Dapodik' | 'Pustakawan' | 'Bujang' | 'Satpam'
+  const [fullNameInput, setFullNameInput] = useState('')
   
   // Developer Key States
   const [devKey, setDevKey] = useState('')
@@ -144,14 +150,20 @@ export default function Login() {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
+        const { data: profile } = await supabase.from('profiles').select('role, jabatan, penugasan_tipe').eq('id', data.user.id).single()
         const userRole = profile?.role || 'guru'
         localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
 
         // Validasi ketat kecocokan role yang dipilih dengan role di database
-        const isGuru = userRole === 'guru' || userRole === 'guru_kelas' || userRole === 'guru_mapel'
+        const isGuru = (userRole === 'guru' || userRole === 'guru_kelas' || userRole === 'guru_mapel') && !profile?.jabatan?.includes('Tendik') && profile?.penugasan_tipe !== 'tendik'
         const isAdmin = userRole === 'admin'
         const isKepsek = userRole === 'kepsek'
+        const isTendik = userRole === 'tendik' || profile?.penugasan_tipe === 'tendik' || profile?.jabatan?.includes('Tendik') || ['Operator Dapodik', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+
+        if (selectedRole === 'tendik' && !isTendik) {
+          await supabase.auth.signOut()
+          throw new Error('Akses ditolak: Akun Anda bukan akun Tenaga Kependidikan (Tendik). Silakan pilih tipe login yang sesuai.')
+        }
 
         if (selectedRole === 'guru' && !isGuru) {
           await supabase.auth.signOut()
@@ -175,8 +187,42 @@ export default function Login() {
         }
         
       } else if (mode === 'register') {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const signUpData = {
+          email,
+          password,
+          options: {
+            data: {
+              role: selectedRole === 'tendik' ? 'tendik' : (selectedRole === 'admin' ? 'admin' : (selectedRole === 'kepsek' ? 'kepsek' : 'guru')),
+              full_name: fullNameInput.trim() || email.split('@')[0],
+              penugasan_tipe: selectedRole === 'tendik' ? 'tendik' : (selectedRole === 'guru' ? 'guru_kelas' : selectedRole),
+              tendik_kategori: selectedRole === 'tendik' ? tendikCategory : null,
+              jabatan: selectedRole === 'tendik' ? tendikPenugasan : (selectedRole === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')
+            }
+          }
+        }
+        const { data: authData, error } = await supabase.auth.signUp(signUpData)
         if (error) throw error
+
+        if (authData?.user?.id) {
+          // Sinkronisasi profil langsung
+          const formattedJabatan = selectedRole === 'tendik' ? tendikPenugasan : (selectedRole === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')
+          const assignedRole = selectedRole === 'tendik' ? 'guru' : (selectedRole === 'admin' ? 'admin' : (selectedRole === 'kepsek' ? 'kepsek' : 'guru'))
+          
+          await supabase.from('profiles').upsert({
+            id: authData.user.id,
+            email,
+            full_name: fullNameInput.trim() || email.split('@')[0],
+            role: assignedRole,
+            jabatan: formattedJabatan
+          }).catch(() => {})
+
+          if (selectedRole === 'tendik') {
+            localStorage.setItem(`guru_tipe_${authData.user.id}`, 'tendik')
+            localStorage.setItem(`tendik_kategori_${authData.user.id}`, tendikCategory)
+            localStorage.setItem(`tendik_penugasan_${authData.user.id}`, tendikPenugasan)
+          }
+        }
+
         setSuccess('Pendaftaran berhasil! Akun Anda telah dibuat. Silakan masuk.')
         setMode('login')
         setPassword('')
@@ -368,7 +414,7 @@ export default function Login() {
                 TIPE LOGIN
               </span>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.65rem' }}>
                 {ROLES.map((role) => {
                   const Icon = role.icon
                   const isSelected = selectedRole === role.id
@@ -382,7 +428,7 @@ export default function Login() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '0.9rem 0.6rem',
+                        padding: '0.85rem 0.5rem',
                         borderRadius: '18px',
                         border: isSelected ? '2px solid #00B4D8' : '1.5px solid #E2E8F0',
                         background: isSelected ? 'rgba(0, 180, 216, 0.08)' : '#FAFCFF',
@@ -402,7 +448,7 @@ export default function Login() {
                         <Icon size={24} strokeWidth={isSelected ? 2.3 : 1.8} />
                       </div>
                       <span style={{ 
-                        fontSize: '0.85rem', 
+                        fontSize: '0.82rem', 
                         fontWeight: isSelected ? 800 : 600, 
                         color: isSelected ? '#0B2545' : '#475569',
                         textAlign: 'center'
@@ -502,6 +548,123 @@ export default function Login() {
             ) : (
               /* Tampilan Standar: Email & Password untuk Guru, Admin, Kepala Sekolah */
               <>
+                {mode === 'register' && (
+                  <div style={{ marginBottom: '1.15rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334E68', marginBottom: '0.4rem', marginLeft: '0.2rem' }}>
+                      Nama Lengkap
+                    </label>
+                    <input 
+                      type="text" 
+                      value={fullNameInput}
+                      onChange={(e) => setFullNameInput(e.target.value)}
+                      placeholder="Nama Lengkap & Gelar"
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.85rem 1rem', 
+                        borderRadius: '16px', 
+                        border: '1.5px solid #D9E2EC', 
+                        background: '#F8FAFC', 
+                        fontSize: '0.92rem', 
+                        color: '#102A43', 
+                        outline: 'none', 
+                        transition: 'all 0.2s' 
+                      }}
+                      required 
+                    />
+                  </div>
+                )}
+
+                {/* Khusus Registrasi Tendik: Pilihan Kategori & Penugasan */}
+                {selectedRole === 'tendik' && (
+                  <div style={{ background: '#F0F9FF', border: '1.5px solid #BAE6FD', borderRadius: '16px', padding: '0.9rem', marginBottom: '1.15rem' }}>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.35rem' }}>
+                        Kategori Tendik
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTendikCategory('operator')
+                            setTendikPenugasan('Operator Dapodik')
+                          }}
+                          style={{
+                            padding: '0.55rem 0.6rem',
+                            borderRadius: '10px',
+                            border: tendikCategory === 'operator' ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                            background: tendikCategory === 'operator' ? '#0284C7' : '#FFFFFF',
+                            color: tendikCategory === 'operator' ? '#FFFFFF' : '#334155',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ⚙️ Operator
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTendikCategory('non_operator')
+                            setTendikPenugasan('Pustakawan')
+                          }}
+                          style={{
+                            padding: '0.55rem 0.6rem',
+                            borderRadius: '10px',
+                            border: tendikCategory === 'non_operator' ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                            background: tendikCategory === 'non_operator' ? '#0284C7' : '#FFFFFF',
+                            color: tendikCategory === 'non_operator' ? '#FFFFFF' : '#334155',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          👤 Non Operator
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.35rem' }}>
+                        Tugas & Jabatan Tendik
+                      </label>
+                      <select
+                        value={tendikPenugasan}
+                        onChange={(e) => setTendikPenugasan(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: '10px',
+                          border: '1.5px solid #7DD3FC',
+                          background: '#FFFFFF',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          color: '#0F172A',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {tendikCategory === 'operator' ? (
+                          <>
+                            <option value="Operator Dapodik">💻 Operator Dapodik</option>
+                            <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Pustakawan">📚 Pustakawan</option>
+                            <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
+                            <option value="Satpam">🛡️ Satpam (Keamanan)</option>
+                          </>
+                        )}
+                      </select>
+                      <small style={{ display: 'block', marginTop: '4px', fontSize: '0.72rem', color: '#0284C7' }}>
+                        {tendikCategory === 'operator' 
+                          ? 'Akses: Presensi, Master KBM (tambah/hapus siswa & kelas), Riwayat & Profil.' 
+                          : 'Akses: Presensi, Tambah/Hapus Siswa & Kelas, Riwayat & Profil (Tanpa KBM).'}
+                      </small>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ marginBottom: '1.15rem' }}>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334E68', marginBottom: '0.4rem', marginLeft: '0.2rem' }}>
                     Email Instansi ({currentRoleObj.label})

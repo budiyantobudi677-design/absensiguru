@@ -92,6 +92,14 @@ function GuruDesktopWrapper({
             <button
               className={`guru-desktop-nav-btn ${activeTab === 'kbm' ? 'active' : ''}`}
               onClick={() => {
+                const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+                const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
+                
+                if (isTendikUser) {
+                  // Tendik langsung diarahkan ke Master KBM / Siswa & Rombel
+                  setActiveTab('kbm')
+                  return
+                }
                 if (!checkAssignmentConfigured()) {
                   setShowAssignmentReminder(true)
                   showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error")
@@ -101,7 +109,15 @@ function GuruDesktopWrapper({
               }}
             >
               <BookOpen size={18} />
-              <span>Sistem KBM (Jurnal, Nilai, Siswa)</span>
+              <span>
+                {(() => {
+                  const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+                  const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
+                  if (isNonOp) return 'Data Siswa & Kelas'
+                  if (isTendikUser) return 'Master KBM (Kelas & Siswa)'
+                  return 'Sistem KBM (Jurnal, Nilai, Siswa)'
+                })()}
+              </span>
             </button>
             <button
               className={`guru-desktop-nav-btn ${activeTab === 'riwayat' ? 'active' : ''}`}
@@ -146,7 +162,13 @@ function GuruDesktopWrapper({
                   {profile?.full_name || user?.email?.split('@')[0]}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {profile?.role === 'guru_mapel' ? 'Guru Mapel' : (profile?.role === 'kepsek' ? 'Kepala Sekolah' : 'Guru Kelas')}
+                  {(() => {
+                    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+                    if (isTendikUser) return profile?.jabatan || 'Tenaga Kependidikan'
+                    if (profile?.role === 'guru_mapel') return 'Guru Mapel'
+                    if (profile?.role === 'kepsek') return 'Kepala Sekolah'
+                    return 'Guru Kelas'
+                  })()}
                 </div>
               </div>
             </div>
@@ -163,11 +185,11 @@ function GuruDesktopWrapper({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 0.25rem 0' }}>
-              {activeTab === 'absensi' && 'Presensi & Kehadiran Pendidik'}
-              {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM)'}
+              {activeTab === 'absensi' && 'Presensi & Kehadiran Pegawai'}
+              {activeTab === 'kbm' && 'Manajemen Data & Master KBM'}
               {activeTab === 'riwayat' && 'Riwayat & Rekap Kehadiran'}
               {activeTab === 'pengumuman' && 'Pengumuman & Notifikasi'}
-              {activeTab === 'pengaturan' && 'Profil Pendidik & Pengaturan Penugasan'}
+              {activeTab === 'pengaturan' && 'Profil Pegawai & Penugasan'}
             </h2>
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               {schoolLogo ? schoolName : 'PanritaEdu'} • {(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}
@@ -199,10 +221,10 @@ function GuruDesktopWrapper({
                   >
                     <option value="">👤 Akun Pengembang (Super Admin)</option>
                     {(allProfiles || [])
-                      .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel')
+                      .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel' || p.role === 'tendik' || p.penugasan_tipe === 'tendik')
                       .map(t => (
                         <option key={t.id} value={t.id}>
-                          👨‍🏫 {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
+                          {t.role === 'tendik' || t.penugasan_tipe === 'tendik' ? '💼' : '👨‍🏫'} {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
                         </option>
                       ))}
                   </select>
@@ -345,6 +367,11 @@ export default function DashboardGuru() {
   const checkAssignmentConfigured = () => {
     if (!user) return true
     const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+    
+    // Akun Tendik (Operator & Non-Operator) tidak memiliki kelas binaan sehingga selalu configured
+    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+    if (isTendikUser) return true
+
     const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
     let assigned = assignedClasses
     if (!assigned || assigned.length === 0) {
@@ -653,10 +680,13 @@ export default function DashboardGuru() {
       if (userTipe) localStorage.setItem(`guru_tipe_${currentUser.id}`, userTipe)
       if (userMapel) localStorage.setItem(`guru_mapel_${currentUser.id}`, userMapel)
 
-      // Hanya tampilkan reminder penugasan jika akun benar-benar belum pernah disetting
-      const isConfigured = userTipe === 'guru_mapel' 
-        ? (Boolean(userMapel) && storedAssigned.length > 0)
-        : (storedAssigned.length > 0 || Boolean(dbMyClass))
+      // Hanya tampilkan reminder penugasan jika akun guru belum pernah disetting (Tendik tidak butuh rombel kelas)
+      const isTendikUser = currentProfile?.role === 'tendik' || currentProfile?.penugasan_tipe === 'tendik' || userTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(currentProfile?.jabatan)
+      const isConfigured = isTendikUser
+        ? true
+        : (userTipe === 'guru_mapel' 
+            ? (Boolean(userMapel) && storedAssigned.length > 0)
+            : (storedAssigned.length > 0 || Boolean(dbMyClass)))
 
       if (!isConfigured) {
         setShowAssignmentReminder(true)
@@ -1663,10 +1693,10 @@ export default function DashboardGuru() {
               >
                 <option value="">👤 Akun Pengembang (Super Admin)</option>
                 {(allProfiles || [])
-                  .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel')
+                  .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel' || p.role === 'tendik' || p.penugasan_tipe === 'tendik')
                   .map(t => (
                     <option key={t.id} value={t.id}>
-                      👨‍🏫 {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
+                      {t.role === 'tendik' || t.penugasan_tipe === 'tendik' ? '💼' : '👨‍🏫'} {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
                     </option>
                   ))}
               </select>
@@ -2035,7 +2065,9 @@ export default function DashboardGuru() {
 
                 // Ambil rombel yang dipilih
                 let selectedClasses = [];
-                if (guruTipe === 'guru_kelas') {
+                if (guruTipe === 'tendik') {
+                  selectedClasses = [];
+                } else if (guruTipe === 'guru_kelas') {
                   const kelasWali = formData.get('kelas_wali');
                   if (!kelasWali) {
                     showPopup("Pilih Kelas", "Silakan pilih kelas binaan (Wali Kelas) Anda terlebih dahulu.", "error");
@@ -2130,112 +2162,151 @@ export default function DashboardGuru() {
                   <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Kelas V / Pembina OSIS" />
                 </div>
 
-                <div className="input-group">
-                  <label className="input-label">Tipe Penugasan Guru</label>
-                  <select 
-                    name="penugasan_tipe" 
-                    className="input" 
-                    value={guruTipeState}
-                    onChange={(e) => setGuruTipeState(e.target.value)}
-                  >
-                    <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
-                    <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
-                  </select>
-                  <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                    *Guru Kelas mengelola data siswa rombelnya, sedangkan Guru Mapel mengajar mapel spesifik di lintas kelas.
-                  </small>
-                </div>
-
-                <div 
-                  id="mapel-select-box" 
-                  className="input-group" 
-                  style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}
-                >
-                  <label className="input-label">Bidang Studi / Mata Pelajaran Utama</label>
-                  <select 
-                    name="mata_pelajaran" 
-                    className="input" 
-                    value={guruMapelState}
-                    onChange={(e) => setGuruMapelState(e.target.value)}
-                  >
-                    <option value="">-- Pilih Mata Pelajaran --</option>
-                    {getCustomSubjects().map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                  <small style={{ fontSize: '0.72rem', color: '#6366F1', marginTop: '4px', display: 'block' }}>
-                    Tersinkron otomatis dari daftar mata pelajaran di Master KBM.
-                  </small>
-                </div>
-
-                {/* Pemilihan Penugasan Rombel / Kelas */}
-                <div className="input-group" style={{ marginTop: '0.5rem' }}>
-                  <label className="input-label">Penugasan Kelas / Rombel Belajar</label>
+                {/* Deteksi Akun Tendik vs Guru */}
+                {(() => {
+                  const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
                   
-                  {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
-                  <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
-                    {(() => {
-                      const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
-                      return (
-                        <>
-                          <select 
-                            name="kelas_wali" 
-                            className="input" 
-                            key={`wali-${assignedClasses.join(',')}`}
-                            defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
-                          >
-                            <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
-                            {classesList.map(c => {
-                              const isTaken = Boolean(takenMap[c.id])
-                              const takenBy = takenMap[c.id]?.teacherName || 'Guru Lain'
-                              return (
-                                <option 
-                                  key={c.id} 
-                                  value={c.id} 
-                                  disabled={isTaken}
-                                  style={{ color: isTaken ? '#94A3B8' : 'inherit' }}
-                                >
-                                  {c.name} {isTaken ? `(🔒 Terkunci: ${takenBy})` : ''}
-                                </option>
-                              )
-                            })}
-                          </select>
-                          <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                            Pilih rombel kelas yang Anda bina sebagai Wali Kelas. Kelas yang sudah dipilih oleh guru kelas lain otomatis terkunci (🔒).
-                          </small>
-                        </>
-                      )
-                    })()}
-                  </div>
+                  if (isTendikUser) {
+                    return (
+                      <div className="input-group" style={{ background: '#F0F9FF', border: '1.5px solid #BAE6FD', padding: '1rem', borderRadius: '16px', marginTop: '0.75rem' }}>
+                        <label className="input-label" style={{ color: '#0369A1', fontWeight: 800 }}>
+                          📋 Tugas & Penugasan Tenaga Kependidikan (Tendik)
+                        </label>
+                        <select 
+                          name="jabatan" 
+                          className="input" 
+                          defaultValue={profile?.jabatan || 'Operator Dapodik'}
+                          style={{ fontWeight: 700, borderColor: '#7DD3FC' }}
+                        >
+                          <optgroup label="Akun Operator (Presensi & Master KBM)">
+                            <option value="Operator Dapodik">💻 Operator Dapodik</option>
+                            <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
+                          </optgroup>
+                          <optgroup label="Akun Non-Operator (Presensi & Data Siswa/Kelas)">
+                            <option value="Pustakawan">📚 Pustakawan</option>
+                            <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
+                            <option value="Satpam">🛡️ Satpam (Keamanan)</option>
+                          </optgroup>
+                        </select>
+                        <input type="hidden" name="penugasan_tipe" value="tendik" />
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#0284C7', lineHeight: 1.4 }}>
+                          🔒 <em>Akun Tendik tidak memiliki rombel kelas belajar siswa (tidak memilih kelas).</em>
+                        </div>
+                      </div>
+                    )
+                  }
 
-                  {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}
-                  <div id="kelas-mapel-box" style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}>
-                    <div style={{ fontSize: '0.78rem', color: '#475569', marginBottom: '6px' }}>
-                      Centang semua kelas yang Anda ajar untuk mata pelajaran ini:
-                    </div>
-                    <div style={{ maxHeight: '160px', overflowY: 'auto', background: '#F8FAFC', padding: '0.75rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {classesList.length === 0 ? (
-                        <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada daftar kelas dari Admin.</span>
-                      ) : (
-                        classesList.map(cls => (
-                          <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
-                            <input 
-                              type="checkbox" 
-                              name="assigned_classes" 
-                              value={cls.id} 
-                              defaultChecked={assignedClasses.includes(cls.id)}
-                              style={{ width: '16px', height: '16px' }} 
-                            />
-                            <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                    <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                      Pilihan kelas ini akan menjadi filter rombel otomatis di menu Pembelajaran Anda.
-                    </small>
-                  </div>
-                </div>
+                  return (
+                    <>
+                      <div className="input-group">
+                        <label className="input-label">Tipe Penugasan Guru</label>
+                        <select 
+                          name="penugasan_tipe" 
+                          className="input" 
+                          value={guruTipeState}
+                          onChange={(e) => setGuruTipeState(e.target.value)}
+                        >
+                          <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
+                          <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
+                        </select>
+                        <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                          *Guru Kelas mengelola data siswa rombelnya, sedangkan Guru Mapel mengajar mapel spesifik di lintas kelas.
+                        </small>
+                      </div>
+
+                      <div 
+                        id="mapel-select-box" 
+                        className="input-group" 
+                        style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}
+                      >
+                        <label className="input-label">Bidang Studi / Mata Pelajaran Utama</label>
+                        <select 
+                          name="mata_pelajaran" 
+                          className="input" 
+                          value={guruMapelState}
+                          onChange={(e) => setGuruMapelState(e.target.value)}
+                        >
+                          <option value="">-- Pilih Mata Pelajaran --</option>
+                          {getCustomSubjects().map(sub => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                        <small style={{ fontSize: '0.72rem', color: '#6366F1', marginTop: '4px', display: 'block' }}>
+                          Tersinkron otomatis dari daftar mata pelajaran di Master KBM.
+                        </small>
+                      </div>
+
+                      {/* Pemilihan Penugasan Rombel / Kelas */}
+                      <div className="input-group" style={{ marginTop: '0.5rem' }}>
+                        <label className="input-label">Penugasan Kelas / Rombel Belajar</label>
+                        
+                        {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
+                        <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
+                          {(() => {
+                            const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
+                            return (
+                              <>
+                                <select 
+                                  name="kelas_wali" 
+                                  className="input" 
+                                  key={`wali-${assignedClasses.join(',')}`}
+                                  defaultValue={assignedClasses.length > 0 ? assignedClasses[0] : ''}
+                                >
+                                  <option value="">-- Pilih Kelas Binaan (Wali Kelas) --</option>
+                                  {classesList.map(c => {
+                                    const isTaken = Boolean(takenMap[c.id])
+                                    const takenBy = takenMap[c.id]?.teacherName || 'Guru Lain'
+                                    return (
+                                      <option 
+                                        key={c.id} 
+                                        value={c.id} 
+                                        disabled={isTaken}
+                                        style={{ color: isTaken ? '#94A3B8' : 'inherit' }}
+                                      >
+                                        {c.name} {isTaken ? `(🔒 Terkunci: ${takenBy})` : ''}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                                <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                                  Pilih rombel kelas yang Anda bina sebagai Wali Kelas. Kelas yang sudah dipilih oleh guru kelas lain otomatis terkunci (🔒).
+                                </small>
+                              </>
+                            )
+                          })()}
+                        </div>
+
+                        {/* Tampilan untuk Guru Mapel (Multi-Pilih Kelas) */}
+                        <div id="kelas-mapel-box" style={{ display: guruTipeState === 'guru_mapel' ? 'block' : 'none' }}>
+                          <div style={{ fontSize: '0.78rem', color: '#475569', marginBottom: '6px' }}>
+                            Centang semua kelas yang Anda ajar untuk mata pelajaran ini:
+                          </div>
+                          <div style={{ maxHeight: '160px', overflowY: 'auto', background: '#F8FAFC', padding: '0.75rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {classesList.length === 0 ? (
+                              <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada daftar kelas dari Admin.</span>
+                            ) : (
+                              classesList.map(cls => (
+                                <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    name="assigned_classes" 
+                                    value={cls.id} 
+                                    defaultChecked={assignedClasses.includes(cls.id)}
+                                    style={{ width: '16px', height: '16px' }} 
+                                  />
+                                  <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                          <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                            Pilihan kelas ini akan menjadi filter rombel otomatis di menu Pembelajaran Anda.
+                          </small>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
 
                 <button type="submit" className="btn btn-primary" style={{ padding: '1rem', marginTop: '0.75rem' }} disabled={loading}>
                   {loading ? 'Menyimpan...' : 'Simpan Profil & Penugasan'}
@@ -2593,303 +2664,340 @@ export default function DashboardGuru() {
              )}
           </div>
         )}
-        {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap) */}
-        {activeTab === 'kbm' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {kbmSubTab === 'menu' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {/* Header Title KBM */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Sistem Pembelajaran</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>Pilih modul kegiatan belajar mengajar</p>
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '4px 10px', borderRadius: '12px' }}>
-                    {filteredClassesList.length} Rombel Diampu
-                  </span>
-                </div>
+        {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap, Master KBM) */}
+        {activeTab === 'kbm' && (() => {
+          const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+          const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
+          const isOp = isTendikUser && !isNonOp
 
-                {/* Grid Menu Cards: Desain Kotak Modern Mobile */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {/* Card 1: Presensi Siswa */}
-                  <div
-                    onClick={() => setKbmSubTab('presensi_siswa')}
-                    className="card"
-                    style={{
-                      padding: '1.1rem 1.25rem',
-                      borderRadius: '20px',
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(16, 185, 129, 0.3)' }}>
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Presensi Siswa</h4>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: '8px' }}>Harian</span>
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catat absensi hadir, sakit, izin & alpha kelas</p>
-                      </div>
-                    </div>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
-                      <ChevronRight size={18} />
-                    </div>
-                  </div>
-
-                  {/* Card 2: Jurnal Mengajar */}
-                  <div
-                    onClick={() => setKbmSubTab('jurnal')}
-                    className="card"
-                    style={{
-                      padding: '1.1rem 1.25rem',
-                      borderRadius: '20px',
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #0D9488 0%, #0284C7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(13, 148, 136, 0.3)' }}>
-                        <BookOpen size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Jurnal Mengajar</h4>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '2px 8px', borderRadius: '8px' }}>Agenda</span>
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catatan materi pelajaran, metode & evaluasi harian</p>
-                      </div>
-                    </div>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
-                      <ChevronRight size={18} />
-                    </div>
-                  </div>
-
-                  {/* Card 3: Input Nilai Siswa */}
-                  <div
-                    onClick={() => setKbmSubTab('nilai')}
-                    className="card"
-                    style={{
-                      padding: '1.1rem 1.25rem',
-                      borderRadius: '20px',
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #9333EA 0%, #6366F1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(147, 51, 234, 0.3)' }}>
-                        <Award size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Input Nilai Siswa</h4>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#7E22CE', background: '#F3E8FF', padding: '2px 8px', borderRadius: '8px' }}>Leger</span>
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Penilaian tugas, kuis, STS, SAS & predikat nilai</p>
-                      </div>
-                    </div>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
-                      <ChevronRight size={18} />
-                    </div>
-                  </div>
-
-                  {/* Card 4: Rekap & Laporan */}
-                  <div
-                    onClick={() => setKbmSubTab('rekap')}
-                    className="card"
-                    style={{
-                      padding: '1.1rem 1.25rem',
-                      borderRadius: '20px',
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)' }}>
-                        <FileSpreadsheet size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Rekapitulasi & Cetak</h4>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#EA580C', background: '#FFEDD5', padding: '2px 8px', borderRadius: '8px' }}>Excel / PDF</span>
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Ekspor laporan presensi, rekap nilai & jurnal mengajar</p>
-                      </div>
-                    </div>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
-                      <ChevronRight size={18} />
-                    </div>
-                  </div>
-
-                  {/* Card 5: Master Siswa & Kelas */}
-                  <div
-                    onClick={() => setKbmSubTab('master_siswa')}
-                    className="card"
-                    style={{
-                      padding: '1.1rem 1.25rem',
-                      borderRadius: '20px',
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #334155 0%, #0F172A 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(15, 23, 42, 0.3)' }}>
-                        <Users size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Master KBM</h4>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', background: '#F1F5F9', padding: '2px 8px', borderRadius: '8px' }}>Basis Data</span>
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Kelola rombel kelas, siswa & mata pelajaran</p>
-                      </div>
-                    </div>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
-                      <ChevronRight size={18} />
-                    </div>
-                  </div>
-                </div>
+          // Jika Non Operator: langsung tampilkan Master Siswa & Kelas (menambah siswa, menghapus siswa & kelas)
+          if (isNonOp) {
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <MasterSiswaDanKelas
+                  user={{ ...user, ...profile }}
+                  profile={profile}
+                  schoolInfo={schoolInfoData}
+                  onRefresh={fetchUser}
+                />
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {/* Header Sub-Halaman dengan Tombol Kembali */}
-                <div className="card" style={{ padding: '0.75rem 1rem', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => setKbmSubTab('menu')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '0.78rem',
-                      fontWeight: 'bold',
-                      color: '#4F46E5',
-                      background: '#EEF2FF',
-                      border: 'none',
-                      padding: '0.45rem 0.85rem',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      flexShrink: 0
-                    }}
-                  >
-                    <ArrowLeft size={15} />
-                    <span>Menu</span>
-                  </button>
+            )
+          }
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', padding: '2px 0' }}>
-                    <button
-                      onClick={() => setKbmSubTab('presensi_siswa')}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmSubTab === 'presensi_siswa' ? '#10B981' : '#F1F5F9',
-                        color: kbmSubTab === 'presensi_siswa' ? 'white' : 'var(--text-muted)'
-                      }}
-                    >
-                      📝 Presensi
-                    </button>
-                    <button
-                      onClick={() => setKbmSubTab('jurnal')}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmSubTab === 'jurnal' ? '#0D9488' : '#F1F5F9',
-                        color: kbmSubTab === 'jurnal' ? 'white' : 'var(--text-muted)'
-                      }}
-                    >
-                      📓 Jurnal
-                    </button>
-                    <button
-                      onClick={() => setKbmSubTab('nilai')}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmSubTab === 'nilai' ? '#9333EA' : '#F1F5F9',
-                        color: kbmSubTab === 'nilai' ? 'white' : 'var(--text-muted)'
-                      }}
-                    >
-                      ✍️ Nilai
-                    </button>
-                    <button
-                      onClick={() => setKbmSubTab('rekap')}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmSubTab === 'rekap' ? '#EA580C' : '#F1F5F9',
-                        color: kbmSubTab === 'rekap' ? 'white' : 'var(--text-muted)'
-                      }}
-                    >
-                      📊 Rekap
-                    </button>
-                    <button
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {kbmSubTab === 'menu' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {/* Header Title KBM */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>
+                        {isOp ? 'Master KBM (Operator Sekolah)' : 'Sistem Pembelajaran'}
+                      </h3>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                        {isOp ? 'Kelola basis data kelas rombel dan siswa' : 'Pilih modul kegiatan belajar mengajar'}
+                      </p>
+                    </div>
+                    {!isOp && (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '4px 10px', borderRadius: '12px' }}>
+                        {filteredClassesList.length} Rombel Diampu
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Grid Menu Cards */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {/* Guru: Tampilkan Modul Presensi Siswa, Jurnal, Nilai, Rekap */}
+                    {!isOp && (
+                      <>
+                        {/* Card 1: Presensi Siswa */}
+                        <div
+                          onClick={() => setKbmSubTab('presensi_siswa')}
+                          className="card"
+                          style={{
+                            padding: '1.1rem 1.25rem',
+                            borderRadius: '20px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(16, 185, 129, 0.3)' }}>
+                              <CheckCircle2 size={24} />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Presensi Siswa</h4>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: '8px' }}>Harian</span>
+                              </div>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catat absensi hadir, sakit, izin & alpha kelas</p>
+                            </div>
+                          </div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                            <ChevronRight size={18} />
+                          </div>
+                        </div>
+
+                        {/* Card 2: Jurnal Mengajar */}
+                        <div
+                          onClick={() => setKbmSubTab('jurnal')}
+                          className="card"
+                          style={{
+                            padding: '1.1rem 1.25rem',
+                            borderRadius: '20px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #0D9488 0%, #0284C7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(13, 148, 136, 0.3)' }}>
+                              <BookOpen size={24} />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Jurnal Mengajar</h4>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#0D9488', background: '#CCFBF1', padding: '2px 8px', borderRadius: '8px' }}>Agenda</span>
+                              </div>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Catatan materi pelajaran, metode & evaluasi harian</p>
+                            </div>
+                          </div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                            <ChevronRight size={18} />
+                          </div>
+                        </div>
+
+                        {/* Card 3: Input Nilai Siswa */}
+                        <div
+                          onClick={() => setKbmSubTab('nilai')}
+                          className="card"
+                          style={{
+                            padding: '1.1rem 1.25rem',
+                            borderRadius: '20px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #9333EA 0%, #6366F1 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(147, 51, 234, 0.3)' }}>
+                              <Award size={24} />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Input Nilai Siswa</h4>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#7E22CE', background: '#F3E8FF', padding: '2px 8px', borderRadius: '8px' }}>Leger</span>
+                              </div>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Penilaian tugas, kuis, STS, SAS & predikat nilai</p>
+                            </div>
+                          </div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                            <ChevronRight size={18} />
+                          </div>
+                        </div>
+
+                        {/* Card 4: Rekap & Laporan */}
+                        <div
+                          onClick={() => setKbmSubTab('rekap')}
+                          className="card"
+                          style={{
+                            padding: '1.1rem 1.25rem',
+                            borderRadius: '20px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)' }}>
+                              <FileSpreadsheet size={24} />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Rekapitulasi & Cetak</h4>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#EA580C', background: '#FFEDD5', padding: '2px 8px', borderRadius: '8px' }}>Excel / PDF</span>
+                              </div>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Ekspor laporan presensi, rekap nilai & jurnal mengajar</p>
+                            </div>
+                          </div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                            <ChevronRight size={18} />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Card 5: Master Siswa & Kelas (Bisa diakses Guru & Operator) */}
+                    <div
                       onClick={() => setKbmSubTab('master_siswa')}
+                      className="card"
                       style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
+                        padding: '1.1rem 1.25rem',
+                        borderRadius: '20px',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
                         cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        background: kbmSubTab === 'master_siswa' ? '#1E293B' : '#F1F5F9',
-                        color: kbmSubTab === 'master_siswa' ? 'white' : 'var(--text-muted)'
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                        transition: 'all 0.2s'
                       }}
                     >
-                      ⚙️ Master KBM
-                    </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #334155 0%, #0F172A 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, boxShadow: '0 4px 10px rgba(15, 23, 42, 0.3)' }}>
+                          <Users size={24} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <h4 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text)', margin: 0 }}>Master KBM</h4>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', background: '#F1F5F9', padding: '2px 8px', borderRadius: '8px' }}>Basis Data</span>
+                          </div>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>Kelola rombel kelas, siswa & mata pelajaran</p>
+                        </div>
+                      </div>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', flexShrink: 0 }}>
+                        <ChevronRight size={18} />
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {/* Header Sub-Halaman dengan Tombol Kembali */}
+                  <div className="card" style={{ padding: '0.75rem 1rem', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => setKbmSubTab('menu')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        color: '#4F46E5',
+                        background: '#EEF2FF',
+                        border: 'none',
+                        padding: '0.45rem 0.85rem',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    >
+                      <ArrowLeft size={15} />
+                      <span>Menu</span>
+                    </button>
+
+                    {/* Jika Guru biasa: tampilkan tab navigasi antar sub-modul */}
+                    {!isOp ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', padding: '2px 0' }}>
+                        <button
+                          onClick={() => setKbmSubTab('presensi_siswa')}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'presensi_siswa' ? '#10B981' : '#F1F5F9',
+                            color: kbmSubTab === 'presensi_siswa' ? 'white' : 'var(--text-muted)'
+                          }}
+                        >
+                          📝 Presensi
+                        </button>
+                        <button
+                          onClick={() => setKbmSubTab('jurnal')}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'jurnal' ? '#0D9488' : '#F1F5F9',
+                            color: kbmSubTab === 'jurnal' ? 'white' : 'var(--text-muted)'
+                          }}
+                        >
+                          📓 Jurnal
+                        </button>
+                        <button
+                          onClick={() => setKbmSubTab('nilai')}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'nilai' ? '#9333EA' : '#F1F5F9',
+                            color: kbmSubTab === 'nilai' ? 'white' : 'var(--text-muted)'
+                          }}
+                        >
+                          ✍️ Nilai
+                        </button>
+                        <button
+                          onClick={() => setKbmSubTab('rekap')}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'rekap' ? '#EA580C' : '#F1F5F9',
+                            color: kbmSubTab === 'rekap' ? 'white' : 'var(--text-muted)'
+                          }}
+                        >
+                          📊 Rekap
+                        </button>
+                        <button
+                          onClick={() => setKbmSubTab('master_siswa')}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'master_siswa' ? '#1E293B' : '#F1F5F9',
+                            color: kbmSubTab === 'master_siswa' ? 'white' : 'var(--text-muted)'
+                          }}
+                        >
+                          ⚙️ Master KBM
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#334155' }}>
+                        ⚙️ Master KBM (Data Kelas & Siswa)
+                      </span>
+                    )}
+                  </div>
 
                 {kbmSubTab === 'presensi_siswa' && (
                   <InputPresensiMurid
@@ -2938,7 +3046,7 @@ export default function DashboardGuru() {
               </div>
             )}
           </div>
-        )}
+        )})()}
 
         {/* Footer Copyright & Branding PanritaEdu */}
         <footer className="guru-footer-branding">
@@ -2986,6 +3094,11 @@ export default function DashboardGuru() {
             className={`nav-item ${activeTab === 'kbm' ? 'active' : ''}`}
             style={{ flex: 1 }}
             onClick={() => {
+              const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+              if (isTendikUser) {
+                setActiveTab('kbm')
+                return
+              }
               if (!checkAssignmentConfigured()) {
                 setShowAssignmentReminder(true);
                 showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
@@ -2994,7 +3107,14 @@ export default function DashboardGuru() {
               setActiveTab('kbm');
             }}
           >
-            <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> Pembelajaran
+            <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> 
+            {(() => {
+              const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+              const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
+              if (isNonOp) return 'Siswa/Kelas'
+              if (isTendikUser) return 'Master KBM'
+              return 'Pembelajaran'
+            })()}
           </button>
           <button
             className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}

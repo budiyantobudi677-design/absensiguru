@@ -10,15 +10,26 @@ import { getSavedGeminiKey, fileToBase64, scanStudentsFromImage } from '../../li
 export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
 
-  // Peran Guru & Hak Akses
+  // Peran Guru, Tendik & Hak Akses
   const activeProfile = profile || user || {}
   const isAdmin = activeProfile.role === 'admin' || 
                   user?.role === 'admin' || 
                   window.location.pathname.startsWith('/admin')
   const guruTipe = localStorage.getItem(`guru_tipe_${activeProfile.id || user?.id}`) || activeProfile.penugasan_tipe || activeProfile.role
   const isGuruMapel = !isAdmin && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
-  // Admin & Wali Kelas berhak mengelola siswa; Guru Mapel dibatasi (Read Only)
-  const canManageStudents = isAdmin || !isGuruMapel
+  
+  // Deteksi akun Tendik (Operator maupun Non-Operator)
+  const isTendik = activeProfile.role === 'tendik' || 
+                   activeProfile.penugasan_tipe === 'tendik' || 
+                   guruTipe === 'tendik' ||
+                   Boolean(localStorage.getItem(`tendik_kategori_${activeProfile.id || user?.id}`)) ||
+                   Boolean(localStorage.getItem(`tendik_penugasan_${activeProfile.id || user?.id}`)) ||
+                   ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(activeProfile.jabatan)
+
+  // Hak Akses Manajemen Kelas (Tambah, Edit & Hapus Rombel): Admin dan Tendik
+  const canManageClasses = isAdmin || isTendik
+  // Admin, Wali Kelas, dan Tendik berhak mengelola siswa (tambah & hapus siswa); Guru Mapel dibatasi (Read Only)
+  const canManageStudents = isAdmin || isTendik || !isGuruMapel
   // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
   const canManageSubjects = isAdmin
 
@@ -125,8 +136,8 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
 
   const handleAddClass = async (e) => {
     e.preventDefault()
-    if (!isAdmin) {
-      alert('Hanya Admin yang berhak menambahkan kelas / rombel!')
+    if (!canManageClasses) {
+      alert('Hanya Admin dan Tendik yang berhak menambahkan kelas / rombel!')
       return
     }
     if (!newClassName.trim()) return
@@ -149,7 +160,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
 
   const handleEditClass = async (e) => {
     e.preventDefault()
-    if (!isAdmin) return
+    if (!canManageClasses) return
     const trimmed = editClassNameInput.trim()
     if (!trimmed || !editClassModal) return
 
@@ -170,7 +181,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   }
 
   const handleDeleteClass = async (classId, className) => {
-    if (!isAdmin) return
+    if (!canManageClasses) return
     if (!window.confirm(`Yakin ingin menghapus Rombel "${className}"?\n\nPERINGATAN: Siswa di dalam kelas ini juga akan terhapus!`)) return
 
     try {
@@ -463,7 +474,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
 
           {activeTab === 'siswa_kelas' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {isAdmin && (
+              {canManageClasses && (
                 <button
                   onClick={() => setShowAddClass(!showAddClass)}
                   type="button"
@@ -765,7 +776,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  {isAdmin && selectedClassId && (
+                  {canManageClasses && selectedClassId && (
                     <>
                       <button
                         type="button"
@@ -776,7 +787,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                             setEditClassNameInput(cls.name)
                           }
                         }}
-                        title="Edit Nama Kelas Ini (Khusus Admin)"
+                        title="Edit Nama Kelas Ini"
                         style={{
                           background: '#EFF6FF',
                           border: '1px solid #BFDBFE',
@@ -797,7 +808,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                           const cls = classes.find(c => c.id === selectedClassId)
                           if (cls) handleDeleteClass(cls.id, cls.name)
                         }}
-                        title="Hapus Kelas Ini (Khusus Admin)"
+                        title="Hapus Kelas Ini"
                         style={{
                           background: '#FEF2F2',
                           border: '1px solid #FECACA',
