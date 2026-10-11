@@ -190,7 +190,7 @@ function GuruDesktopWrapper({
           <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '0.85rem 1.25rem', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: '#1E40AF', fontSize: '0.88rem' }}>
             <ShieldCheck size={20} color="#2563EB" style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, fontWeight: '700' }}>
-              Presensi Kehadiran Hanya Melalui Aplikasi Android
+              Presensi Kehadiran Hanya Melalui Aplikasi Smartphone
             </div>
           </div>
         )}
@@ -899,11 +899,18 @@ export default function DashboardGuru() {
   }
 
   const handleAbsen = async (jenis) => {
-    // Kebijakan Keamanan: Presensi kehadiran hanya diizinkan melalui aplikasi Android (APK)
-    if (!Capacitor.isNativePlatform() && (jenis === 'masuk' || jenis === 'pulang')) {
+    // Kebijakan Keamanan: Presensi kehadiran diizinkan melalui aplikasi Native (APK Android / iOS) atau Web App di iPhone
+    const isIOSStandalone = typeof window !== 'undefined' && (
+      window.navigator.standalone === true || 
+      window.matchMedia('(display-mode: standalone)').matches
+    ) && /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+
+    const isAllowedApp = Capacitor.isNativePlatform() || isIOSStandalone
+
+    if (!isAllowedApp && (jenis === 'masuk' || jenis === 'pulang')) {
       showPopup(
-        "Presensi Kehadiran Hanya Melalui Aplikasi Android",
-        "Silakan buka aplikasi PanritaEdu di ponsel Android Anda untuk melakukan presensi.",
+        "Presensi Kehadiran Hanya Melalui Aplikasi",
+        "Demi keamanan integritas lokasi, presensi kehadiran hanya dapat dilakukan melalui aplikasi PanritaEdu di ponsel (Android / iPhone).",
         "error"
       )
       return
