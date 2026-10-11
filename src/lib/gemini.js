@@ -3,35 +3,169 @@
 // Auto-Fallback Model: Gemini 3.8 Flash -> Gemini 2.0 Flash -> Gemini 1.5 Flash
 // ==============================================================================
 
+import { Preferences } from '@capacitor/preferences'
+
 export const GEMINI_MODELS = [
   'gemini-3.8-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash'
 ]
 
+// Memory cache untuk akses instan antar komponen
+let inMemoryGeminiKey = ''
+
 /**
- * Mengambil API Key yang tersimpan untuk user aktif (atau fallback lokal)
+ * Mengambil API Key yang tersimpan secara sinkronus (untuk pemanggilan instan)
  */
-export function getSavedGeminiKey(userId) {
-  if (userId) {
-    const userKey = localStorage.getItem(`gemini_api_key_${userId}`)
-    if (userKey && userKey.trim()) return userKey.trim()
+export function getSavedGeminiKey(userId, userObj = null, profileObj = null) {
+  if (inMemoryGeminiKey && inMemoryGeminiKey.trim()) {
+    return inMemoryGeminiKey.trim()
   }
-  const globalKey = localStorage.getItem('gemini_api_key')
-  if (globalKey && globalKey.trim()) return globalKey.trim()
-  
-  return (import.meta.env.VITE_GEMINI_API_KEY || '').trim()
+
+  // 1. Cek user metadata jika tersedia
+  if (userObj?.user_metadata?.gemini_api_key) {
+    const key = String(userObj.user_metadata.gemini_api_key).trim()
+    if (key) {
+      inMemoryGeminiKey = key
+      return key
+    }
+  }
+
+  // 2. Cek profile kolom jika tersedia
+  if (profileObj?.gemini_api_key) {
+    const key = String(profileObj.gemini_api_key).trim()
+    if (key) {
+      inMemoryGeminiKey = key
+      return key
+    }
+  }
+
+  // 3. Cek per-user localStorage
+  if (userId) {
+    try {
+      const userKey = localStorage.getItem(`gemini_api_key_${userId}`)
+      if (userKey && userKey.trim()) {
+        inMemoryGeminiKey = userKey.trim()
+        return inMemoryGeminiKey
+      }
+    } catch {}
+  }
+
+  // 4. Cek global localStorage
+  try {
+    const globalKey = localStorage.getItem('gemini_api_key')
+    if (globalKey && globalKey.trim()) {
+      inMemoryGeminiKey = globalKey.trim()
+      return inMemoryGeminiKey
+    }
+  } catch {}
+
+  // 5. Cek developer session jika sedang mode pengembang
+  try {
+    const devSession = localStorage.getItem('panrita_developer_session')
+    if (devSession) {
+      const parsed = JSON.parse(devSession)
+      if (parsed?.gemini_api_key && String(parsed.gemini_api_key).trim()) {
+        inMemoryGeminiKey = String(parsed.gemini_api_key).trim()
+        return inMemoryGeminiKey
+      }
+    }
+  } catch {}
+
+  const envKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim()
+  if (envKey) {
+    inMemoryGeminiKey = envKey
+    return envKey
+  }
+
+  return ''
 }
 
 /**
- * Menyimpan API Key untuk user aktif
+ * Mengambil API Key yang tersimpan secara asinkronus (mendukung Capacitor Preferences & Cloud)
  */
-export function saveGeminiKey(apiKey, userId) {
-  const cleanKey = (apiKey || '').trim()
+export async function loadSavedGeminiKeyAsync(userId, userObj = null, profileObj = null) {
+  // 1. Cek sinkronus terlebih dahulu
+  const syncKey = getSavedGeminiKey(userId, userObj, profileObj)
+  if (syncKey) return syncKey
+
+  // 2. Cek Capacitor Preferences per-user (Persistent di Android APK)
   if (userId) {
-    localStorage.setItem(`gemini_api_key_${userId}`, cleanKey)
+    try {
+      const { value } = await Preferences.get({ key: `gemini_api_key_${userId}` })
+      if (value && value.trim()) {
+        const clean = value.trim()
+        inMemoryGeminiKey = clean
+        try { localStorage.setItem(`gemini_api_key_${userId}`, clean) } catch {}
+        try { localStorage.setItem('gemini_api_key', clean) } catch {}
+        return clean
+      }
+    } catch {}
   }
-  localStorage.setItem('gemini_api_key', cleanKey)
+
+  // 3. Cek Capacitor Preferences global
+  try {
+    const { value } = await Preferences.get({ key: 'gemini_api_key' })
+    if (value && value.trim()) {
+      const clean = value.trim()
+      inMemoryGeminiKey = clean
+      try { localStorage.setItem('gemini_api_key', clean) } catch {}
+      return clean
+    }
+  } catch {}
+
+  return ''
+}
+
+/**
+ * Menyimpan API Key untuk user aktif (Simpan ke Memory, LocalStorage, Capacitor Preferences, dan Cloud Supabase)
+ */
+export async function saveGeminiKey(apiKey, userId, supabaseClient = null) {
+  const cleanKey = (apiKey || '').trim()
+  inMemoryGeminiKey = cleanKey
+
+  // 1. Simpan ke LocalStorage
+  if (userId) {
+    try { localStorage.setItem(`gemini_api_key_${userId}`, cleanKey) } catch {}
+  }
+  try { localStorage.setItem('gemini_api_key', cleanKey) } catch {}
+
+  // 2. Simpan ke Capacitor Preferences (Native Android Persistence)
+  if (userId) {
+    try { await Preferences.set({ key: `gemini_api_key_${userId}`, value: cleanKey }) } catch {}
+  }
+  try { await Preferences.set({ key: 'gemini_api_key', value: cleanKey }) } catch {}
+
+  // 3. Simpan ke Developer Session jika ada
+  try {
+    const devSession = localStorage.getItem('panrita_developer_session')
+    if (devSession) {
+      const parsed = JSON.parse(devSession)
+      parsed.gemini_api_key = cleanKey
+      localStorage.setItem('panrita_developer_session', JSON.stringify(parsed))
+    }
+  } catch {}
+
+  // 4. Simpan ke Cloud Supabase (User Metadata Auth + Profiles table jika ada)
+  if (supabaseClient) {
+    try {
+      // Simpan ke Supabase Auth user_metadata (paling aman & selalu berhasil tanpa migrasi tabel)
+      await supabaseClient.auth.updateUser({
+        data: { gemini_api_key: cleanKey }
+      })
+    } catch (e) {
+      console.warn('[Gemini AI] Gagal update user_metadata auth:', e)
+    }
+
+    if (userId) {
+      try {
+        await supabaseClient.from('profiles').update({ gemini_api_key: cleanKey }).eq('id', userId)
+      } catch (e) {
+        // Kolom DB mungkin belum ada di tabel profiles
+      }
+    }
+  }
+
   return cleanKey
 }
 

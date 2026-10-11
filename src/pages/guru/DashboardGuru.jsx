@@ -13,7 +13,7 @@ import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
-import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
@@ -435,6 +435,16 @@ export default function DashboardGuru() {
     }
   }, [activeTab, pengumumanData, unreadCount, user])
 
+  // Pastikan API Key Gemini selalu terisi saat membuka tab Pengaturan / Profil
+  useEffect(() => {
+    if (activeTab === 'pengaturan') {
+      const uId = user?.id || profile?.id
+      loadSavedGeminiKeyAsync(uId, user, profile).then(k => {
+        if (k) setGeminiApiKey(k)
+      })
+    }
+  }, [activeTab, user, profile])
+
   const handleDeletePengumuman = (id) => {
      if (!user) return
      const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
@@ -618,7 +628,8 @@ export default function DashboardGuru() {
 
       setUser(currentUser)
       if (currentProfile) setProfile(currentProfile)
-      setGeminiApiKey(getSavedGeminiKey(currentUser.id))
+      const existingGeminiKey = await loadSavedGeminiKeyAsync(currentUser.id, currentUser, currentProfile)
+      setGeminiApiKey(existingGeminiKey)
       
       let { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (!cls || cls.length === 0) {
@@ -2108,6 +2119,10 @@ export default function DashboardGuru() {
                 let { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
 
                 if (!error) {
+                  // Simpan juga API key jika pengguna mengisinya di halaman profil
+                  if (geminiApiKey && geminiApiKey.trim()) {
+                    await saveGeminiKey(geminiApiKey, user?.id, supabase);
+                  }
                   await setLocalPref(`guru_tipe_${user.id}`, guruTipe);
                   await setLocalPref(`guru_mapel_${user.id}`, mataPelajaran);
                   await setLocalPref(`guru_assigned_classes_${user.id}`, selectedClasses);
@@ -2445,14 +2460,10 @@ export default function DashboardGuru() {
                 <button
                   type="button"
                   onClick={async () => {
-                    const saved = saveGeminiKey(geminiApiKey, user?.id)
-                    try {
-                      await supabase.from('profiles').update({ gemini_api_key: saved }).eq('id', user?.id)
-                    } catch (e) {
-                      // Kolom DB mungkin belum ada, penyimpanan lokal sudah berhasil
-                    }
-                    setGeminiSavedMessage('API Key Gemini Anda berhasil disimpan!')
-                    setTimeout(() => setGeminiSavedMessage(null), 3000)
+                    const saved = await saveGeminiKey(geminiApiKey, user?.id, supabase)
+                    if (profile) setProfile(prev => ({ ...prev, gemini_api_key: saved }))
+                    setGeminiSavedMessage('API Key Gemini Anda berhasil disimpan secara permanen!')
+                    setTimeout(() => setGeminiSavedMessage(null), 3500)
                   }}
                   className="btn"
                   style={{

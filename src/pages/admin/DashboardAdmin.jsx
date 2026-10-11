@@ -14,7 +14,7 @@ import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
-import { getSavedGeminiKey, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
+import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
@@ -165,6 +165,16 @@ export default function DashboardAdmin() {
     }
   }, [darkMode])
 
+  // Pastikan API Key Gemini selalu terisi saat membuka tab Pengaturan / Profil
+  useEffect(() => {
+    if (activeTab === 'pengaturan') {
+      const uId = admin?.id
+      loadSavedGeminiKeyAsync(uId, admin).then(k => {
+        if (k) setGeminiApiKey(k)
+      })
+    }
+  }, [activeTab, admin])
+
   const toggleTheme = () => {
     setDarkMode(!darkMode)
   }
@@ -203,7 +213,8 @@ export default function DashboardAdmin() {
             isDeveloperPreview: true
           }
           setAdmin(devUser)
-          setGeminiApiKey(getSavedGeminiKey(devUser.id))
+          const existingKey = await loadSavedGeminiKeyAsync(devUser.id, devUser)
+          setGeminiApiKey(existingKey)
           loadKepsekTodayAbsensi(devUser.id)
           return
         }
@@ -215,7 +226,8 @@ export default function DashboardAdmin() {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
     const fullUser = { ...user, ...(profile || {}), role: profile?.role || 'admin' }
     setAdmin(fullUser)
-    setGeminiApiKey(getSavedGeminiKey(user.id))
+    const existingKey = await loadSavedGeminiKeyAsync(user.id, fullUser, profile)
+    setGeminiApiKey(existingKey)
     loadKepsekTodayAbsensi(user.id)
   }
 
@@ -2374,16 +2386,9 @@ export default function DashboardAdmin() {
                  <button
                    type="button"
                    onClick={async () => {
-                     const saved = saveGeminiKey(geminiApiKey, admin?.id)
-                     try {
-                       if (admin?.id) {
-                         await supabase.from('profiles').update({ gemini_api_key: saved }).eq('id', admin.id)
-                       }
-                     } catch (e) {
-                       // DB column may not exist yet
-                     }
-                     setGeminiSavedMessage('API Key Gemini berhasil disimpan!')
-                     setTimeout(() => setGeminiSavedMessage(null), 3000)
+                     const saved = await saveGeminiKey(geminiApiKey, admin?.id, supabase)
+                     setGeminiSavedMessage('API Key Gemini berhasil disimpan secara permanen!')
+                     setTimeout(() => setGeminiSavedMessage(null), 3500)
                    }}
                    className="btn"
                    style={{

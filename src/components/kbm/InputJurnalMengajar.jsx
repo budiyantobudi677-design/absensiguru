@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { BookOpen, Plus, Trash2, Calendar, FileText, CheckCircle2, Clock, PlusCircle, ListFilter, Lock, ShieldAlert, AlertCircle, Sparkles, Image as ImageIcon, Upload, X, Loader2 } from 'lucide-react'
 import { getCustomSubjects, getAssignedMapelInfo } from '../../lib/subjectsManager'
-import { getSavedGeminiKey, fileToBase64, generateJurnalFromModul } from '../../lib/gemini'
+import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, generateJurnalFromModul } from '../../lib/gemini'
 
 export default function InputJurnalMengajar({ selectedClass, classes, user, profile, schoolInfo }) {
   const activeProfile = profile || user || {}
@@ -173,7 +173,10 @@ export default function InputJurnalMengajar({ selectedClass, classes, user, prof
 
   const handleProcessAiJurnal = async () => {
     setAiError(null)
-    const apiKey = getSavedGeminiKey(uId)
+    let apiKey = getSavedGeminiKey(uId, user, activeProfile)
+    if (!apiKey) {
+      apiKey = await loadSavedGeminiKeyAsync(uId, user, activeProfile)
+    }
     if (!apiKey) {
       setAiError('API Key Gemini belum diatur! Buka menu Profil / Pengaturan Akun untuk memasukkan API Key Gemini Anda.')
       return

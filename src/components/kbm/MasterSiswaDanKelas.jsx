@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info, Image as ImageIcon, Camera, Loader2, CheckSquare, Square } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
-import { getSavedGeminiKey, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
+import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
 
 export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
@@ -308,7 +308,10 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const handleScanStudentsWithAi = async () => {
     setAiScanError(null)
     const uId = activeProfile.id || user?.id
-    const apiKey = getSavedGeminiKey(uId)
+    let apiKey = getSavedGeminiKey(uId, user, activeProfile)
+    if (!apiKey) {
+      apiKey = await loadSavedGeminiKeyAsync(uId, user, activeProfile)
+    }
     if (!apiKey) {
       setAiScanError('API Key Gemini belum diatur! Buka menu Profil / Pengaturan Akun untuk memasukkan API Key.')
       return
