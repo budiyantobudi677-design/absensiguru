@@ -3,7 +3,7 @@
 const CONFIG_TARGET_TYPE = '__SYSTEM_CONFIG_TEACHER_ASSIGNMENTS__'
 
 /**
- * Membaca data penugasan semua guru dari Cloud Supabase.
+ * Membaca data penugasan semua guru dari Cloud Supabase (classes table & pengumuman config).
  * Format data:
  * {
  *   [teacherId]: {
@@ -18,31 +18,66 @@ export async function syncCloudTeacherAssignments(supabase) {
   try {
     if (!supabase) return getCachedAssignmentsMap()
 
-    const { data, error } = await supabase
-      .from('pengumuman')
-      .select('*')
-      .eq('target_type', CONFIG_TARGET_TYPE)
-      .order('id', { ascending: false })
-      .limit(1)
+    const currentMap = { ...getCachedAssignmentsMap() }
 
-    if (!error && data && data.length > 0) {
-      const parsed = JSON.parse(data[0].pesan)
-      if (parsed && typeof parsed === 'object') {
-        localStorage.setItem('panrita_cloud_teacher_assignments', JSON.stringify(parsed))
-        
-        // Cermin ke key localStorage per-guru jika belum ada
-        Object.entries(parsed).forEach(([teacherId, info]) => {
-          if (info.tipe) localStorage.setItem(`guru_tipe_${teacherId}`, info.tipe)
-          if (info.mapel) localStorage.setItem(`guru_mapel_${teacherId}`, info.mapel)
-          if (Array.isArray(info.assignedClasses)) {
-            localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(info.assignedClasses))
+    // 1. Baca data dari tabel 'classes' langsung (sumber kebenaran utama database)
+    try {
+      const { data: clsData } = await supabase.from('classes').select('id, name, teacher_id')
+      if (Array.isArray(clsData)) {
+        clsData.forEach(c => {
+          if (c.teacher_id) {
+            currentMap[c.teacher_id] = {
+              tipe: 'guru_kelas',
+              mapel: currentMap[c.teacher_id]?.mapel || '',
+              assignedClasses: [c.id],
+              updatedAt: new Date().toISOString()
+            }
           }
         })
-
-        window.dispatchEvent(new Event('teacher_assignments_updated'))
-        return parsed
       }
+    } catch (err) {
+      console.warn('Error reading classes for assignments:', err)
     }
+
+    // 2. Baca dari tabel 'pengumuman' config
+    try {
+      const { data, error } = await supabase
+        .from('pengumuman')
+        .select('*')
+        .eq('target_type', CONFIG_TARGET_TYPE)
+        .order('id', { ascending: false })
+        .limit(1)
+
+      if (!error && data && data.length > 0) {
+        const parsed = JSON.parse(data[0].pesan)
+        if (parsed && typeof parsed === 'object') {
+          Object.entries(parsed).forEach(([tId, info]) => {
+            // Gabungkan dengan prioritas data classes jika ada
+            currentMap[tId] = {
+              ...info,
+              ...(currentMap[tId] || {})
+            }
+          })
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading pengumuman config assignments:', err)
+    }
+
+    // 3. Simpan hasil penggabungan ke LocalStorage
+    localStorage.setItem('panrita_cloud_teacher_assignments', JSON.stringify(currentMap))
+    
+    // Cermin ke key localStorage per-guru
+    Object.entries(currentMap).forEach(([teacherId, info]) => {
+      if (info.tipe) localStorage.setItem(`guru_tipe_${teacherId}`, info.tipe)
+      if (info.mapel !== undefined) localStorage.setItem(`guru_mapel_${teacherId}`, info.mapel)
+      if (Array.isArray(info.assignedClasses)) {
+        localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(info.assignedClasses))
+      }
+    })
+
+    window.dispatchEvent(new Event('teacher_assignments_updated'))
+    return currentMap
   } catch (err) {
     console.error('Error syncing cloud teacher assignments:', err)
   }
@@ -63,72 +98,76 @@ export function getCachedAssignmentsMap() {
 }
 
 /**
- * Menyimpan atau memperbarui penugasan seorang guru ke Cloud Supabase & LocalStorage
+ * Menyimpan atau memperbarui penugasan seorang guru ke Cloud Supabase (classes table + config) & LocalStorage
  */
 export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, assignedClasses, supabase }) {
   try {
     if (!teacherId) return
 
+    const selectedClasses = Array.isArray(assignedClasses) ? assignedClasses : []
+
     // 1. Update localStorage lokal seketika
     if (tipe) localStorage.setItem(`guru_tipe_${teacherId}`, tipe)
     if (mapel !== undefined) localStorage.setItem(`guru_mapel_${teacherId}`, mapel)
-    if (Array.isArray(assignedClasses)) {
-      localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(assignedClasses))
-    }
+    localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(selectedClasses))
 
     // 2. Ambil peta saat ini
-    let currentMap = getCachedAssignmentsMap()
-
-    // Jika cloud tersedia, coba ambil yang paling baru terlebih dahulu
-    if (supabase) {
-      try {
-        const { data: latestRow } = await supabase
-          .from('pengumuman')
-          .select('id, pesan')
-          .eq('target_type', CONFIG_TARGET_TYPE)
-          .limit(1)
-        if (latestRow && latestRow.length > 0) {
-          const parsed = JSON.parse(latestRow[0].pesan)
-          if (parsed && typeof parsed === 'object') {
-            currentMap = { ...parsed }
-          }
-        }
-      } catch (e) {}
-    }
+    let currentMap = { ...getCachedAssignmentsMap() }
 
     // 3. Masukkan data penugasan guru ini
     currentMap[teacherId] = {
       tipe: tipe || currentMap[teacherId]?.tipe || 'guru_kelas',
       mapel: mapel !== undefined ? mapel : (currentMap[teacherId]?.mapel || ''),
-      assignedClasses: Array.isArray(assignedClasses) ? assignedClasses : (currentMap[teacherId]?.assignedClasses || []),
+      assignedClasses: selectedClasses,
       updatedAt: new Date().toISOString()
     }
 
     localStorage.setItem('panrita_cloud_teacher_assignments', JSON.stringify(currentMap))
     window.dispatchEvent(new Event('teacher_assignments_updated'))
 
-    // 4. Upsert row config di Supabase (tabel pengumuman)
+    // 4. Update tabel 'classes' di Supabase (Kunci database utama)
     if (supabase) {
-      const payloadStr = JSON.stringify(currentMap)
-      const { data: existing } = await supabase
-        .from('pengumuman')
-        .select('id')
-        .eq('target_type', CONFIG_TARGET_TYPE)
-        .limit(1)
+      try {
+        if (tipe === 'guru_kelas') {
+          // Lepaskan kelas lama yang dipegang guru ini
+          await supabase.from('classes').update({ teacher_id: null }).eq('teacher_id', teacherId)
+          // Kunci kelas baru yang dipilih
+          if (selectedClasses.length > 0) {
+            await supabase.from('classes').update({ teacher_id: teacherId }).eq('id', selectedClasses[0])
+          }
+        } else {
+          // Guru Mapel bukan wali kelas, lepaskan dari kelas manapun
+          await supabase.from('classes').update({ teacher_id: null }).eq('teacher_id', teacherId)
+        }
+      } catch (e) {
+        console.warn('Error updating classes.teacher_id:', e)
+      }
 
-      if (existing && existing.length > 0) {
-        await supabase
+      // 5. Upsert row config di Supabase (tabel pengumuman)
+      try {
+        const payloadStr = JSON.stringify(currentMap)
+        const { data: existing } = await supabase
           .from('pengumuman')
-          .update({ pesan: payloadStr })
-          .eq('id', existing[0].id)
-      } else {
-        await supabase
-          .from('pengumuman')
-          .insert([{
-            pesan: payloadStr,
-            target_type: CONFIG_TARGET_TYPE,
-            target_users: ''
-          }])
+          .select('id')
+          .eq('target_type', CONFIG_TARGET_TYPE)
+          .limit(1)
+
+        if (existing && existing.length > 0) {
+          await supabase
+            .from('pengumuman')
+            .update({ pesan: payloadStr })
+            .eq('id', existing[0].id)
+        } else {
+          await supabase
+            .from('pengumuman')
+            .insert([{
+              pesan: payloadStr,
+              target_type: CONFIG_TARGET_TYPE,
+              target_users: ''
+            }])
+        }
+      } catch (e) {
+        console.warn('Error updating cloud config row:', e)
       }
     }
     return currentMap
@@ -139,27 +178,43 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, ass
 
 /**
  * Mendapatkan daftar ID kelas yang sudah dipilih oleh guru lain (khususnya sesama Guru Kelas / Wali Kelas)
- * Format return: Set<classId> atau Array objek { classId, teacherId, teacherName, tipe }
+ * Format return: { [classId]: { teacherId, teacherName, tipe } }
  */
-export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = []) {
+export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], classesList = []) {
   const currentMap = getCachedAssignmentsMap()
   const takenMap = {} // { [classId]: { teacherId, teacherName, tipe } }
 
-  // 1. Baca dari currentMap cloud
+  // 1. Cek langsung dari classesList (data dari tabel classes Supabase dengan teacher_id)
+  if (Array.isArray(classesList)) {
+    classesList.forEach(cls => {
+      if (cls.teacher_id && cls.teacher_id !== currentTeacherId) {
+        const prof = profiles.find(p => p.id === cls.teacher_id)
+        takenMap[cls.id] = {
+          teacherId: cls.teacher_id,
+          teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
+          tipe: 'guru_kelas'
+        }
+      }
+    })
+  }
+
+  // 2. Baca dari currentMap cloud
   Object.entries(currentMap).forEach(([tId, info]) => {
     if (tId !== currentTeacherId && info.tipe === 'guru_kelas' && Array.isArray(info.assignedClasses)) {
       info.assignedClasses.forEach(clsId => {
-        const prof = profiles.find(p => p.id === tId)
-        takenMap[clsId] = {
-          teacherId: tId,
-          teacherName: prof?.full_name || prof?.email || 'Guru Lain',
-          tipe: 'guru_kelas'
+        if (!takenMap[clsId]) {
+          const prof = profiles.find(p => p.id === tId)
+          takenMap[clsId] = {
+            teacherId: tId,
+            teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
+            tipe: 'guru_kelas'
+          }
         }
       })
     }
   })
 
-  // 2. Baca juga dari profiles array jika ada jabatan yang mengandung nama wali
+  // 3. Baca juga dari profiles array (jika jabatan mengandung indikasi wali kelas)
   profiles.forEach(p => {
     if (p.id !== currentTeacherId) {
       try {
@@ -171,7 +226,7 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = []) 
             if (!takenMap[clsId]) {
               takenMap[clsId] = {
                 teacherId: p.id,
-                teacherName: p.full_name || p.email || 'Guru Lain',
+                teacherName: p.full_name || p.email?.split('@')[0] || 'Guru Lain',
                 tipe: 'guru_kelas'
               }
             }

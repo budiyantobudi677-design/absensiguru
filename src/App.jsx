@@ -78,6 +78,7 @@ function App() {
       }
     }
 
+    // Ambil sesi awal secara definitif
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isMounted) return
       setSession(session)
@@ -86,18 +87,25 @@ function App() {
       } else {
         setLoading(false)
       }
+    }).catch((err) => {
+      console.error('Session get error:', err)
+      if (isMounted) setLoading(false)
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return
-      setSession(session)
-      if (session) {
-        syncUserRole(session)
-      } else {
+      // Abaikan INITIAL_SESSION agar tidak menimpa getSession yang sedang memulihkan token
+      if (event === 'INITIAL_SESSION') return
+
+      if (event === 'SIGNED_OUT') {
+        setSession(null)
         setRole(null)
         setLoading(false)
+      } else if (session) {
+        setSession(session)
+        syncUserRole(session)
       }
     })
 
@@ -156,6 +164,35 @@ function App() {
     return () => {
       if (listenerHandle) {
         listenerHandle.remove()
+      }
+    }
+  }, [])
+
+  // Listener tombol fisik / gesture Back di Android Native (APK)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let backHandle = null
+
+    const initBackButton = async () => {
+      backHandle = await CapApp.addListener('backButton', ({ canGoBack }) => {
+        const path = window.location.pathname
+        // Jika sedang di dashboard utama atau halaman root, keluar aplikasi tanpa logout
+        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/') {
+          CapApp.exitApp()
+        } else if (canGoBack) {
+          window.history.back()
+        } else {
+          CapApp.exitApp()
+        }
+      })
+    }
+
+    initBackButton()
+
+    return () => {
+      if (backHandle) {
+        backHandle.remove()
       }
     }
   }, [])

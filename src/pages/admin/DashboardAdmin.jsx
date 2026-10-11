@@ -1318,6 +1318,7 @@ export default function DashboardAdmin() {
                           jabatan: formattedJabatan 
                         } : item))
                         setEditingPegawai(null)
+                        loadKbmClasses()
                         alert("Penugasan guru berhasil diperbarui!")
                       } else {
                         alert("Gagal memperbarui: " + error.message)

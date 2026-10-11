@@ -479,7 +479,25 @@ export default function DashboardGuru() {
       const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran')
       if (profilesAll) setAllProfiles(profilesAll)
       
-      const { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
+      let { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
+      if (!cls || cls.length === 0) {
+        try {
+          const defaultSDClasses = [
+            { name: 'Kelas 1' },
+            { name: 'Kelas 2' },
+            { name: 'Kelas 3' },
+            { name: 'Kelas 4' },
+            { name: 'Kelas 5' },
+            { name: 'Kelas 6' }
+          ]
+          const { data: seeded } = await supabase.from('classes').insert(defaultSDClasses).select()
+          if (seeded && seeded.length > 0) {
+            cls = seeded
+          }
+        } catch (e) {
+          console.warn('Could not auto-seed classes:', e)
+        }
+      }
       if (cls) setClassesList(cls)
 
       // Sinkronisasi daftar mata pelajaran & penugasan guru dari cloud database
@@ -487,9 +505,14 @@ export default function DashboardGuru() {
       const cloudAssignments = await syncCloudTeacherAssignments(supabase)
       const myCloudAssignment = cloudAssignments?.[user.id]
 
-      // Ambil data penugasan kelas guru dari cloud database terlebih dahulu (agar tidak hilang saat pindah browser/akun baru)
+      // Cari apakah guru ini sudah memiliki kelas di tabel classes Supabase (sumber utama)
+      const dbMyClass = cls?.find(c => c.teacher_id === user.id)
+
+      // Ambil data penugasan kelas guru dari database & cloud terlebih dahulu (agar tidak pernah hilang saat ganti perangkat/akun baru)
       let storedAssigned = []
-      if (myCloudAssignment && Array.isArray(myCloudAssignment.assignedClasses) && myCloudAssignment.assignedClasses.length > 0) {
+      if (dbMyClass) {
+        storedAssigned = [dbMyClass.id]
+      } else if (myCloudAssignment && Array.isArray(myCloudAssignment.assignedClasses) && myCloudAssignment.assignedClasses.length > 0) {
         storedAssigned = myCloudAssignment.assignedClasses
       } else {
         try {
@@ -504,7 +527,7 @@ export default function DashboardGuru() {
       setAssignedClasses(storedAssigned)
 
       // Cek apakah tipe dan mapel penugasan sudah diatur di cloud atau local
-      const userTipe = myCloudAssignment?.tipe || await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))
+      const userTipe = myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')))
       setGuruTipeState(userTipe)
 
       const userMapel = myCloudAssignment?.mapel || profile?.mata_pelajaran || await getLocalPref(`guru_mapel_${user.id}`, '')
@@ -517,9 +540,10 @@ export default function DashboardGuru() {
       if (userTipe) localStorage.setItem(`guru_tipe_${user.id}`, userTipe)
       if (userMapel) localStorage.setItem(`guru_mapel_${user.id}`, userMapel)
 
+      // Hanya tampilkan reminder penugasan jika akun benar-benar belum pernah disetting
       const isConfigured = userTipe === 'guru_mapel' 
         ? (Boolean(userMapel) && storedAssigned.length > 0)
-        : (storedAssigned.length > 0)
+        : (storedAssigned.length > 0 || Boolean(dbMyClass))
 
       if (!isConfigured) {
         setShowAssignmentReminder(true)
@@ -1788,9 +1812,31 @@ export default function DashboardGuru() {
                 let selectedClasses = [];
                 if (guruTipe === 'guru_kelas') {
                   const kelasWali = formData.get('kelas_wali');
-                  if (kelasWali) selectedClasses = [kelasWali];
+                  if (!kelasWali) {
+                    showPopup("Pilih Kelas", "Silakan pilih kelas binaan (Wali Kelas) Anda terlebih dahulu.", "error");
+                    setLoading(false);
+                    return;
+                  }
+                  // Cek apakah kelas ini sudah dipilih dan dikunci oleh guru lain
+                  const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList);
+                  if (takenMap[kelasWali]) {
+                    const lockOwner = takenMap[kelasWali].teacherName || 'guru lain';
+                    showPopup("Kelas Terkunci", `Kelas ini sudah dipilih dan dikunci oleh ${lockOwner}. Silakan pilih kelas lain.`, "error");
+                    setLoading(false);
+                    return;
+                  }
+                  selectedClasses = [kelasWali];
                 } else {
                   selectedClasses = formData.getAll('assigned_classes') || [];
+                }
+
+                // Format jabatan otomatis jika wali kelas
+                if (guruTipe === 'guru_kelas' && selectedClasses.length > 0) {
+                  const targetCls = classesList.find(c => c.id === selectedClasses[0]);
+                  const clsName = targetCls?.name || '';
+                  if (!formattedJabatan || formattedJabatan === 'Guru Kelas') {
+                    formattedJabatan = clsName ? `Guru Kelas • Wali ${clsName}` : 'Guru Kelas';
+                  }
                 }
 
                 // Simpan role database asli (jangan ubah 'guru' atau 'admin' agar tidak melanggar constraint DB profiles_role_check)
@@ -1808,7 +1854,7 @@ export default function DashboardGuru() {
                   await setLocalPref(`guru_mapel_${user.id}`, mataPelajaran);
                   await setLocalPref(`guru_assigned_classes_${user.id}`, selectedClasses);
                   
-                  // Simpan ke Cloud Supabase agar tersinkron ke semua perangkat & akun lain
+                  // Simpan ke Cloud Supabase & update tabel classes.teacher_id
                   await saveTeacherAssignmentToCloud({
                     teacherId: user.id,
                     tipe: guruTipe,
@@ -1816,6 +1862,18 @@ export default function DashboardGuru() {
                     assignedClasses: selectedClasses,
                     supabase
                   });
+
+                  // Update classesList di state komponen agar dropdown seketika mencerminkan kunci kelas
+                  if (guruTipe === 'guru_kelas' && selectedClasses.length > 0) {
+                    const newlyPickedId = selectedClasses[0];
+                    setClassesList(prev => prev.map(c => {
+                      if (c.id === newlyPickedId) return { ...c, teacher_id: user.id };
+                      if (c.teacher_id === user.id) return { ...c, teacher_id: null };
+                      return c;
+                    }));
+                  } else if (guruTipe === 'guru_mapel') {
+                    setClassesList(prev => prev.map(c => c.teacher_id === user.id ? { ...c, teacher_id: null } : c));
+                  }
 
                   setAssignedClasses(selectedClasses);
                   setGuruTipeState(guruTipe);
@@ -1828,7 +1886,7 @@ export default function DashboardGuru() {
                     mata_pelajaran: mataPelajaran, 
                     jabatan: formattedJabatan 
                   });
-                  showPopup("Tersimpan!", "Profil dan penugasan kelas Anda berhasil diperbarui.", "success");
+                  showPopup("Tersimpan & Terkunci!", "Profil dan penugasan kelas Anda berhasil disimpan dan dikunci untuk akun Anda.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");
                 }
@@ -1892,7 +1950,7 @@ export default function DashboardGuru() {
                   {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
                   <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
                     {(() => {
-                      const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles)
+                      const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
                       return (
                         <>
                           <select 
