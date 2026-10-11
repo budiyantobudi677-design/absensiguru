@@ -218,3 +218,68 @@ export async function getSecureLocation(options = { timeout: 8000, enableHighAcc
     throw firstErr
   }
 }
+
+/**
+ * Verifikasi apakah lingkungan perangkat saat ini diizinkan untuk melakukan presensi.
+ * Aturan Ketat:
+ * 1. Di Android: WAJIB melalui Aplikasi Native (APK resmi). Browser Chrome/sejenisnya di HP Android diblokir.
+ * 2. Di iPhone / iPad (iOS): Diizinkan HANYA jika menggunakan Safari asli atau Native App. Browser Chrome (CriOS) / browser lain di iOS diblokir.
+ * 3. Di Laptop / PC / Desktop: Diblokir.
+ */
+export function verifyAttendancePlatform() {
+  // 1. Jika dibuka melalui Aplikasi Native (APK Android resmi atau iOS Native App)
+  if (Capacitor.isNativePlatform()) {
+    return {
+      allowed: true,
+      platform: 'native_app',
+      message: 'Aplikasi Resmi Terverifikasi'
+    }
+  }
+
+  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : ''
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (
+    typeof navigator !== 'undefined' && 
+    navigator.platform === 'MacIntel' && 
+    navigator.maxTouchPoints > 1 // iPadOS
+  )
+
+  // 2. Jika di perangkat iOS (iPhone / iPad)
+  if (isIOS) {
+    const isChromeIOS = /CriOS/i.test(ua)
+    const isFirefoxIOS = /FxiOS/i.test(ua)
+    const isEdgeIOS = /EdgiOS/i.test(ua)
+    const isOperaIOS = /OPiOS/i.test(ua)
+    const isSafariIOS = /Safari/i.test(ua) && !isChromeIOS && !isFirefoxIOS && !isEdgeIOS && !isOperaIOS
+
+    if (isSafariIOS) {
+      return {
+        allowed: true,
+        platform: 'ios_safari',
+        message: 'Safari di iPhone/iPad Terverifikasi'
+      }
+    }
+
+    return {
+      allowed: false,
+      platform: 'ios_non_safari',
+      message: 'Presensi di iPhone/iPad hanya diizinkan menggunakan browser resmi Safari. Silakan buka aplikasi GammaraApp melalui browser Safari.'
+    }
+  }
+
+  // 3. Jika di perangkat Android melalui Browser (Chrome, Samsung Internet, dll)
+  const isAndroid = /Android/i.test(ua)
+  if (isAndroid) {
+    return {
+      allowed: false,
+      platform: 'android_browser',
+      message: 'Presensi pada HP Android WAJIB menggunakan Aplikasi Resmi (APK GammaraApp), bukan melalui browser Chrome atau browser lainnya. Silakan buka aplikasi GammaraApp di HP Anda.'
+    }
+  }
+
+  // 4. Perangkat Desktop / Komputer / Browser Lainnya
+  return {
+    allowed: false,
+    platform: 'desktop_or_other',
+    message: 'Presensi kehadiran hanya dapat dilakukan melalui Aplikasi Resmi (APK) di HP Android, atau browser Safari di iPhone.'
+  }
+}

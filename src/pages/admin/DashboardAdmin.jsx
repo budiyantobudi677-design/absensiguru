@@ -17,7 +17,7 @@ import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
-import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 
@@ -242,11 +242,12 @@ export default function DashboardAdmin() {
   }
 
   const handleKepsekAbsen = async (jenis) => {
-    if (!Capacitor.isNativePlatform() && (jenis === 'masuk' || jenis === 'pulang')) {
+    const platformCheck = verifyAttendancePlatform()
+    if (!platformCheck.allowed && (jenis === 'masuk' || jenis === 'pulang')) {
       setKepsekPopup({
         show: true,
-        title: "Presensi Kehadiran Hanya Melalui Aplikasi Android",
-        message: "Silakan buka aplikasi GammaraApp di ponsel Android Anda untuk melakukan presensi mandiri.",
+        title: "Presensi Ditolak (Gunakan Aplikasi)",
+        message: platformCheck.message,
         type: "error"
       })
       return

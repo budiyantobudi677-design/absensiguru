@@ -17,7 +17,7 @@ import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiCo
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
-import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation } from '../../lib/security'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
 import { verifyOrBindDevice } from '../../lib/deviceManager'
 
 const getLocalPref = async (key, fallback = null) => {
@@ -1054,18 +1054,13 @@ export default function DashboardGuru() {
   }
 
   const handleAbsen = async (jenis) => {
-    // Kebijakan Keamanan: Presensi kehadiran diizinkan melalui aplikasi Native (APK Android / iOS) atau Web App di iPhone
-    const isIOSStandalone = typeof window !== 'undefined' && (
-      window.navigator.standalone === true || 
-      window.matchMedia('(display-mode: standalone)').matches
-    ) && /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+    // Kebijakan Keamanan: Presensi HANYA diizinkan melalui APK resmi (Android) atau Safari asli (iPhone/iOS)
+    const platformCheck = verifyAttendancePlatform()
 
-    const isAllowedApp = Capacitor.isNativePlatform() || isIOSStandalone
-
-    if (!isAllowedApp && (jenis === 'masuk' || jenis === 'pulang')) {
+    if (!platformCheck.allowed && (jenis === 'masuk' || jenis === 'pulang' || jenis === 'sakit' || jenis === 'izin' || jenis === 'tugas_luar')) {
       showPopup(
-        "Presensi Kehadiran Hanya Melalui Aplikasi",
-        "Demi keamanan integritas lokasi, presensi kehadiran hanya dapat dilakukan melalui aplikasi GammaraApp di ponsel (Android / iPhone).",
+        "Presensi Ditolak (Gunakan Aplikasi)",
+        platformCheck.message,
         "error"
       )
       return
@@ -1738,6 +1733,37 @@ export default function DashboardGuru() {
 
         {activeTab === 'absensi' && (
           <div className="text-center">
+            {!isHoliday && (() => {
+              const platformStatus = verifyAttendancePlatform()
+              if (!platformStatus.allowed) {
+                return (
+                  <div style={{
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    color: '#991B1B',
+                    borderRadius: '14px',
+                    padding: '0.85rem 1rem',
+                    fontSize: '0.8rem',
+                    marginBottom: '1.25rem',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    lineHeight: 1.45,
+                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.08)'
+                  }}>
+                    <ShieldAlert size={20} style={{ flexShrink: 0, marginTop: '2px', color: '#DC2626' }} />
+                    <div>
+                      <strong style={{ display: 'block', marginBottom: '2px', fontSize: '0.85rem', color: '#B91C1C' }}>
+                        Presensi Wajib via Aplikasi Resmi (APK)
+                      </strong>
+                      <span>{platformStatus.message}</span>
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
             {!isHoliday && <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>}
 
             {isHoliday ? (
