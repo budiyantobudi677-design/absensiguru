@@ -54,6 +54,9 @@ function GuruDesktopWrapper({
   loadHistory,
   profile,
   user,
+  allProfiles,
+  selectedViewTeacherId,
+  onSelectTeacher,
   currentTime,
   toggleTheme,
   darkMode,
@@ -173,25 +176,59 @@ function GuruDesktopWrapper({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {user?.isDeveloperPreview && (
-              <button
-                onClick={() => navigate('/pengembang')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#071C35',
-                  color: '#00B4D8',
-                  border: '1.5px solid #00B4D8',
-                  padding: '0.4rem 0.8rem',
-                  borderRadius: '12px',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
-                }}
-              >
-                <span>⚙️ Mode Super Admin (Kembali)</span>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Dropdown Mode Lihat Akun Guru Terdaftar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#0F172A', padding: '0.3rem 0.65rem', borderRadius: '12px', border: '1.5px solid #00B4D8' }}>
+                  <Eye size={15} color="#00B4D8" />
+                  <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700 }}>Mode Lihat:</span>
+                  <select
+                    value={selectedViewTeacherId}
+                    onChange={(e) => onSelectTeacher(e.target.value)}
+                    style={{
+                      background: '#1E293B',
+                      color: '#FFFFFF',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      outline: 'none',
+                      cursor: 'pointer',
+                      maxWidth: '220px'
+                    }}
+                  >
+                    <option value="">👤 Akun Pengembang (Super Admin)</option>
+                    {(allProfiles || [])
+                      .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel')
+                      .map(t => (
+                        <option key={t.id} value={t.id}>
+                          👨‍🏫 {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => navigate('/pengembang')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#071C35',
+                    color: '#00B4D8',
+                    border: '1.5px solid #00B4D8',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
+                  }}
+                  title="Kembali ke Konsol Pengembang"
+                >
+                  <span>⚙️ Console Pengembang</span>
+                </button>
+              </div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.4rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600' }}>
@@ -234,7 +271,8 @@ export default function DashboardGuru() {
   const [showGeminiKey, setShowGeminiKey] = useState(false)
   const [geminiTesting, setGeminiTesting] = useState(false)
   const [geminiTestStatus, setGeminiTestStatus] = useState(null)
-  const [geminiSavedMessage, setGeminiSavedMessage] = useState(null)
+  // State Mode Pratinjau Pengembang (Lihat Sebagai Guru Tertentu)
+  const [selectedViewTeacherId, setSelectedViewTeacherId] = useState('')
   const [activeTab, setActiveTab] = useState('absensi') 
   const [kbmSubTab, setKbmSubTab] = useState('menu') // 'menu' | 'presensi_siswa' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
   const [classesList, setClassesList] = useState([])
@@ -488,30 +526,55 @@ export default function DashboardGuru() {
     }
   }
 
-  const fetchUser = async () => {
+  const fetchUser = async (overrideTeacherId = null) => {
     try {
       // Cek jika sedang dibuka oleh Akun Pengembang (Super Admin Mode)
       const devSession = localStorage.getItem('panrita_developer_session')
       let currentUser = null
       let currentProfile = null
+      const isDev = Boolean(devSession)
 
-      if (devSession) {
+      // Ambil seluruh data guru terdaftar
+      const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
+      if (profilesAll) setAllProfiles(profilesAll)
+
+      const activeTargetId = overrideTeacherId !== null ? overrideTeacherId : selectedViewTeacherId
+
+      if (isDev) {
         try {
           const parsed = JSON.parse(devSession)
           if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
-            currentUser = {
-              id: parsed.user.id || 'developer-master-uid',
-              email: parsed.user.email || 'developer@panrita.edu',
-              full_name: parsed.user.full_name || 'Pengembang Sistem (Super Admin)',
-              role: 'guru',
-              isDeveloperPreview: true
+            // Jika memilih guru tertentu untuk diinspeksi (Mode Lihat)
+            if (activeTargetId && profilesAll) {
+              const matched = profilesAll.find(p => p.id === activeTargetId)
+              if (matched) {
+                currentUser = {
+                  id: matched.id,
+                  email: matched.email,
+                  full_name: matched.full_name || matched.email,
+                  role: matched.role || 'guru',
+                  isDeveloperPreview: true,
+                  inspectingTeacher: true
+                }
+                currentProfile = { ...matched }
+              }
             }
-            currentProfile = {
-              id: currentUser.id,
-              full_name: currentUser.full_name,
-              email: currentUser.email,
-              role: 'guru',
-              penugasan_tipe: 'guru_kelas'
+
+            if (!currentUser) {
+              currentUser = {
+                id: parsed.user.id || 'developer-master-uid',
+                email: parsed.user.email || 'developer@panrita.edu',
+                full_name: parsed.user.full_name || 'Pengembang Sistem (Super Admin)',
+                role: 'guru',
+                isDeveloperPreview: true
+              }
+              currentProfile = {
+                id: currentUser.id,
+                full_name: currentUser.full_name,
+                email: currentUser.email,
+                role: 'guru',
+                penugasan_tipe: 'guru_kelas'
+              }
             }
           }
         } catch (e) {}
@@ -528,10 +591,6 @@ export default function DashboardGuru() {
       setUser(currentUser)
       if (currentProfile) setProfile(currentProfile)
       setGeminiApiKey(getSavedGeminiKey(currentUser.id))
-
-      // Ambil seluruh profiles untuk mendeteksi kelas yang sudah diambil oleh guru lain
-      const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran')
-      if (profilesAll) setAllProfiles(profilesAll)
       
       let { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (!cls || cls.length === 0) {
@@ -557,10 +616,10 @@ export default function DashboardGuru() {
       // Sinkronisasi daftar mata pelajaran & penugasan guru dari cloud database
       await syncCloudSubjects(supabase)
       const cloudAssignments = await syncCloudTeacherAssignments(supabase)
-      const myCloudAssignment = cloudAssignments?.[user.id]
+      const myCloudAssignment = cloudAssignments?.[currentUser.id]
 
       // Cari apakah guru ini sudah memiliki kelas di tabel classes Supabase (sumber utama)
-      const dbMyClass = cls?.find(c => c.teacher_id === user.id)
+      const dbMyClass = cls?.find(c => c.teacher_id === currentUser.id)
 
       // Ambil data penugasan kelas guru dari database & cloud terlebih dahulu (agar tidak pernah hilang saat ganti perangkat/akun baru)
       let storedAssigned = []
@@ -570,7 +629,7 @@ export default function DashboardGuru() {
         storedAssigned = myCloudAssignment.assignedClasses
       } else {
         try {
-          const rawAssigned = await getLocalPref(`guru_assigned_classes_${user.id}`, null)
+          const rawAssigned = await getLocalPref(`guru_assigned_classes_${currentUser.id}`, null)
           if (rawAssigned) {
             storedAssigned = typeof rawAssigned === 'string' ? JSON.parse(rawAssigned) : rawAssigned
           }
@@ -581,18 +640,18 @@ export default function DashboardGuru() {
       setAssignedClasses(storedAssigned)
 
       // Cek apakah tipe dan mapel penugasan sudah diatur di cloud atau local
-      const userTipe = myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${user.id}`, profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')))
+      const userTipe = myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${currentUser.id}`, currentProfile?.penugasan_tipe || (currentProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')))
       setGuruTipeState(userTipe)
 
-      const userMapel = myCloudAssignment?.mapel || profile?.mata_pelajaran || await getLocalPref(`guru_mapel_${user.id}`, '')
+      const userMapel = myCloudAssignment?.mapel || currentProfile?.mata_pelajaran || await getLocalPref(`guru_mapel_${currentUser.id}`, '')
       setGuruMapelState(userMapel)
 
       // Pastikan tersimpan sinkron di localStorage perangkat ini
       if (storedAssigned.length > 0) {
-        localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(storedAssigned))
+        localStorage.setItem(`guru_assigned_classes_${currentUser.id}`, JSON.stringify(storedAssigned))
       }
-      if (userTipe) localStorage.setItem(`guru_tipe_${user.id}`, userTipe)
-      if (userMapel) localStorage.setItem(`guru_mapel_${user.id}`, userMapel)
+      if (userTipe) localStorage.setItem(`guru_tipe_${currentUser.id}`, userTipe)
+      if (userMapel) localStorage.setItem(`guru_mapel_${currentUser.id}`, userMapel)
 
       // Hanya tampilkan reminder penugasan jika akun benar-benar belum pernah disetting
       const isConfigured = userTipe === 'guru_mapel' 
@@ -648,7 +707,7 @@ export default function DashboardGuru() {
       setIsHoliday(holiday)
       setHolidayReason(reason)
 
-      const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
+      const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', currentUser.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
         
       const absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null;
 
@@ -674,12 +733,12 @@ export default function DashboardGuru() {
       // Fetch Pengumuman
       const { data: pData } = await supabase.from('pengumuman')
          .select('*')
-         .or(`target_type.eq.all,target_users.ilike.%${user.id}%`)
+         .or(`target_type.eq.all,target_users.ilike.%${currentUser.id}%`)
          .order('created_at', { ascending: false })
          .limit(20)
          
       if (pData) {
-         const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
+         const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${currentUser.id}`) || '{"read":[], "deleted":[]}')
          const activePengumuman = pData.filter(p => !localData.deleted.includes(p.id))
          setPengumumanData(activePengumuman)
          
@@ -1435,6 +1494,12 @@ export default function DashboardGuru() {
         loadHistory={loadHistory}
         profile={profile}
         user={user}
+        allProfiles={allProfiles}
+        selectedViewTeacherId={selectedViewTeacherId}
+        onSelectTeacher={(tId) => {
+          setSelectedViewTeacherId(tId)
+          fetchUser(tId)
+        }}
         currentTime={currentTime}
         toggleTheme={toggleTheme}
         darkMode={darkMode}
@@ -1538,8 +1603,81 @@ export default function DashboardGuru() {
         </div>
       </div>
       )}
-
       <div style={{ padding: isDesktop ? '0' : '0 1.5rem', width: '100%' }}>
+        {/* Banner Mode Pengembang (Mode Lihat Guru) untuk Mobile / HP */}
+        {user?.isDeveloperPreview && (
+          <div style={{
+            background: 'linear-gradient(135deg, #071C35 0%, #0F172A 100%)',
+            border: '1.5px solid #00B4D8',
+            borderRadius: '16px',
+            padding: '0.85rem 1rem',
+            marginBottom: '1rem',
+            boxShadow: '0 4px 15px rgba(0, 180, 216, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.68rem', background: '#00B4D8', color: '#071C35', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 800 }}>
+                  SUPER ADMIN
+                </span>
+                <span style={{ fontSize: '0.78rem', color: '#E2E8F0', fontWeight: 700 }}>
+                  Mode Lihat Akun Guru
+                </span>
+              </div>
+              <button
+                onClick={() => navigate('/pengembang')}
+                style={{
+                  background: 'rgba(0, 180, 216, 0.15)',
+                  border: '1px solid #00B4D8',
+                  color: '#00B4D8',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                Kembali
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Eye size={16} color="#00B4D8" style={{ flexShrink: 0 }} />
+              <select
+                value={selectedViewTeacherId}
+                onChange={(e) => {
+                  setSelectedViewTeacherId(e.target.value)
+                  fetchUser(e.target.value)
+                }}
+                style={{
+                  width: '100%',
+                  background: '#1E293B',
+                  color: '#FFFFFF',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  padding: '0.4rem 0.65rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">👤 Akun Pengembang (Super Admin)</option>
+                {(allProfiles || [])
+                  .filter(p => p.role === 'guru' || p.role === 'guru_kelas' || p.role === 'guru_mapel')
+                  .map(t => (
+                    <option key={t.id} value={t.id}>
+                      👨‍🏫 {t.full_name || t.email} ({t.mata_pelajaran || t.jabatan || 'Guru'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+            {profile && profile.id !== 'developer-master-uid' && (
+              <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#38BDF8', textAlign: 'center' }}>
+                👁️ Anda sedang melihat tampilan sebagai: <strong>{profile.full_name || profile.email}</strong>
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Offline & Sync Indicators */}
         {isOffline && (
