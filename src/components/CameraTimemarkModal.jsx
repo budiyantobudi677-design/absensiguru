@@ -61,6 +61,18 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return saved !== null ? saved === 'true' : true
   })
 
+  // Pengaturan tampilkan/sembunyikan peta mini di timemark
+  const [showMapInTimemark, setShowMapInTimemark] = useState(() => {
+    const saved = localStorage.getItem('timemark_show_map')
+    return saved !== null ? saved === 'true' : false
+  })
+
+  const handleToggleShowMap = () => {
+    const nextVal = !showMapInTimemark
+    setShowMapInTimemark(nextVal)
+    localStorage.setItem('timemark_show_map', nextVal.toString())
+  }
+
   // Pengaturan Template Layout Watermark ('panritaedu' | 'panrita_split' | 'geotag' | 'logo' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
   const [layoutTemplate, setLayoutTemplate] = useState(() => {
     const saved = localStorage.getItem('timemark_layout_template')
@@ -225,6 +237,149 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }
 
+  // Helper Konversi Koordinat GPS ke Tile Slippy Map OpenStreetMap / CartoDB
+  const getTileCoordinates = (lat, lng, zoom = 16) => {
+    if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) return null
+    const x = Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
+    const latRad = (lat * Math.PI) / 180
+    const y = Math.floor(
+      ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * Math.pow(2, zoom)
+    )
+    return { x, y, zoom }
+  }
+
+  // URL Tile Map Bersih & Cepat (CartoDB Voyager basemap, mendukung CORS penuh)
+  const getMapTileUrl = (lat, lng, zoom = 16) => {
+    const coords = getTileCoordinates(lat, lng, zoom)
+    if (!coords) return ''
+    return `https://a.basemaps.cartocdn.com/rastertiles/voyager/${coords.zoom}/${coords.x}/${coords.y}.png`
+  }
+
+  // Pre-load Gambar Tile Peta untuk Digambar ke Canvas Watermark Foto
+  const loadMapImage = (lat, lng) => {
+    const url = getMapTileUrl(lat, lng, 16)
+    if (!url) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      let resolved = false
+      const onDone = (res) => {
+        if (!resolved) {
+          resolved = true
+          resolve(res)
+        }
+      }
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => onDone(img)
+      img.onerror = () => {
+        const coords = getTileCoordinates(lat, lng, 16)
+        if (coords) {
+          const fallbackImg = new Image()
+          fallbackImg.crossOrigin = 'anonymous'
+          fallbackImg.onload = () => onDone(fallbackImg)
+          fallbackImg.onerror = () => onDone(null)
+          fallbackImg.src = `https://tile.openstreetmap.org/${coords.zoom}/${coords.x}/${coords.y}.png`
+          setTimeout(() => onDone(null), 1500)
+        } else {
+          onDone(null)
+        }
+      }
+      img.src = url
+      setTimeout(() => onDone(null), 1800)
+    })
+  }
+
+  // Helper Gambar Mini Map Kotak Presisi di Canvas Watermark Foto
+  const drawCanvasMiniMap = (ctx, x, y, width, height, mapImage, baseFactor) => {
+    ctx.save()
+    const radius = 8 * baseFactor
+
+    // 1. Clipping area kotak membulat
+    ctx.beginPath()
+    ctx.roundRect(x, y, width, height, radius)
+    ctx.clip()
+
+    if (mapImage) {
+      ctx.drawImage(mapImage, x, y, width, height)
+    } else {
+      // Fallback Grafis Radar GPS Taktis jika offline / tanpa jaringan
+      ctx.fillStyle = '#1E293B'
+      ctx.fillRect(x, y, width, height)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)'
+      ctx.lineWidth = 1 * baseFactor
+      const step = 16 * baseFactor
+      for (let gx = x; gx < x + width; gx += step) {
+        ctx.beginPath()
+        ctx.moveTo(gx, y)
+        ctx.lineTo(gx, y + height)
+        ctx.stroke()
+      }
+      for (let gy = y; gy < y + height; gy += step) {
+        ctx.beginPath()
+        ctx.moveTo(x, gy)
+        ctx.lineTo(x + width, gy)
+        ctx.stroke()
+      }
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'
+      ctx.beginPath()
+      ctx.arc(x + width / 2, y + height / 2, 20 * baseFactor, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    // 2. Garis Tepi (Border Card Peta)
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+    ctx.lineWidth = 2 * baseFactor
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)'
+    ctx.shadowBlur = 4 * baseFactor
+    ctx.beginPath()
+    ctx.roundRect(x, y, width, height, radius)
+    ctx.stroke()
+    ctx.restore()
+
+    // 3. Ikon Pin Lokasi Merah di Titik Pusat Peta
+    const pinX = x + width / 2
+    const pinY = y + height / 2
+    ctx.save()
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+    ctx.shadowBlur = 5 * baseFactor
+
+    ctx.fillStyle = '#EF4444'
+    ctx.beginPath()
+    ctx.arc(pinX, pinY - 5 * baseFactor, 6.5 * baseFactor, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.beginPath()
+    ctx.moveTo(pinX - 5 * baseFactor, pinY - 3 * baseFactor)
+    ctx.lineTo(pinX, pinY + 4 * baseFactor)
+    ctx.lineTo(pinX + 5 * baseFactor, pinY - 3 * baseFactor)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.fillStyle = '#FFFFFF'
+    ctx.beginPath()
+    ctx.arc(pinX, pinY - 5 * baseFactor, 2.2 * baseFactor, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+
+    // 4. Badge Mini "MAP" di Sudut Kiri Bawah
+    ctx.save()
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
+    const badgeW = 38 * baseFactor
+    const badgeH = 13 * baseFactor
+    const badgeX = x + 3 * baseFactor
+    const badgeY = y + height - badgeH - (3 * baseFactor)
+    ctx.beginPath()
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3 * baseFactor)
+    ctx.fill()
+    ctx.fillStyle = '#38BDF8'
+    ctx.font = `bold ${Math.round(8 * baseFactor)}px Outfit, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('MAP', badgeX + badgeW / 2, badgeY + badgeH / 2)
+    ctx.restore()
+  }
+
   const videoRef = useRef(null)
   const viewfinderRef = useRef(null)
   const [vfSize, setVfSize] = useState({ width: 0, height: 0 })
@@ -269,6 +424,24 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       startCamera(facingMode)
     }
   }, [isOpen, facingMode])
+
+  // Pastikan stream kamera tetap terhubung dan aktif saat kembali dari review mode
+  useEffect(() => {
+    if (isOpen && !isReviewMode) {
+      if (videoRef.current) {
+        if (stream && stream.active && stream.getVideoTracks().some((t) => t.readyState === 'live')) {
+          if (videoRef.current.srcObject !== stream) {
+            videoRef.current.srcObject = stream
+          }
+          videoRef.current.play().catch(() => {
+            startCamera(facingMode)
+          })
+        } else {
+          startCamera(facingMode)
+        }
+      }
+    }
+  }, [isOpen, isReviewMode])
 
   const fetchAddressName = async (latitude, longitude) => {
     // 1. Coba BigDataCloud Reverse Geocoding Client (Cepat, ramah CORS browser & mobile, bahasa Indonesia)
@@ -385,6 +558,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       setStream(mediaStream)
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(console.warn)
+        }
+        videoRef.current.play().catch(console.warn)
       }
     } catch (err) {
       console.error(err)
@@ -396,6 +573,21 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     if (stream) {
       stream.getTracks().forEach((track) => track.stop())
       setStream(null)
+    }
+  }
+
+  // Helper Kembali ke Kamera tanpa Layar Hitam (Anti Blank Screen)
+  const returnToCamera = () => {
+    setIsReviewMode(false)
+    if (videoRef.current && stream && stream.active && stream.getVideoTracks().some((t) => t.readyState === 'live')) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream
+      }
+      videoRef.current.play().catch(() => {
+        startCamera(facingMode)
+      })
+    } else {
+      startCamera(facingMode)
     }
   }
 
@@ -506,6 +698,19 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }
     }
 
+    // Muat tile peta jika fitur tampilkan peta di timemark aktif
+    let loadedMapImg = null
+    if (showMapInTimemark) {
+      try {
+        const lat = geoData.latitude !== null ? geoData.latitude : -5.125379
+        const lng = geoData.longitude !== null ? geoData.longitude : 119.530402
+        loadedMapImg = await loadMapImage(lat, lng)
+      } catch (mapErr) {
+        console.warn('Gagal memuat tile peta, menggunakan fallback vector:', mapErr)
+        loadedMapImg = null
+      }
+    }
+
     // Draw video frame to canvas with aspect ratio cropping
     if (isVirtualLandscape) {
       ctx.save()
@@ -538,6 +743,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const scaleMultiplier = getScaleMultiplier(watermarkScale)
     const referenceDim = isLandscape ? Math.min(targetWidth, targetHeight) : targetWidth
     const baseFactor = (referenceDim / (isLandscape ? 680 : 720)) * scaleMultiplier * (isLandscape ? 0.72 : 1.0)
+    const mapW = Math.round(112 * baseFactor)
+    const mapH = Math.round(84 * baseFactor)
 
     // Format Text
     const teacherName = profile?.full_name || user?.email?.split('@')[0] || 'Guru'
@@ -656,9 +863,17 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       if (showTeacherName) detailContentHeight += teacherFontSize + (4 * baseFactor)
       detailContentHeight += lines.length * (addressFontSize + (4 * baseFactor))
 
-      const totalActualHeight = badgeHeight + (14 * baseFactor) + detailContentHeight
+      const mapSpacing = showMapInTimemark ? (mapH + (10 * baseFactor)) : 0
+      const totalActualHeight = badgeHeight + (14 * baseFactor) + detailContentHeight + mapSpacing
       const bottomMargin = 20 * baseFactor
-      const startBadgeY = targetHeight - totalActualHeight - bottomMargin
+      const startBadgeY = targetHeight - totalActualHeight - bottomMargin + mapSpacing
+
+      // Gambar Mini Map jika opsi aktif
+      if (showMapInTimemark) {
+        const mapX = leftX
+        const mapY = startBadgeY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
 
       // Background Badge Jam (Kotak gelap rounded)
       ctx.fillStyle = 'rgba(38, 24, 18, 0.88)'
@@ -759,8 +974,16 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       // Hitung posisi vertikal dari bawah
       const addressFontSize = Math.round(15 * baseFactor)
       const dateRowFontSize = Math.round(16 * baseFactor)
-      const splitHeight = bigTimeFontSize + (40 * baseFactor)
-      const startSplitY = targetHeight - splitHeight - (24 * baseFactor)
+      const mapSpacing = showMapInTimemark ? (mapH + (10 * baseFactor)) : 0
+      const splitHeight = bigTimeFontSize + (40 * baseFactor) + mapSpacing
+      const startSplitY = targetHeight - splitHeight - (24 * baseFactor) + mapSpacing
+
+      // Gambar Mini Map jika aktif
+      if (showMapInTimemark) {
+        const mapX = leftX
+        const mapY = startSplitY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
 
       // 1. Gambar Jam Besar di Kiri
       ctx.fillStyle = '#FFFFFF'
@@ -862,6 +1085,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.textBaseline = 'top'
       ctx.fillText(`📍 ${displayCoords}`, topX, coordY)
 
+      if (showMapInTimemark) {
+        const mapX = topX
+        const mapY = coordY + (24 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
+
       // ----------------------------------------------------
       // B. KONTEN KIRI BAWAH: GARIS ORANYE + WAKTU + ALAMAT LENGKAP
       // ----------------------------------------------------
@@ -925,6 +1154,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const boxHeight = (showTeacherName ? 180 : 155) * baseFactor
       const boxX = 18 * baseFactor
       const boxY = targetHeight - boxHeight - (22 * baseFactor)
+
+      if (showMapInTimemark) {
+        const mapX = boxX
+        const mapY = boxY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
 
       // Background Card Mewah
       ctx.fillStyle = 'rgba(15, 23, 42, 0.94)'
@@ -1035,6 +1270,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const boxX = targetWidth - boxWidth - (20 * baseFactor)
       const boxY = targetHeight - boxHeight - (20 * baseFactor)
 
+      if (showMapInTimemark) {
+        const mapX = boxX
+        const mapY = boxY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
+
       ctx.fillStyle = 'rgba(15, 23, 42, 0.92)'
       ctx.beginPath()
       ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 16 * baseFactor)
@@ -1083,6 +1324,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const boxHeight = Math.round((showTeacherName ? 175 : 145) * baseFactor)
       const boxX = (targetWidth - boxWidth) / 2
       const boxY = targetHeight - boxHeight - (25 * baseFactor)
+
+      if (showMapInTimemark) {
+        const mapX = boxX
+        const mapY = boxY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
 
       // Background navy mewah
       ctx.fillStyle = 'rgba(11, 25, 44, 0.94)'
@@ -1153,6 +1400,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const boxX = targetWidth - boxWidth - (20 * baseFactor)
       const boxY = targetHeight - boxHeight - (20 * baseFactor)
 
+      if (showMapInTimemark) {
+        const mapX = boxX
+        const mapY = boxY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
+
       // Background semi-dark
       ctx.fillStyle = 'rgba(15, 23, 42, 0.90)'
       ctx.beginPath()
@@ -1220,6 +1473,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const boxX = (20 * baseFactor)
       const boxY = targetHeight - boxHeight - (20 * baseFactor)
 
+      if (showMapInTimemark) {
+        const mapX = boxX
+        const mapY = boxY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
+
       ctx.fillStyle = 'rgba(15, 23, 42, 0.94)'
       ctx.beginPath()
       ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 16 * baseFactor)
@@ -1283,6 +1542,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.shadowOffsetY = 3 * baseFactor
 
       let curY = targetHeight - ((showTeacherName ? 170 : 135) * baseFactor)
+
+      if (showMapInTimemark) {
+        const mapX = 28 * baseFactor
+        const mapY = curY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
+
       ctx.textBaseline = 'top'
 
       ctx.font = `bold ${Math.round(24 * baseFactor)}px Outfit, sans-serif`
@@ -1322,6 +1588,12 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       // TEMA MODERN (Modern Strip Gradien Bawah)
       const overlayHeight = Math.max(150 * baseFactor, targetHeight * 0.22)
       const overlayY = targetHeight - overlayHeight
+
+      if (showMapInTimemark) {
+        const mapX = 20 * baseFactor
+        const mapY = overlayY - mapH - (8 * baseFactor)
+        drawCanvasMiniMap(ctx, mapX, mapY, mapW, mapH, loadedMapImg, baseFactor)
+      }
 
       const gradient = ctx.createLinearGradient(0, overlayY - (30 * baseFactor), 0, targetHeight)
       gradient.addColorStop(0, 'rgba(15, 23, 42, 0)')
@@ -1497,13 +1769,80 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     setCapturedPhotos((prev) => {
       const updated = prev.filter((_, idx) => idx !== indexToDelete)
       if (updated.length === 0) {
-        setIsReviewMode(false)
+        returnToCamera()
         setSelectedPhotoIndex(0)
       } else {
         setSelectedPhotoIndex((curr) => Math.min(curr, updated.length - 1))
       }
       return updated
     })
+  }
+
+  // Render Mini Map Preview Widget di Layar Kamera Langsung
+  const renderPreviewMiniMap = (customStyle = {}) => {
+    if (!showMapInTimemark) return null
+    const mapUrl = getMapTileUrl(
+      geoData.latitude !== null ? geoData.latitude : -5.125379,
+      geoData.longitude !== null ? geoData.longitude : 119.530402
+    )
+
+    return (
+      <div
+        style={{
+          width: isLandscape ? '68px' : '76px',
+          height: isLandscape ? '52px' : '58px',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          position: 'relative',
+          border: '1.5px solid rgba(255, 255, 255, 0.75)',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
+          background: '#1E293B',
+          marginBottom: '5px',
+          flexShrink: 0,
+          alignSelf: 'flex-start',
+          pointerEvents: 'none',
+          ...customStyle
+        }}
+      >
+        {mapUrl ? (
+          <img
+            src={mapUrl}
+            alt="Peta Mini"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        ) : null}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none'
+          }}
+        >
+          <MapPin size={15} color="#EF4444" fill="#EF4444" />
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '2px',
+            left: '3px',
+            background: 'rgba(15, 23, 42, 0.88)',
+            padding: '1px 3px',
+            borderRadius: '3px',
+            fontSize: '7.5px',
+            color: '#38BDF8',
+            fontWeight: 'bold',
+            lineHeight: 1
+          }}
+        >
+          MAP
+        </div>
+      </div>
+    )
   }
 
   if (!isOpen) return null
@@ -1798,6 +2137,25 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               )}
             </div>
 
+            <div
+              onClick={handleToggleShowMap}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                padding: '0.6rem 0',
+                borderBottom: '1px solid rgba(255,255,255,0.1)'
+              }}
+            >
+              <span style={{ fontSize: '0.85rem' }}>🗺️ Tampilkan Peta Mini di Watermark</span>
+              {showMapInTimemark ? (
+                <CheckSquare size={20} color="#10B981" />
+              ) : (
+                <Square size={20} color="#94A3B8" />
+              )}
+            </div>
+
             {/* Rasio Foto (3:4, 9:16, 1:1, 16:9) */}
             <div style={{ marginTop: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
               <label style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'block', marginBottom: '0.45rem', fontWeight: '500' }}>
@@ -1997,136 +2355,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               Coba Lagi
             </button>
           </div>
-        ) : isReviewMode && activePhoto ? (
-          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={activePhoto.dataUrl} alt={`Captured ${selectedPhotoIndex + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-
-            {/* Badge Urutan Foto Terpilih */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                left: '14px',
-                background: 'rgba(15, 23, 42, 0.88)',
-                border: '1px solid rgba(245, 158, 11, 0.6)',
-                borderRadius: '20px',
-                padding: '4px 12px',
-                color: '#FDE047',
-                fontSize: '0.8rem',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backdropFilter: 'blur(8px)',
-                zIndex: 30
-              }}
-            >
-              Foto #{selectedPhotoIndex + 1} dari {capturedPhotos.length}
-            </div>
-
-            {/* Filmstrip Barisan Thumbnail Multi-Shot di Bawah Viewfinder */}
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '12px',
-                left: '10px',
-                right: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: capturedPhotos.length > 5 ? 'flex-start' : 'center',
-                gap: '8px',
-                background: 'rgba(15, 23, 42, 0.88)',
-                backdropFilter: 'blur(10px)',
-                padding: '6px 10px',
-                borderRadius: '16px',
-                overflowX: 'auto',
-                zIndex: 35,
-                border: '1px solid rgba(255,255,255,0.15)'
-              }}
-            >
-              {capturedPhotos.map((p, idx) => {
-                const isSelected = selectedPhotoIndex === idx
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedPhotoIndex(idx)}
-                    style={{
-                      position: 'relative',
-                      width: isSelected ? '52px' : '42px',
-                      height: isSelected ? '52px' : '42px',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      border: isSelected ? '2.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.3)',
-                      boxShadow: isSelected ? '0 0 10px rgba(245, 158, 11, 0.7)' : 'none',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <img src={p.dataUrl} alt={`Thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        bottom: '2px',
-                        right: '2px',
-                        background: isSelected ? '#F59E0B' : 'rgba(0,0,0,0.7)',
-                        color: isSelected ? '#1E1B18' : 'white',
-                        fontSize: '9px',
-                        fontWeight: '800',
-                        padding: '1px 3px',
-                        borderRadius: '3px'
-                      }}
-                    >
-                      #{idx + 1}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
         ) : (
           <>
-            {/* Shutter Flash Animation Effect */}
-            {isFlashActive && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: '#FFFFFF',
-                  zIndex: 60,
-                  pointerEvents: 'none'
-                }}
-              />
-            )}
-
-            {/* Badge Counter Jepretan Saat Mode Live Camera */}
-            {capturedPhotos.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setIsReviewMode(true)}
-                style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '14px',
-                  background: 'rgba(15, 23, 42, 0.88)',
-                  border: '1px solid #F59E0B',
-                  borderRadius: '20px',
-                  padding: '4px 12px',
-                  color: '#FDE047',
-                  fontSize: '0.78rem',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  backdropFilter: 'blur(8px)',
-                  cursor: 'pointer',
-                  zIndex: 25,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
-                }}
-              >
-                📸 {capturedPhotos.length}/10 Foto (Lihat)
-              </button>
-            )}
+            {/* Video element dipasang permanen di DOM (Anti blank screen) */}
             <video
               ref={videoRef}
               autoPlay
@@ -2141,16 +2372,149 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                       width: vfSize.height ? `${vfSize.height}px` : '100%',
                       height: vfSize.width ? `${vfSize.width}px` : '100%',
                       objectFit: 'cover',
-                      transform: `translate(-50%, -50%) rotate(${virtualRotationAngle === -90 ? 90 : -90}deg)${facingMode === 'user' ? ' scaleX(-1)' : ''}`
+                      transform: `translate(-50%, -50%) rotate(${virtualRotationAngle === -90 ? 90 : -90}deg)${facingMode === 'user' ? ' scaleX(-1)' : ''}`,
+                      display: isReviewMode && activePhoto ? 'none' : 'block'
                     }
                   : {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                      display: isReviewMode && activePhoto ? 'none' : 'block'
                     }
               }
             />
+
+            {isReviewMode && activePhoto ? (
+              <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src={activePhoto.dataUrl} alt={`Captured ${selectedPhotoIndex + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+
+                {/* Badge Urutan Foto Terpilih */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '12px',
+                    left: '14px',
+                    background: 'rgba(15, 23, 42, 0.88)',
+                    border: '1px solid rgba(245, 158, 11, 0.6)',
+                    borderRadius: '20px',
+                    padding: '4px 12px',
+                    color: '#FDE047',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 30
+                  }}
+                >
+                  Foto #{selectedPhotoIndex + 1} dari {capturedPhotos.length}
+                </div>
+
+                {/* Filmstrip Barisan Thumbnail Multi-Shot di Bawah Viewfinder */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    left: '10px',
+                    right: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: capturedPhotos.length > 5 ? 'flex-start' : 'center',
+                    gap: '8px',
+                    background: 'rgba(15, 23, 42, 0.88)',
+                    backdropFilter: 'blur(10px)',
+                    padding: '6px 10px',
+                    borderRadius: '16px',
+                    overflowX: 'auto',
+                    zIndex: 35,
+                    border: '1px solid rgba(255,255,255,0.15)'
+                  }}
+                >
+                  {capturedPhotos.map((p, idx) => {
+                    const isSelected = selectedPhotoIndex === idx
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setSelectedPhotoIndex(idx)}
+                        style={{
+                          position: 'relative',
+                          width: isSelected ? '52px' : '42px',
+                          height: isSelected ? '52px' : '42px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          border: isSelected ? '2.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.3)',
+                          boxShadow: isSelected ? '0 0 10px rgba(245, 158, 11, 0.7)' : 'none',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <img src={p.dataUrl} alt={`Thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <span
+                          style={{
+                            position: 'absolute',
+                            bottom: '2px',
+                            right: '2px',
+                            background: isSelected ? '#F59E0B' : 'rgba(0,0,0,0.7)',
+                            color: isSelected ? '#1E1B18' : 'white',
+                            fontSize: '9px',
+                            fontWeight: '800',
+                            padding: '1px 3px',
+                            borderRadius: '3px'
+                          }}
+                        >
+                          #{idx + 1}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Shutter Flash Animation Effect */}
+                {isFlashActive && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: '#FFFFFF',
+                      zIndex: 60,
+                      pointerEvents: 'none'
+                    }}
+                  />
+                )}
+
+                {/* Badge Counter Jepretan Saat Mode Live Camera */}
+                {capturedPhotos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsReviewMode(true)}
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '14px',
+                      background: 'rgba(15, 23, 42, 0.88)',
+                      border: '1px solid #F59E0B',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      color: '#FDE047',
+                      fontSize: '0.78rem',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      backdropFilter: 'blur(8px)',
+                      cursor: 'pointer',
+                      zIndex: 25,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+                    }}
+                  >
+                    📸 {capturedPhotos.length}/10 Foto (Lihat)
+                  </button>
+                )}
 
             {/* Header Kanan Atas: Logo GammaraApp + 100% foto asli (Live Preview, Ukuran Pas & Jelas) */}
             <div
@@ -2187,6 +2551,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   pointerEvents: 'none'
                 }}
               >
+                {renderPreviewMiniMap()}
                 {/* Badge Jam Kotak + Lingkaran Ceklis Oranye */}
                 <div
                   style={{
@@ -2256,6 +2621,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   pointerEvents: 'none'
                 }}
               >
+                {renderPreviewMiniMap()}
                 {/* Jam Besar + Garis Oranye + Tanggal Hari */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '1.8rem', fontWeight: '300', color: '#FFFFFF', letterSpacing: '-1px' }}>
@@ -2309,6 +2675,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.68rem' }}>
                     📍 {formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)}
                   </div>
+                  {renderPreviewMiniMap({ marginTop: '4px' })}
                 </div>
 
                 {/* KIRI BAWAH: GARIS ORANYE + WAKTU + ALAMAT */}
@@ -2343,40 +2710,49 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '14px',
                   left: '14px',
                   right: '14px',
-                  background: 'rgba(15, 23, 42, 0.92)',
-                  border: '1.5px solid rgba(245, 158, 11, 0.6)',
-                  borderRadius: '12px',
-                  padding: '8px 12px',
-                  color: 'white',
-                  pointerEvents: 'none',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
+                  flexDirection: 'column',
+                  gap: '6px',
+                  pointerEvents: 'none'
                 }}
               >
-                {schoolLogo ? (
-                  <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: '#FFF', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    <img src={schoolLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  </div>
-                ) : (
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
-                    🏫
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#FDE047', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
-                  </div>
-                  {showTeacherName && (
-                    <div style={{ fontSize: '0.7rem', color: '#FFFFFF' }}>
-                      👤 {profile?.full_name || 'Guru'}
+                {renderPreviewMiniMap()}
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '1.5px solid rgba(245, 158, 11, 0.6)',
+                    borderRadius: '12px',
+                    padding: '8px 12px',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}
+                >
+                  {schoolLogo ? (
+                    <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: '#FFF', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                      <img src={schoolLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  ) : (
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
+                      🏫
                     </div>
                   )}
-                  <div style={{ fontSize: '0.65rem', color: '#E2E8F0' }}>
-                    📅 {currentDateTime.toLocaleDateString('id-ID')} • ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: '#94A3B8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    📍 {locationText}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#FDE047', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                    </div>
+                    {showTeacherName && (
+                      <div style={{ fontSize: '0.7rem', color: '#FFFFFF' }}>
+                        👤 {profile?.full_name || 'Guru'}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '0.65rem', color: '#E2E8F0' }}>
+                      📅 {currentDateTime.toLocaleDateString('id-ID')} • ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                    </div>
+                    <div style={{ fontSize: '0.62rem', color: '#94A3B8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      📍 {locationText}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2387,24 +2763,34 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   right: '12px',
                   maxWidth: '80%',
-                  background: 'rgba(15, 23, 42, 0.92)',
-                  border: '1px solid rgba(56, 189, 248, 0.5)',
-                  borderLeft: '4px solid #10B981',
-                  borderRadius: '12px',
-                  padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : watermarkScale === 'large' ? '0.6rem 0.85rem' : '0.5rem 0.75rem',
-                  color: 'white',
-                  fontSize: watermarkScale === 'xlarge' ? '0.85rem' : watermarkScale === 'large' ? '0.78rem' : '0.72rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: '6px',
                   pointerEvents: 'none'
                 }}
               >
-                <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>
-                  {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                {renderPreviewMiniMap({ alignSelf: 'flex-end' })}
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '1px solid rgba(56, 189, 248, 0.5)',
+                    borderLeft: '4px solid #10B981',
+                    borderRadius: '12px',
+                    padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : watermarkScale === 'large' ? '0.6rem 0.85rem' : '0.5rem 0.75rem',
+                    color: 'white',
+                    fontSize: watermarkScale === 'xlarge' ? '0.85rem' : watermarkScale === 'large' ? '0.78rem' : '0.72rem'
+                  }}
+                >
+                  <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>
+                    {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                  </div>
+                  {showTeacherName && <div>👤 {profile?.full_name || 'Guru'}</div>}
+                  <div style={{ color: '#E2E8F0', fontSize: '0.68rem' }}>
+                    📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                  </div>
+                  <div style={{ color: '#94A3B8', fontSize: '0.65rem' }}>📍 {locationText}</div>
                 </div>
-                {showTeacherName && <div>👤 {profile?.full_name || 'Guru'}</div>}
-                <div style={{ color: '#E2E8F0', fontSize: '0.68rem' }}>
-                  📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
-                </div>
-                <div style={{ color: '#94A3B8', fontSize: '0.65rem' }}>📍 {locationText}</div>
               </div>
             ) : layoutTemplate === 'academic' ? (
               <div
@@ -2413,41 +2799,50 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   left: '12px',
                   right: '12px',
-                  background: 'rgba(11, 25, 44, 0.94)',
-                  border: '1.5px solid #F59E0B',
-                  borderRadius: '12px',
-                  padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : '0.55rem 0.8rem',
-                  color: 'white',
-                  fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem',
-                  pointerEvents: 'none',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem'
+                  flexDirection: 'column',
+                  gap: '6px',
+                  pointerEvents: 'none'
                 }}
               >
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  background: '#F59E0B',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.2rem',
-                  flexShrink: 0
-                }}>
-                  {customIcon}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 'bold', color: '#FDE047' }}>
-                    {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                {renderPreviewMiniMap()}
+                <div
+                  style={{
+                    background: 'rgba(11, 25, 44, 0.94)',
+                    border: '1.5px solid #F59E0B',
+                    borderRadius: '12px',
+                    padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : '0.55rem 0.8rem',
+                    color: 'white',
+                    fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem'
+                  }}
+                >
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: '#F59E0B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.2rem',
+                    flexShrink: 0
+                  }}>
+                    {customIcon}
                   </div>
-                  {showTeacherName && <div style={{ fontSize: '0.7rem' }}>Pendidik: {profile?.full_name || 'Guru'}</div>}
-                  <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
-                    {currentDateTime.toLocaleDateString('id-ID')} • {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
-                  </div>
-                  <div style={{ color: '#94A3B8', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    📍 {locationText}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 'bold', color: '#FDE047' }}>
+                      {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                    </div>
+                    {showTeacherName && <div style={{ fontSize: '0.7rem' }}>Pendidik: {profile?.full_name || 'Guru'}</div>}
+                    <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
+                      {currentDateTime.toLocaleDateString('id-ID')} • {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                    </div>
+                    <div style={{ color: '#94A3B8', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      📍 {locationText}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2458,27 +2853,37 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   right: '12px',
                   maxWidth: '85%',
-                  background: 'rgba(15, 23, 42, 0.92)',
-                  border: '2px solid #EF4444',
-                  boxShadow: 'inset 0 0 0 2px #B91C1C',
-                  borderRadius: '10px',
-                  padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : '0.55rem 0.8rem',
-                  color: 'white',
-                  fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: '6px',
                   pointerEvents: 'none'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                  <span style={{ fontWeight: 'bold', color: '#FFFFFF' }}>{customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}</span>
-                  <span style={{ background: 'rgba(239,68,68,0.25)', border: '1px solid #EF4444', color: '#FCA5A5', fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
-                    TERVERIFIKASI
-                  </span>
+                {renderPreviewMiniMap({ alignSelf: 'flex-end' })}
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '2px solid #EF4444',
+                    boxShadow: 'inset 0 0 0 2px #B91C1C',
+                    borderRadius: '10px',
+                    padding: watermarkScale === 'xlarge' ? '0.75rem 1rem' : '0.55rem 0.8rem',
+                    color: 'white',
+                    fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                    <span style={{ fontWeight: 'bold', color: '#FFFFFF' }}>{customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}</span>
+                    <span style={{ background: 'rgba(239,68,68,0.25)', border: '1px solid #EF4444', color: '#FCA5A5', fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      TERVERIFIKASI
+                    </span>
+                  </div>
+                  {showTeacherName && <div style={{ color: '#F87171', fontSize: '0.7rem', fontWeight: '600' }}>PEGAWAI: {profile?.full_name || 'Guru'}</div>}
+                  <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
+                    WAKTU: {currentDateTime.toLocaleDateString('id-ID')} | {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                  </div>
+                  <div style={{ color: '#94A3B8', fontSize: '0.62rem' }}>LOKASI: {locationText}</div>
                 </div>
-                {showTeacherName && <div style={{ color: '#F87171', fontSize: '0.7rem', fontWeight: '600' }}>PEGAWAI: {profile?.full_name || 'Guru'}</div>}
-                <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
-                  WAKTU: {currentDateTime.toLocaleDateString('id-ID')} | {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
-                </div>
-                <div style={{ color: '#94A3B8', fontSize: '0.62rem' }}>LOKASI: {locationText}</div>
               </div>
             ) : layoutTemplate === 'idbadge' ? (
               <div
@@ -2487,28 +2892,37 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   left: '12px',
                   right: '12px',
-                  background: 'rgba(15, 23, 42, 0.94)',
-                  border: '1.5px solid #0284C7',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  color: 'white',
-                  fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
                   pointerEvents: 'none'
                 }}
               >
-                <div style={{ background: '#0284C7', padding: '0.25rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 'bold', fontSize: '0.68rem', color: '#FFF' }}>{customIcon} KARTU BUKTI KEHADIRAN PENDIDIK</span>
-                  <span style={{ letterSpacing: '2px', fontSize: '0.55rem' }}>|||| ||| ||</span>
-                </div>
-                <div style={{ padding: '0.5rem 0.75rem' }}>
-                  <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>
-                    {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                {renderPreviewMiniMap()}
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.94)',
+                    border: '1.5px solid #0284C7',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    color: 'white',
+                    fontSize: watermarkScale === 'xlarge' ? '0.85rem' : '0.72rem'
+                  }}
+                >
+                  <div style={{ background: '#0284C7', padding: '0.25rem 0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '0.68rem', color: '#FFF' }}>{customIcon} KARTU BUKTI KEHADIRAN PENDIDIK</span>
+                    <span style={{ letterSpacing: '2px', fontSize: '0.55rem' }}>|||| ||| ||</span>
                   </div>
-                  {showTeacherName && <div style={{ fontSize: '0.7rem' }}>Nama: {profile?.full_name || 'Guru'}</div>}
-                  <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
-                    Jam : {currentDateTime.toLocaleDateString('id-ID')} • {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                  <div style={{ padding: '0.5rem 0.75rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#38BDF8' }}>
+                      {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                    </div>
+                    {showTeacherName && <div style={{ fontSize: '0.7rem' }}>Nama: {profile?.full_name || 'Guru'}</div>}
+                    <div style={{ color: '#E2E8F0', fontSize: '0.65rem' }}>
+                      Jam : {currentDateTime.toLocaleDateString('id-ID')} • {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                    </div>
+                    <div style={{ color: '#94A3B8', fontSize: '0.62rem' }}>GPS : {locationText}</div>
                   </div>
-                  <div style={{ color: '#94A3B8', fontSize: '0.62rem' }}>GPS : {locationText}</div>
                 </div>
               </div>
             ) : layoutTemplate === 'classic' ? (
@@ -2518,18 +2932,24 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   left: '12px',
                   right: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
                   textShadow: '0 2px 5px rgba(0,0,0,0.95)',
                   color: 'white',
                   fontSize: watermarkScale === 'xlarge' ? '0.9rem' : watermarkScale === 'large' ? '0.82rem' : '0.75rem',
                   pointerEvents: 'none'
                 }}
               >
-                <div style={{ fontWeight: 'bold', color: '#FDE047', fontSize: watermarkScale === 'xlarge' ? '1.05rem' : '0.85rem' }}>
-                  {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                {renderPreviewMiniMap()}
+                <div>
+                  <div style={{ fontWeight: 'bold', color: '#FDE047', fontSize: watermarkScale === 'xlarge' ? '1.05rem' : '0.85rem' }}>
+                    {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                  </div>
+                  {showTeacherName && <div style={{ fontWeight: '600' }}>👤 {profile?.full_name || 'Guru'}</div>}
+                  <div>📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}</div>
+                  <div style={{ color: '#E2E8F0', fontSize: '0.68rem' }}>📍 {locationText}</div>
                 </div>
-                {showTeacherName && <div style={{ fontWeight: '600' }}>👤 {profile?.full_name || 'Guru'}</div>}
-                <div>📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}</div>
-                <div style={{ color: '#E2E8F0', fontSize: '0.68rem' }}>📍 {locationText}</div>
               </div>
             ) : (
               <div
@@ -2538,29 +2958,40 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   bottom: '12px',
                   left: '12px',
                   right: '12px',
-                  background: 'rgba(15, 23, 42, 0.82)',
-                  backdropFilter: 'blur(8px)',
-                  padding: watermarkScale === 'xlarge' ? '0.8rem 1rem' : watermarkScale === 'large' ? '0.7rem 0.9rem' : '0.6rem 0.8rem',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: watermarkScale === 'xlarge' ? '0.85rem' : watermarkScale === 'large' ? '0.78rem' : '0.72rem',
-                  borderLeft: '4px solid #10B981',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
                   pointerEvents: 'none'
                 }}
               >
-                <div style={{ fontWeight: 'bold', color: '#38BDF8', fontSize: watermarkScale === 'xlarge' ? '0.95rem' : '0.82rem' }}>
-                  {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                {renderPreviewMiniMap()}
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.82)',
+                    backdropFilter: 'blur(8px)',
+                    padding: watermarkScale === 'xlarge' ? '0.8rem 1rem' : watermarkScale === 'large' ? '0.7rem 0.9rem' : '0.6rem 0.8rem',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: watermarkScale === 'xlarge' ? '0.85rem' : watermarkScale === 'large' ? '0.78rem' : '0.72rem',
+                    borderLeft: '4px solid #10B981'
+                  }}
+                >
+                  <div style={{ fontWeight: 'bold', color: '#38BDF8', fontSize: watermarkScale === 'xlarge' ? '0.95rem' : '0.82rem' }}>
+                    {customIcon} {(customTitle || schoolName || 'PRESENSIA').toUpperCase()}
+                  </div>
+                  {showTeacherName && <div>👤 {profile?.full_name || 'Guru'}</div>}
+                  <div style={{ color: '#E2E8F0' }}>
+                    📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
+                  </div>
+                  <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>📍 {locationText}</div>
                 </div>
-                {showTeacherName && <div>👤 {profile?.full_name || 'Guru'}</div>}
-                <div style={{ color: '#E2E8F0' }}>
-                  📅 {currentDateTime.toLocaleDateString('id-ID')} | ⏰ {currentDateTime.toLocaleTimeString('id-ID')} {getTimeZoneLabel()}
-                </div>
-                <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>📍 {locationText}</div>
               </div>
             )}
           </>
         )}
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Controls & Inputs (Berada di Sisi Kanan saat Landscape, di Bawah saat Portrait) */}
       <div
@@ -2769,7 +3200,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               {capturedPhotos.length < 10 && (
                 <button
                   type="button"
-                  onClick={() => setIsReviewMode(false)}
+                  onClick={returnToCamera}
                   title="Kembali ke kamera untuk menambah foto"
                   className="btn"
                   style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
@@ -2782,7 +3213,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 onClick={() => {
                   setCapturedPhotos([])
                   setSelectedPhotoIndex(0)
-                  setIsReviewMode(false)
+                  returnToCamera()
                 }}
                 title="Hapus semua foto sementara dan ulangi"
                 className="btn"
