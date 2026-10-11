@@ -293,6 +293,7 @@ export default function DashboardGuru() {
   const [showGeminiKey, setShowGeminiKey] = useState(false)
   const [geminiTesting, setGeminiTesting] = useState(false)
   const [geminiTestStatus, setGeminiTestStatus] = useState(null)
+  const [geminiSavedMessage, setGeminiSavedMessage] = useState(null)
   // State Mode Pratinjau Pengembang (Lihat Sebagai Guru Tertentu)
   const [selectedViewTeacherId, setSelectedViewTeacherId] = useState('')
   const [activeTab, setActiveTab] = useState('absensi') 
