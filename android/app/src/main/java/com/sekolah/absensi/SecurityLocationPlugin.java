@@ -6,6 +6,8 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -35,19 +37,32 @@ public class SecurityLocationPlugin extends Plugin {
                 return;
             }
 
-            Location bestLocation = null;
-            if (isGpsEnabled) {
-                bestLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            // Cari lokasi terbaik yang sudah diketahui sebelumnya (GPS, Network, Passive)
+            Location lastGps = isGpsEnabled ? locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) : null;
+            Location lastNetwork = isNetworkEnabled ? locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) : null;
+            Location lastPassive = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+
+            Location bestLocation = lastGps;
+            if (bestLocation == null || (lastNetwork != null && lastNetwork.getTime() > bestLocation.getTime())) {
+                bestLocation = lastNetwork;
             }
-            if (bestLocation == null && isNetworkEnabled) {
-                bestLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            if (bestLocation == null || (lastPassive != null && lastPassive.getTime() > bestLocation.getTime())) {
+                bestLocation = lastPassive;
             }
 
-            // Jika lokasi lama atau null, minta 1 kali fix
-            if (bestLocation != null && (SystemClock.elapsedRealtime() - (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 ? bestLocation.getElapsedRealtimeNanos() / 1000000 : 0)) < 60000) {
-                returnLocationResult(call, bestLocation);
-                return;
+            // Jika ada lokasi segar (< 45 detik), langsung gunakan untuk respon instan
+            long nowElapsed = SystemClock.elapsedRealtime();
+            if (bestLocation != null) {
+                long locationElapsed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 ? 
+                    bestLocation.getElapsedRealtimeNanos() / 1000000L : 0;
+                if (locationElapsed > 0 && (nowElapsed - locationElapsed) < 45000) {
+                    returnLocationResult(call, bestLocation);
+                    return;
+                }
             }
+
+            final Location fallbackCached = bestLocation;
+            final Handler timeoutHandler = new Handler(Looper.getMainLooper());
 
             // Minta single update
             LocationListener singleListener = new LocationListener() {
@@ -57,7 +72,10 @@ public class SecurityLocationPlugin extends Plugin {
                 public void onLocationChanged(Location location) {
                     if (!resolved) {
                         resolved = true;
-                        locationManager.removeUpdates(this);
+                        timeoutHandler.removeCallbacksAndMessages(null);
+                        try {
+                            locationManager.removeUpdates(this);
+                        } catch (Exception ignored) {}
                         returnLocationResult(call, location);
                     }
                 }
@@ -70,8 +88,26 @@ public class SecurityLocationPlugin extends Plugin {
                 public void onProviderDisabled(String provider) {}
             };
 
-            String provider = isGpsEnabled ? LocationManager.GPS_PROVIDER : LocationManager.NETWORK_PROVIDER;
-            locationManager.requestSingleUpdate(provider, singleListener, null);
+            // Safety timeout 6.5 detik: jangan biarkan promise menggantung selamanya
+            timeoutHandler.postDelayed(() -> {
+                try {
+                    locationManager.removeUpdates(singleListener);
+                } catch (Exception ignored) {}
+
+                if (fallbackCached != null) {
+                    returnLocationResult(call, fallbackCached);
+                } else {
+                    call.reject("Timeout GPS: Tidak dapat mengunci satelit dalam waktu yang ditentukan.");
+                }
+            }, 6500);
+
+            // Minta update dari Network (cepat dalam ruangan) dan GPS (akurat di luar)
+            if (isNetworkEnabled) {
+                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, singleListener, Looper.getMainLooper());
+            }
+            if (isGpsEnabled) {
+                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, singleListener, Looper.getMainLooper());
+            }
 
         } catch (SecurityException e) {
             call.reject("Izin lokasi belum diberikan: " + e.getMessage());

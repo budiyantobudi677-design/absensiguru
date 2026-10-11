@@ -125,12 +125,18 @@ export function getSecureLocalDateString() {
  * @param {Object} options 
  * @returns {Promise<{latitude: number, longitude: number, altitude: number, accuracy: number, heading: number, isMock: boolean}>}
  */
-export async function getSecureLocation(options = { timeout: 10000, enableHighAccuracy: true }) {
-  // Jika di Android Native (Capacitor), gunakan SecurityLocation plugin
+export async function getSecureLocation(options = { timeout: 8000, enableHighAccuracy: true }) {
+  const timeoutMs = options.timeout || 8000
+
+  // Jika di Android Native (Capacitor), gunakan SecurityLocation plugin dengan proteksi timeout race
   if (Capacitor.isNativePlatform()) {
     try {
-      const result = await SecurityLocation.getSecureLocation()
-      if (result) {
+      const nativePromise = SecurityLocation.getSecureLocation()
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Native GPS Timeout')), timeoutMs)
+      )
+      const result = await Promise.race([nativePromise, timeoutPromise])
+      if (result && result.latitude !== undefined && result.longitude !== undefined) {
         return {
           latitude: result.latitude,
           longitude: result.longitude,
@@ -142,40 +148,73 @@ export async function getSecureLocation(options = { timeout: 10000, enableHighAc
         }
       }
     } catch (nativeErr) {
-      console.warn('SecurityLocation native plugin call failed, fallback to web geolocation:', nativeErr)
+      console.warn('SecurityLocation native plugin call failed or timed out, fallback to web geolocation:', nativeErr)
     }
   }
 
-  // Web Browser / Fallback Geolocation
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Perangkat tidak mendukung geolokasi'))
-      return
-    }
+  // Web Browser / Fallback Geolocation dengan proteksi timeout keras & fallback akurasi
+  const getWebPosition = (geoOptions) => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Perangkat tidak mendukung geolokasi'))
+        return
+      }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        // Cek flag mock pada browser/webview jika tersedia
-        const isMock = Boolean(
-          pos.coords.isMock || 
-          pos.coords.mocked || 
-          (pos.coords.accuracy === 0) // Akurasi 0 seringkali merupakan indikasi spoofing emulator
-        )
+      let isDone = false
+      const safetyTimer = setTimeout(() => {
+        if (!isDone) {
+          isDone = true
+          reject(new Error('Web geolocation timed out'))
+        }
+      }, (geoOptions.timeout || 7000) + 1000)
 
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          altitude: pos.coords.altitude,
-          accuracy: pos.coords.accuracy,
-          heading: pos.coords.heading,
-          speed: pos.coords.speed,
-          isMock
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (isDone) return
+          isDone = true
+          clearTimeout(safetyTimer)
+          const isMock = Boolean(
+            pos.coords.isMock || 
+            pos.coords.mocked || 
+            (pos.coords.accuracy === 0)
+          )
+
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            altitude: pos.coords.altitude,
+            accuracy: pos.coords.accuracy,
+            heading: pos.coords.heading,
+            speed: pos.coords.speed,
+            isMock
+          })
+        },
+        (err) => {
+          if (isDone) return
+          isDone = true
+          clearTimeout(safetyTimer)
+          reject(err)
+        },
+        geoOptions
+      )
+    })
+  }
+
+  try {
+    return await getWebPosition(options)
+  } catch (firstErr) {
+    // Jika GPS High Accuracy gagal mengunci (misal di dalam ruangan), coba toleransi network/cache
+    if (options.enableHighAccuracy) {
+      try {
+        return await getWebPosition({
+          enableHighAccuracy: false,
+          maximumAge: 120000,
+          timeout: 5000
         })
-      },
-      (err) => {
-        reject(err)
-      },
-      options
-    )
-  })
+      } catch (fallbackErr) {
+        throw firstErr
+      }
+    }
+    throw firstErr
+  }
 }

@@ -19,6 +19,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   const [currentDateTime, setCurrentDateTime] = useState(() => getSecureServerDate())
   const [cameraError, setCameraError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false)
 
   // Data Geolokasi Terperinci (Koordinat, Elevasi, Arah Kompas, Akurasi)
   const [geoData, setGeoData] = useState({
@@ -253,7 +254,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       return
     }
 
-    startCamera(facingMode)
     syncServerTime().then(() => setCurrentDateTime(getSecureServerDate()))
     fetchLocation()
     const timer = setInterval(() => setCurrentDateTime(getSecureServerDate()), 1000)
@@ -262,38 +262,75 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       clearInterval(timer)
       stopCamera()
     }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (isOpen) {
+      startCamera(facingMode)
+    }
   }, [isOpen, facingMode])
 
   const fetchAddressName = async (latitude, longitude) => {
+    // 1. Coba BigDataCloud Reverse Geocoding Client (Cepat, ramah CORS browser & mobile, bahasa Indonesia)
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=id`,
-        { headers: { 'User-Agent': 'PresensiaAbsensiApp/1.0' } }
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3500)
+      const res = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=id`,
+        { signal: controller.signal }
       )
-      if (!response.ok) throw new Error('Network error')
-      const data = await response.json()
-      if (data && data.address) {
-        const addr = data.address
-        const road = addr.road || addr.pedestrian || addr.suburb || ''
-        const district = addr.city_district || addr.subdistrict || addr.county || ''
-        const city = addr.city || addr.town || addr.municipality || ''
-        
-        const parts = [road, district, city].filter(Boolean)
+      clearTimeout(timer)
+      if (res.ok) {
+        const data = await res.json()
+        const locality = data.locality || data.neighbourhood || ''
+        const city = data.city || data.localityInfo?.administrative?.[2]?.name || ''
+        const province = data.principalSubdivision || ''
+        const parts = [locality, city, province].filter(Boolean)
         if (parts.length > 0) {
           return parts.join(', ')
-        } else if (data.display_name) {
-          return data.display_name.split(',').slice(0, 3).join(',')
+        }
+      }
+    } catch (e) {
+      // Fallback ke OpenStreetMap
+    }
+
+    // 2. Fallback ke OpenStreetMap Nominatim dengan proteksi timeout keras (3.5s)
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3500)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=id`,
+        { signal: controller.signal, headers: { 'User-Agent': 'PresensiaAbsensiApp/1.0' } }
+      )
+      clearTimeout(timer)
+      if (response.ok) {
+        const data = await response.json()
+        if (data && data.address) {
+          const addr = data.address
+          const road = addr.road || addr.pedestrian || addr.suburb || ''
+          const district = addr.city_district || addr.subdistrict || addr.county || ''
+          const city = addr.city || addr.town || addr.municipality || ''
+          
+          const parts = [road, district, city].filter(Boolean)
+          if (parts.length > 0) {
+            return parts.join(', ')
+          } else if (data.display_name) {
+            return data.display_name.split(',').slice(0, 3).join(',')
+          }
         }
       }
     } catch (e) {
       console.warn('Reverse geocoding failed, fallback to lat/long:', e)
     }
+
     return `Lat: ${latitude.toFixed(5)}, Long: ${longitude.toFixed(5)}`
   }
 
   const fetchLocation = async () => {
+    setIsFetchingLocation(true)
+    setLocationText('Mencari sinyal GPS...')
     try {
-      const pos = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
+      const pos = await getSecureLocation({ enableHighAccuracy: true, timeout: 8000 })
       const lat = pos.latitude
       const lng = pos.longitude
       const alt = pos.altitude
@@ -303,6 +340,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       if (pos.isMock) {
         setLocationText('⚠️ PERINGATAN: Terdeteksi Fake GPS / Lokasi Palsu!')
         setCameraError('Aplikasi mendeteksi lokasi palsu (Fake GPS/Mock Provider). Harap matikan aplikasi lokasi palsu untuk melanjutkan.')
+        setIsFetchingLocation(false)
         return
       }
 
@@ -318,12 +356,21 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         setCompassHeading(Math.round(head))
       }
 
-      setLocationText('Mendeteksi nama lokasi...')
-      const address = await fetchAddressName(lat, lng)
-      setLocationText(address)
+      // Langsung tampilkan koordinat secara instan agar watermark kamera tidak pernah 'stuck' menunggu API geocoding
+      const coordFallback = `Lat: ${lat.toFixed(5)}, Long: ${lng.toFixed(5)}`
+      setLocationText(coordFallback)
+      setIsFetchingLocation(false)
+
+      // Cari nama jalan/wilayah di latar belakang secara asynchronous
+      fetchAddressName(lat, lng).then((address) => {
+        if (address) {
+          setLocationText(address)
+        }
+      })
     } catch (err) {
       console.warn('Get location failed:', err)
-      setLocationText('GPS tidak aktif / Izin lokasi ditolak')
+      setIsFetchingLocation(false)
+      setLocationText('GPS belum terdeteksi (Ketuk untuk coba lagi)')
     }
   }
 
@@ -1481,6 +1528,27 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {/* Tombol Segarkan GPS */}
+            <button
+              onClick={fetchLocation}
+              title="Perbarui sinyal GPS & lokasi"
+              disabled={isFetchingLocation}
+              style={{
+                background: isFetchingLocation ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.15)',
+                border: 'none',
+                color: isFetchingLocation ? '#38BDF8' : 'white',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={17} style={{ animation: isFetchingLocation ? 'spin 1s linear infinite' : 'none' }} />
+            </button>
+
             {/* Tombol Pengaturan Desain */}
             <button
               onClick={() => setIsEditingTitle(!isEditingTitle)}
@@ -1552,6 +1620,27 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             <span style={{ fontWeight: '600', fontSize: '0.8rem' }}>Kamera Timemark</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }}>
+            {/* Tombol Segarkan GPS Landscape */}
+            <button
+              onClick={fetchLocation}
+              title="Perbarui sinyal GPS & lokasi"
+              disabled={isFetchingLocation}
+              style={{
+                background: isFetchingLocation ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: isFetchingLocation ? '#38BDF8' : 'white',
+                borderRadius: '50%',
+                width: '34px',
+                height: '34px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                backdropFilter: 'blur(6px)'
+              }}
+            >
+              <RefreshCw size={15} style={{ animation: isFetchingLocation ? 'spin 1s linear infinite' : 'none' }} />
+            </button>
             <button
               onClick={() => setIsEditingTitle(!isEditingTitle)}
               title="Pengaturan Watermark"
