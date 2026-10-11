@@ -5,7 +5,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import { getSecureServerDate, syncServerTime, getSecureLocation } from '../lib/security'
 
-export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'Presensia', schoolLogo = '', onSelectPhoto = null }) {
+export default function CameraTimemarkModal({ isOpen, onClose, profile, user, schoolName = 'GammaraApp', schoolLogo = '', onSelectPhoto = null }) {
   const [stream, setStream] = useState(null)
   const [facingMode, setFacingMode] = useState('environment') // 'user' (selfie) or 'environment' (belakang)
   const [capturedPhotos, setCapturedPhotos] = useState([]) // Array multi-shot (maks 10 foto)
@@ -566,7 +566,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const displayAltitude = geoData.altitude ? `${geoData.altitude} m` : '64.6 m'
     const displayCoords = formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)
 
-    // Helper: Gambar Logo Teks PanritaEdu & Subjudul "100% foto asli" di Bagian Kanan Atas Foto (Ukuran Elegan & Sedikit Lebih Kecil)
+    // Helper: Gambar Logo Teks GammaraApp & Subjudul "100% foto asli" di Bagian Kanan Atas Foto
     const drawPanritaEduBrand = () => {
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
@@ -578,29 +578,26 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const rightMargin = targetWidth - (20 * baseFactor)
 
       const brandFontSize = Math.round(18 * baseFactor)
-      ctx.font = `bold ${brandFontSize}px Outfit, sans-serif`
-      const panritaWidth = ctx.measureText('Panrita').width
-      ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
-      const eduWidth = ctx.measureText('Edu').width
-      const totalBrandWidth = panritaWidth + eduWidth
+      ctx.font = `800 ${brandFontSize}px Poppins, sans-serif`
+      const gammaraWidth = ctx.measureText('Gammara').width
+      const appWidth = ctx.measureText('App').width
+      const totalBrandWidth = gammaraWidth + appWidth
 
       const startBrandX = rightMargin - totalBrandWidth
 
-      // Gambar "Panrita" (Putih Bersih)
+      // Gambar "Gammara" (Putih Bersih di watermark foto)
       ctx.fillStyle = '#FFFFFF'
-      ctx.font = `bold ${brandFontSize}px Outfit, sans-serif`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText('Panrita', startBrandX, topMargin)
+      ctx.fillText('Gammara', startBrandX, topMargin)
 
-      // Gambar "Edu" (Aksen Cyan / Biru Muda Khas PanritaEdu #00B4D8)
-      ctx.fillStyle = '#00B4D8'
-      ctx.font = `800 ${brandFontSize}px Outfit, sans-serif`
-      ctx.fillText('Edu', startBrandX + panritaWidth, topMargin)
+      // Gambar "App" (Toska / Cyan Khas GammaraApp #00BEA5)
+      ctx.fillStyle = '#00BEA5'
+      ctx.fillText('App', startBrandX + gammaraWidth, topMargin)
 
       // Gambar Subjudul "100% foto asli"
       const subBrandFontSize = Math.round(9.5 * baseFactor)
-      ctx.font = `500 ${subBrandFontSize}px Outfit, sans-serif`
+      ctx.font = `500 ${subBrandFontSize}px Poppins, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
       ctx.textAlign = 'right'
       ctx.fillText('100% foto asli', rightMargin, topMargin + brandFontSize + (3 * baseFactor))
@@ -1898,8 +1895,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
                 {[
-                  { id: 'panritaedu', label: '⭐ PanritaEdu' },
-                  { id: 'panrita_split', label: '⭐ Panrita Split' },
+                  { id: 'panritaedu', label: '⭐ GammaraApp' },
+                  { id: 'panrita_split', label: '⭐ Gammara Split' },
                   { id: 'geotag', label: '🧭 Geo Tag' },
                   { id: 'logo', label: '🏫 Logo Sekolah' },
                   { id: 'modern', label: 'Modern Strip' },
@@ -2149,9 +2146,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 pointerEvents: 'none'
               }}
             >
-              <div style={{ fontSize: '0.98rem', lineHeight: '1.1', fontWeight: 'bold' }}>
-                <span style={{ color: '#FFFFFF', fontWeight: '800' }}>Panrita</span>
-                <span style={{ color: '#00B4D8', fontWeight: '800' }}>Edu</span>
+              <div style={{ fontSize: '0.98rem', lineHeight: '1.1', fontWeight: '800', fontFamily: 'Poppins, sans-serif', letterSpacing: '-0.035em' }}>
+                <span style={{ color: '#FFFFFF', fontWeight: '800' }}>Gammara</span>
+                <span style={{ color: '#00BEA5', fontWeight: '800' }}>App</span>
               </div>
               <div style={{ fontSize: '0.56rem', color: 'rgba(255,255,255,0.92)', fontWeight: '500', marginTop: '1px' }}>
                 100% foto asli

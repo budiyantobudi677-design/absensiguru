@@ -488,7 +488,7 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
       {/* ===================== KOP LAPORAN UNTUK CETAK PDF ===================== */}
       <div className="print-header-area" style={{ display: 'none', textAlign: 'center', borderBottom: '2px double #000', paddingBottom: '8px', marginBottom: '12px' }}>
         <h2 style={{ fontSize: '14pt', margin: 0, textTransform: 'uppercase', fontWeight: 'bold' }}>
-          {schoolInfo?.schoolName || 'PANRITA EDU APPLICATION'}
+          {schoolInfo?.schoolName || 'GAMMARAAPP APPLICATION'}
         </h2>
         <h3 style={{ fontSize: '11pt', margin: '3px 0', textTransform: 'uppercase' }}>
           {rekapType === 'kehadiran' && attendanceViewMode === 'bulanan' && `REKAPITULASI PRESENSI BULANAN SISWA - KELAS ${activeClassName?.toUpperCase()}`}

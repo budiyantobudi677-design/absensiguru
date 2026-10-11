@@ -234,7 +234,7 @@ export default function DashboardAdmin() {
       setKepsekPopup({
         show: true,
         title: "Presensi Kehadiran Hanya Melalui Aplikasi Android",
-        message: "Silakan buka aplikasi PanritaEdu di ponsel Android Anda untuk melakukan presensi mandiri.",
+        message: "Silakan buka aplikasi GammaraApp di ponsel Android Anda untuk melakukan presensi mandiri.",
         type: "error"
       })
       return
@@ -933,15 +933,26 @@ export default function DashboardAdmin() {
       <aside className={`admin-sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div>
           {/* Logo & Info Sekolah */}
-          <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: logoSekolah ? 'transparent' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
-              {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src="/panrita_logo.webp" alt="PanritaEdu" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+          <div style={{ padding: '1.25rem 1.25rem 1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: logoSekolah ? 'transparent' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+                {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src="/panrita_logo.webp" alt="GammaraApp" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>
+                <span style={{ fontSize: '0.72rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontWeight: '500' }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span> Portal Admin Web
+                </span>
+              </div>
             </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>
-              <span style={{ fontSize: '0.72rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontWeight: '500' }}>
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span> Portal Admin Web
-              </span>
+            {/* GammaraApp Brand Tagline */}
+            <div style={{ background: 'var(--surface)', padding: '0.45rem 0.65rem', borderRadius: '10px', border: '1px solid var(--border)' }}>
+              <div className="gammara-logo" style={{ fontSize: '15px' }}>
+                <span className="gammara">Gammara</span><span className="app">App</span>
+              </div>
+              <div className="logo-description" style={{ fontSize: '10px', marginTop: '2px' }}>
+                Sistem Manajemen Sekolah Terpadu
+              </div>
             </div>
           </div>
 
@@ -1017,7 +1028,7 @@ export default function DashboardAdmin() {
                 {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
               </h3>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Sistem Presensi Guru & Tenaga Kependidikan {namaSekolah}
+                Sistem Presensi Guru & Tenaga Kependidikan {namaSekolah} • GammaraApp
               </p>
             </div>
           </div>
@@ -2681,15 +2692,31 @@ export default function DashboardAdmin() {
         </div>
       )}
 
-      {/* Camera Timemark Modal untuk Kepala Sekolah */}
-      <CameraTimemarkModal
-        isOpen={showCameraModal}
-        onClose={() => setShowCameraModal(false)}
-        profile={admin}
-        user={admin}
-        schoolName={namaSekolah}
-        schoolLogo={logoSekolah}
-      />
+        {/* Footer Admin GammaraApp */}
+        <footer style={{ marginTop: '3rem', padding: '1.75rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
+          <div className="gammara-logo" style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>
+            <span className="gammara">Gammara</span><span className="app">App</span>
+          </div>
+          <p className="logo-description" style={{ fontSize: '0.8rem', margin: '0 0 2px 0' }}>
+            Sistem Manajemen Sekolah Terpadu
+          </p>
+          <p className="logo-tagline" style={{ fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+            Sekolah Tertata, Pembelajaran Berkualitas.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            &copy; {new Date().getFullYear()} GammaraApp. All Rights Reserved.
+          </p>
+        </footer>
+
+        {/* Camera Timemark Modal untuk Kepala Sekolah */}
+        <CameraTimemarkModal
+          isOpen={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          profile={admin}
+          user={admin}
+          schoolName={namaSekolah}
+          schoolLogo={logoSekolah}
+        />
       </div>
     </div>
   )

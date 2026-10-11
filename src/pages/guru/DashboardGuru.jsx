@@ -75,7 +75,7 @@ function GuruDesktopWrapper({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
             <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '12px', objectFit: 'contain' }} />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</h4>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schoolLogo ? schoolName : 'GammaraApp'}</h4>
               <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600' }}>Portal Pendidik (KBM Web)</span>
             </div>
           </div>
@@ -192,7 +192,7 @@ function GuruDesktopWrapper({
               {activeTab === 'pengaturan' && 'Profil Pegawai & Penugasan'}
             </h2>
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {schoolLogo ? schoolName : 'PanritaEdu'} • {(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}
+              {schoolLogo ? schoolName : 'GammaraApp'} • {(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}
             </p>
           </div>
 
@@ -1053,7 +1053,7 @@ export default function DashboardGuru() {
     if (!isAllowedApp && (jenis === 'masuk' || jenis === 'pulang')) {
       showPopup(
         "Presensi Kehadiran Hanya Melalui Aplikasi",
-        "Demi keamanan integritas lokasi, presensi kehadiran hanya dapat dilakukan melalui aplikasi PanritaEdu di ponsel (Android / iPhone).",
+        "Demi keamanan integritas lokasi, presensi kehadiran hanya dapat dilakukan melalui aplikasi GammaraApp di ponsel (Android / iPhone).",
         "error"
       )
       return
@@ -1541,7 +1541,7 @@ export default function DashboardGuru() {
         <div className="card-gradient no-print" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.65rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
           <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'white', letterSpacing: '0.2px' }}>{schoolLogo ? schoolName : 'PanritaEdu'}</span>
+          <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', letterSpacing: '-0.02em' }}>{schoolLogo ? schoolName : 'GammaraApp'}</span>
         </div>
         <div className="flex justify-between items-center mb-2.5">
           <div className="flex items-center gap-3">
@@ -3048,16 +3048,19 @@ export default function DashboardGuru() {
           </div>
         )})()}
 
-        {/* Footer Copyright & Branding PanritaEdu */}
+        {/* Footer Copyright & Branding GammaraApp */}
         <footer className="guru-footer-branding">
-          <div className="brand" style={{ fontSize: '1.2rem', marginBottom: '0.25rem' }}>
-            <span className="brand-panrita">Panrita</span><span className="brand-edu">Edu</span>
+          <div className="gammara-logo" style={{ fontSize: '1.45rem', marginBottom: '0.25rem' }}>
+            <span className="gammara">Gammara</span><span className="app">App</span>
           </div>
-          <p className="brand-tagline" style={{ fontSize: '0.82rem', margin: '0 0 0.35rem 0' }}>
-            Sistem Presensi & Manajemen Pembelajaran Terpadu
+          <p className="logo-description" style={{ fontSize: '0.8rem', margin: '0 0 2px 0' }}>
+            Sistem Manajemen Sekolah Terpadu
           </p>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8', fontWeight: '500' }}>
-            &copy; {new Date().getFullYear()} All Rights Reserved
+          <p className="logo-tagline" style={{ fontSize: '0.75rem', margin: '0 0 0.4rem 0' }}>
+            Sekolah Tertata, Pembelajaran Berkualitas.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8', fontWeight: '500' }}>
+            &copy; {new Date().getFullYear()} GammaraApp. All Rights Reserved
           </p>
         </footer>
       </div>

@@ -303,50 +303,16 @@ export default function Login() {
 
       <div style={{ width: '100%', maxWidth: '440px', position: 'relative', zIndex: 1 }}>
         
-        {/* Header Logo & Brand PanritaEdu (Sesuai Desain Unggahan) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', marginBottom: '1.75rem', width: '100%' }}>
-          {/* Logo Frame dengan Bingkai Cyan Glowing */}
-          <div 
-            style={{ 
-              width: '66px', 
-              height: '66px', 
-              borderRadius: '20px', 
-              background: '#071C35',
-              padding: '2px',
-              border: '2px solid #00B4D8',
-              boxShadow: '0 0 20px rgba(0, 180, 216, 0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}
-          >
-            <img 
-              src="/panrita_logo.webp" 
-              alt="PanritaEdu Logo" 
-              style={{ 
-                width: '100%', 
-                height: '100%', 
-                borderRadius: '16px', 
-                objectFit: 'contain'
-              }} 
-            />
+        {/* Header Logo & Brand GammaraApp */}
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem', width: '100%' }}>
+          <div className="gammara-logo on-dark" style={{ fontSize: '2.6rem', marginBottom: '0.25rem' }}>
+            <span className="gammara">Gammara</span><span className="app">App</span>
           </div>
-
-          <div style={{ textAlign: 'left', minWidth: 0 }}>
-            {/* Title: PanritaEdu */}
-            <div className="brand" style={{ fontSize: '1.95rem', lineHeight: '1', letterSpacing: '-0.5px' }}>
-              <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Panrita</span>
-              <span className="brand-edu" style={{ color: '#00B4D8', fontWeight: 700, fontSize: '1.95rem' }}>Edu</span>
-            </div>
-            {/* Kepanjangan Akronim PanritaEdu (Menyatu langsung di bawah teks PanritaEdu) */}
-            <p style={{ margin: '0.15rem 0 0.4rem 0', fontSize: '0.73rem', color: '#CBD5E1', fontWeight: 600, letterSpacing: '-0.1px', lineHeight: '1.2' }}>
-              Presensi, Penilaian, Riwayat, dan Tata Kelola Edukasi
-            </p>
-            {/* Tagline: Sistem Presensi & Manajemen Pembelajaran Terpadu (Berada di bawahnya) */}
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#00B4D8', fontWeight: 700, letterSpacing: '-0.2px' }}>
-              Sistem Presensi & Manajemen Pembelajaran Terpadu
-            </p>
+          <div className="logo-description on-dark" style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.4px', lineHeight: 1.45 }}>
+            Sistem Manajemen Sekolah Terpadu
+          </div>
+          <div className="logo-tagline on-dark" style={{ fontSize: '13px', marginTop: '3px' }}>
+            Sekolah Tertata, Pembelajaran Berkualitas.
           </div>
         </div>
 
@@ -383,10 +349,10 @@ export default function Login() {
 
           {/* Heading Form */}
           <div style={{ marginBottom: '1.25rem' }}>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0B2545', margin: '0 0 0.35rem 0', letterSpacing: '-0.3px' }}>
-              {mode === 'register' ? 'Daftar Akun Baru' : mode === 'forgot' ? 'Lupa Password?' : 'Masuk ke PanritaEdu'}
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#092156', margin: '0 0 0.35rem 0', letterSpacing: '-0.3px' }}>
+              {mode === 'register' ? 'Daftar Akun Baru' : mode === 'forgot' ? 'Lupa Password?' : 'Masuk ke GammaraApp'}
             </h2>
-            <p style={{ fontSize: '0.85rem', color: '#64748B', margin: 0, lineHeight: '1.4' }}>
+            <p style={{ fontSize: '0.85rem', color: '#596783', margin: 0, lineHeight: '1.4' }}>
               {mode === 'register' 
                 ? 'Lengkapi email dan kata sandi untuk mendaftar akun pendidik.' 
                 : mode === 'forgot' 
@@ -852,11 +818,17 @@ export default function Login() {
 
         {/* Footer Tagline & Copyright */}
         <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-          <p className="brand" style={{ fontSize: '0.88rem', margin: '0 0 0.25rem 0', color: '#E2E8F0' }}>
-            &copy; {new Date().getFullYear()} <span style={{ fontWeight: 800, color: '#FFFFFF' }}>Panrita</span><span className="brand-edu" style={{ fontSize: '0.88rem' }}>Edu</span>
+          <div className="gammara-logo on-dark" style={{ fontSize: '1.25rem', marginBottom: '0.35rem' }}>
+            <span className="gammara">Gammara</span><span className="app">App</span>
+          </div>
+          <p className="logo-description on-dark" style={{ fontSize: '0.78rem', margin: '0 0 2px 0' }}>
+            Sistem Manajemen Sekolah Terpadu
           </p>
-          <p className="brand-tagline" style={{ fontSize: '0.78rem', margin: 0, color: '#90E0EF', opacity: 0.9 }}>
-            Sistem Presensi & Manajemen Pembelajaran Terpadu
+          <p className="logo-tagline on-dark" style={{ fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+            Sekolah Tertata, Pembelajaran Berkualitas.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>
+            &copy; {new Date().getFullYear()} GammaraApp. All Rights Reserved.
           </p>
         </div>
 

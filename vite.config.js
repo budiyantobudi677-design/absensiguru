@@ -14,9 +14,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 10000000 // 10MB
       },
       manifest: {
-        name: 'PanritaEdu (Presensi Digital)',
-        short_name: 'PanritaEdu',
-        description: 'Aplikasi Presensi Digital & KBM Guru',
+        name: 'GammaraApp (Sistem Manajemen Sekolah Terpadu)',
+        short_name: 'GammaraApp',
+        description: 'GammaraApp - Sistem Manajemen Sekolah Terpadu: Sekolah Tertata, Pembelajaran Berkualitas',
         theme_color: '#4F46E5',
         background_color: '#F8FAFC',
         display: 'standalone',

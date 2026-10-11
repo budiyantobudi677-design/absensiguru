@@ -237,7 +237,7 @@ export default function DashboardPengembang() {
       const url = URL.createObjectURL(blob)
       const aElem = document.createElement('a')
       aElem.href = url
-      aElem.download = `Backup_PanritaEdu_${new Date().toISOString().slice(0, 10)}.json`
+      aElem.download = `Backup_GammaraApp_${new Date().toISOString().slice(0, 10)}.json`
       aElem.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -261,8 +261,10 @@ export default function DashboardPengembang() {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.3px' }}>PanritaEdu</span>
-              <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', borderRadius: '20px', background: '#00B4D8', color: '#071C35', fontWeight: 800, textTransform: 'uppercase' }}>
+              <div className="gammara-logo on-dark" style={{ fontSize: '1.25rem' }}>
+                <span className="gammara">Gammara</span><span className="app">App</span>
+              </div>
+              <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', borderRadius: '20px', background: '#00BEA5', color: '#071C35', fontWeight: 800, textTransform: 'uppercase' }}>
                 SUPER ADMIN
               </span>
             </div>
@@ -413,7 +415,7 @@ export default function DashboardPengembang() {
             <div style={{ background: '#0B2545', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.5rem' }}>
               <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: 800, color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Server size={18} color="#00B4D8" />
-                <span>Status Komponen Teknis PanritaEdu</span>
+                <span>Status Komponen Teknis GammaraApp</span>
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -797,6 +799,22 @@ export default function DashboardPengembang() {
             </div>
           </div>
         )}
+
+        {/* Footer Pengembang GammaraApp */}
+        <footer style={{ marginTop: '3.5rem', padding: '1.5rem', textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="gammara-logo on-dark" style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>
+            <span className="gammara">Gammara</span><span className="app">App</span>
+          </div>
+          <p className="logo-description on-dark" style={{ fontSize: '0.78rem', margin: '0 0 2px 0' }}>
+            Sistem Manajemen Sekolah Terpadu
+          </p>
+          <p className="logo-tagline on-dark" style={{ fontSize: '0.75rem', margin: '0 0 0.4rem 0' }}>
+            Sekolah Tertata, Pembelajaran Berkualitas.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+            &copy; {new Date().getFullYear()} GammaraApp Developer Console
+          </p>
+        </footer>
 
       </div>
     </div>

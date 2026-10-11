@@ -66,7 +66,7 @@ export function getDeviceModelName() {
     return isNative ? 'Apple iPad (App Native)' : 'Apple iPad (PWA)'
   }
   if (/Android/i.test(ua)) {
-    return isNative ? 'Ponsel Android (APK PanritaEdu)' : 'Ponsel Android (Web)'
+    return isNative ? 'Ponsel Android (APK GammaraApp)' : 'Ponsel Android (Web)'
   }
   if (/Mac/i.test(ua)) return 'Komputer Apple Mac'
   if (/Windows/i.test(ua)) return 'Komputer Windows'
