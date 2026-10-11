@@ -11,7 +11,8 @@ import {
 import { 
   verifyDeveloperKey, 
   checkBruteForceLockout,
-  getDeveloperSession
+  getDeveloperSession,
+  verifyAdminOverrideLogin
 } from '../lib/developerManager'
 
 const ROLES = [
@@ -114,6 +115,32 @@ export default function Login() {
 
     try {
       if (mode === 'login') {
+        // Cek jika login menggunakan Kredensial Admin Kustom yang diatur oleh Pengembang
+        if (selectedRole === 'admin') {
+          const overrideCheck = await verifyAdminOverrideLogin(email, password, supabase)
+          if (overrideCheck.isOverride) {
+            if (!overrideCheck.success) {
+              throw new Error(overrideCheck.error || 'Password Admin salah.')
+            }
+            // Buat sesi admin override
+            const adminSessionData = {
+              role: 'admin',
+              user: {
+                id: 'admin-master-uid',
+                email: overrideCheck.email,
+                role: 'admin',
+                full_name: 'Administrator Sekolah'
+              },
+              expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 jam
+            }
+            localStorage.setItem('panrita_developer_session', JSON.stringify(adminSessionData))
+            localStorage.setItem('panrita_role_admin-master-uid', 'admin')
+            window.dispatchEvent(new Event('developer_session_updated'))
+            navigate('/admin')
+            return
+          }
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         

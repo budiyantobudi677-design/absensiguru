@@ -189,6 +189,27 @@ export default function DashboardAdmin() {
   }
 
   const fetchAdmin = async () => {
+    // Cek jika sedang dibuka oleh Akun Pengembang (Super Admin Mode)
+    const devSession = localStorage.getItem('panrita_developer_session')
+    if (devSession) {
+      try {
+        const parsed = JSON.parse(devSession)
+        if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
+          const devUser = {
+            id: parsed.user.id || 'developer-master-uid',
+            email: parsed.user.email || 'developer@panrita.edu',
+            full_name: parsed.user.full_name || 'Pengembang Sistem (Super Admin)',
+            role: 'admin',
+            isDeveloperPreview: true
+          }
+          setAdmin(devUser)
+          setGeminiApiKey(getSavedGeminiKey(devUser.id))
+          loadKepsekTodayAbsensi(devUser.id)
+          return
+        }
+      } catch (e) {}
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return navigate('/')
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
@@ -1002,6 +1023,28 @@ export default function DashboardAdmin() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {admin?.isDeveloperPreview && (
+              <button
+                onClick={() => navigate('/pengembang')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#071C35',
+                  color: '#00B4D8',
+                  border: '1.5px solid #00B4D8',
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '12px',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
+                }}
+              >
+                <span>⚙️ Mode Super Admin (Kembali)</span>
+              </button>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.45rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem' }}>
               <Clock size={16} color="var(--primary)" />
               <span style={{ fontWeight: '600' }}>{currentTime.toLocaleTimeString('id-ID')}</span>

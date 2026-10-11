@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { 
   clearDeveloperSession, 
-  updateDeveloperMasterKey 
+  updateDeveloperMasterKey,
+  updateAdminAccountCredentials,
+  getAdminOverrideCredentials
 } from '../../lib/developerManager'
 import { 
   fetchDeviceBindings, 
@@ -12,12 +14,13 @@ import {
 import { 
   Activity, Shield, Smartphone, Key, Database, LogOut, 
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
-  Clock, Download, Users, Layers, MapPin, Trash2, Cpu
+  Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
+  UserCheck, Lock, Mail, Check, EyeOff
 } from 'lucide-react'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('telemetry') // 'telemetry' | 'devices' | 'security' | 'database'
+  const [activeTab, setActiveTab] = useState('telemetry') // 'telemetry' | 'devices' | 'admin_account' | 'security' | 'database'
   
   // Metrik Sistem
   const [latency, setLatency] = useState(null)
@@ -36,6 +39,14 @@ export default function DashboardPengembang() {
   const [teachersList, setTeachersList] = useState([])
   const [loadingDevices, setLoadingDevices] = useState(false)
 
+  // Kelola Akun & Password Admin
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminPassword, setAdminPassword] = useState('')
+  const [showAdminPass, setShowAdminPass] = useState(false)
+  const [savingAdminAcc, setSavingAdminAcc] = useState(false)
+  const [adminAccStatus, setAdminAccStatus] = useState({ type: '', text: '' })
+  const [currentAdminProfile, setCurrentAdminProfile] = useState(null)
+
   // Ganti Kode Pengembang
   const [newKey, setNewKey] = useState('')
   const [confirmKey, setConfirmKey] = useState('')
@@ -45,6 +56,7 @@ export default function DashboardPengembang() {
   useEffect(() => {
     loadSystemMetrics()
     loadDeviceRegistry()
+    loadAdminAccountInfo()
   }, [])
 
   const pingLatency = async () => {
@@ -99,6 +111,34 @@ export default function DashboardPengembang() {
     }
   }
 
+  const loadAdminAccountInfo = async () => {
+    try {
+      // 1. Cek dari profiles
+      const { data: adminProf } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'admin')
+        .limit(1)
+
+      // 2. Cek dari override credentials
+      const override = await getAdminOverrideCredentials(supabase)
+      
+      if (override && override.email) {
+        setAdminEmail(override.email)
+        setCurrentAdminProfile({
+          email: override.email,
+          updatedAt: override.updatedAt,
+          isOverride: true
+        })
+      } else if (adminProf && adminProf.length > 0) {
+        setAdminEmail(adminProf[0].email || '')
+        setCurrentAdminProfile(adminProf[0])
+      }
+    } catch (e) {
+      console.warn('Error loading admin account:', e)
+    }
+  }
+
   const handleResetDevice = async (teacherId, teacherName) => {
     if (!window.confirm(`Reset kunci perangkat untuk ${teacherName}? Guru ini akan diizinkan mendaftarkan HP barunya saat presensi berikutnya.`)) return
     
@@ -112,6 +152,39 @@ export default function DashboardPengembang() {
       alert(`Kunci perangkat untuk ${teacherName} berhasil dibuka!`)
     } else {
       alert('Gagal membuka kunci perangkat.')
+    }
+  }
+
+  const handleUpdateAdminAccount = async (e) => {
+    e.preventDefault()
+    setAdminAccStatus({ type: '', text: '' })
+
+    if (!adminEmail.trim()) {
+      setAdminAccStatus({ type: 'error', text: 'Email Admin tidak boleh kosong!' })
+      return
+    }
+    if (!adminPassword || adminPassword.length < 6) {
+      setAdminAccStatus({ type: 'error', text: 'Password Admin minimal 6 karakter!' })
+      return
+    }
+
+    setSavingAdminAcc(true)
+    try {
+      await updateAdminAccountCredentials({
+        email: adminEmail.trim(),
+        password: adminPassword,
+        supabase
+      })
+      setAdminAccStatus({ 
+        type: 'success', 
+        text: `Akun & Password Admin berhasil diperbarui! Email: ${adminEmail.trim()}` 
+      })
+      setAdminPassword('')
+      await loadAdminAccountInfo()
+    } catch (err) {
+      setAdminAccStatus({ type: 'error', text: 'Gagal memperbarui akun admin: ' + err.message })
+    } finally {
+      setSavingAdminAcc(false)
     }
   }
 
@@ -259,6 +332,7 @@ export default function DashboardPengembang() {
         <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem', marginBottom: '1.5rem', overflowX: 'auto' }}>
           {[
             { id: 'telemetry', label: 'Ringkasan & Metrik Sistem', icon: Activity },
+            { id: 'admin_account', label: 'Kelola Akun & Password Admin', icon: UserCheck },
             { id: 'devices', label: `Kunci HP (${Object.keys(deviceMap).length} Terikat)`, icon: Smartphone },
             { id: 'security', label: 'Ganti Kode Kunci Pengembang', icon: Key },
             { id: 'database', label: 'Backup & Database Tool', icon: Database },
@@ -356,6 +430,160 @@ export default function DashboardPengembang() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB KHUSUS: KELOLA AKUN & PASSWORD ADMIN */}
+        {activeTab === 'admin_account' && (
+          <div style={{ maxWidth: '620px', margin: '0 auto', background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '2rem 1.75rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '18px', background: 'rgba(0, 180, 216, 0.15)', border: '2px solid #00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: '#00B4D8' }}>
+                <UserCheck size={30} />
+              </div>
+              <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF' }}>
+                Kelola Akun & Kata Sandi Administrator
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', lineHeight: '1.4' }}>
+                Pengembang memiliki hak penuh untuk menetapkan atau mengubah alamat email dan kata sandi akun Admin sekolah sewaktu-waktu.
+              </p>
+            </div>
+
+            {/* Status Info Akun Admin Saat Ini */}
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600 }}>STATUS AKUN ADMIN AKTIF:</span>
+                <span style={{ fontSize: '0.72rem', background: '#00B4D8', color: '#071C35', padding: '0.15rem 0.5rem', borderRadius: '6px', fontWeight: 800 }}>
+                  TERHUBUNG
+                </span>
+              </div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Mail size={16} />
+                <span>{currentAdminProfile?.email || 'Belum ada email admin tersimpan'}</span>
+              </div>
+              {currentAdminProfile?.updatedAt && (
+                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
+                  Terakhir diperbarui: {new Date(currentAdminProfile.updatedAt).toLocaleString('id-ID')}
+                </div>
+              )}
+            </div>
+
+            {/* Alert Status Notifikasi */}
+            {adminAccStatus.text && (
+              <div style={{ 
+                padding: '0.75rem 1rem', 
+                borderRadius: '12px', 
+                marginBottom: '1.25rem', 
+                fontSize: '0.82rem', 
+                fontWeight: 700, 
+                textAlign: 'center', 
+                background: adminAccStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', 
+                border: adminAccStatus.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444', 
+                color: adminAccStatus.type === 'success' ? '#10B981' : '#EF4444' 
+              }}>
+                {adminAccStatus.text}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateAdminAccount}>
+              <div style={{ marginBottom: '1.15rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
+                  Alamat Email Admin Baru
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Mail size={18} color="#64748B" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="email"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="admin@sekolah.edu"
+                    required
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.85rem 1rem 0.85rem 2.75rem', 
+                      background: 'rgba(255,255,255,0.06)', 
+                      border: '1.5px solid rgba(255,255,255,0.15)', 
+                      borderRadius: '12px', 
+                      color: '#FFFFFF', 
+                      fontSize: '0.92rem', 
+                      outline: 'none' 
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#CBD5E1' }}>
+                    Password Admin Baru
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Minimal 6 karakter</span>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <Lock size={18} color="#64748B" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type={showAdminPass ? "text" : "password"}
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Masukkan password admin baru"
+                    required
+                    minLength={6}
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.85rem 2.75rem 0.85rem 2.75rem', 
+                      background: 'rgba(255,255,255,0.06)', 
+                      border: '1.5px solid rgba(255,255,255,0.15)', 
+                      borderRadius: '12px', 
+                      color: '#FFFFFF', 
+                      fontSize: '0.92rem', 
+                      outline: 'none',
+                      letterSpacing: showAdminPass ? 'normal' : '0.1em'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPass(!showAdminPass)}
+                    style={{
+                      position: 'absolute',
+                      right: '0.9rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94A3B8',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    {showAdminPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingAdminAcc}
+                style={{ 
+                  width: '100%', 
+                  padding: '0.95rem', 
+                  background: 'linear-gradient(135deg, #0284C7 0%, #00B4D8 100%)', 
+                  color: '#071C35', 
+                  border: 'none', 
+                  borderRadius: '14px', 
+                  fontSize: '0.95rem', 
+                  fontWeight: 800, 
+                  cursor: savingAdminAcc ? 'not-allowed' : 'pointer', 
+                  boxShadow: '0 4px 14px rgba(0, 180, 216, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                <Check size={18} />
+                <span>{savingAdminAcc ? 'Memperbarui Akun Admin...' : 'Simpan Akun & Password Admin'}</span>
+              </button>
+            </form>
           </div>
         )}
 

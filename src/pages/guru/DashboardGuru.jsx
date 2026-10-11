@@ -172,6 +172,28 @@ function GuruDesktopWrapper({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {user?.isDeveloperPreview && (
+              <button
+                onClick={() => navigate('/pengembang')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#071C35',
+                  color: '#00B4D8',
+                  border: '1.5px solid #00B4D8',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '12px',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
+                }}
+              >
+                <span>⚙️ Mode Super Admin (Kembali)</span>
+              </button>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.4rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600' }}>
               <Clock size={16} color="var(--primary)" />
               <span>{(currentTime instanceof Date && !isNaN(currentTime.getTime())) ? currentTime.toLocaleTimeString('id-ID') : '--:--:--'}</span>
@@ -468,13 +490,44 @@ export default function DashboardGuru() {
 
   const fetchUser = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return navigate('/')
-      setUser(user)
-      setGeminiApiKey(getSavedGeminiKey(user.id))
+      // Cek jika sedang dibuka oleh Akun Pengembang (Super Admin Mode)
+      const devSession = localStorage.getItem('panrita_developer_session')
+      let currentUser = null
+      let currentProfile = null
 
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-      if (profile) setProfile(profile)
+      if (devSession) {
+        try {
+          const parsed = JSON.parse(devSession)
+          if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
+            currentUser = {
+              id: parsed.user.id || 'developer-master-uid',
+              email: parsed.user.email || 'developer@panrita.edu',
+              full_name: parsed.user.full_name || 'Pengembang Sistem (Super Admin)',
+              role: 'guru',
+              isDeveloperPreview: true
+            }
+            currentProfile = {
+              id: currentUser.id,
+              full_name: currentUser.full_name,
+              email: currentUser.email,
+              role: 'guru',
+              penugasan_tipe: 'guru_kelas'
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!currentUser) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return navigate('/')
+        currentUser = user
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        currentProfile = profile
+      }
+
+      setUser(currentUser)
+      if (currentProfile) setProfile(currentProfile)
+      setGeminiApiKey(getSavedGeminiKey(currentUser.id))
 
       // Ambil seluruh profiles untuk mendeteksi kelas yang sudah diambil oleh guru lain
       const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran')

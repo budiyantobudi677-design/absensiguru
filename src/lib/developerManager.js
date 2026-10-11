@@ -218,3 +218,115 @@ export async function updateDeveloperMasterKey(newCode, supabase) {
 
   return true
 }
+
+// Target konfig khusus untuk kredensial akun admin yang dikelola oleh Pengembang
+const ADMIN_CREDENTIALS_TARGET = '__SYSTEM_ADMIN_CREDENTIALS__'
+
+/**
+ * Mengambil kredensial kustom admin jika diatur oleh pengembang
+ */
+export async function getAdminOverrideCredentials(supabase) {
+  if (!supabase) return null
+  try {
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', ADMIN_CREDENTIALS_TARGET)
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (!error && data && data.length > 0) {
+      return JSON.parse(data[0].pesan)
+    }
+  } catch (e) {
+    console.warn('Error fetching admin credentials override:', e)
+  }
+  return null
+}
+
+/**
+ * Mengupdate atau mengatur ulang Akun Email & Password Admin dari Console Pengembang
+ */
+export async function updateAdminAccountCredentials({ email, password, supabase }) {
+  if (!email || !email.includes('@')) {
+    throw new Error('Format email tidak valid.')
+  }
+  if (!password || password.length < 6) {
+    throw new Error('Password admin minimal 6 karakter.')
+  }
+
+  // Hash password menggunakan SHA-256 + salt agar aman dari pembobolan
+  const passwordHash = await hashDeveloperKey(password)
+
+  const payload = JSON.stringify({
+    email: email.trim().toLowerCase(),
+    passwordHash: passwordHash,
+    updatedAt: new Date().toISOString()
+  })
+
+  // 1. Simpan konfigurasi kredensial ke cloud Supabase
+  const { data: existing } = await supabase
+    .from('pengumuman')
+    .select('id')
+    .eq('target_type', ADMIN_CREDENTIALS_TARGET)
+    .limit(1)
+
+  if (existing && existing.length > 0) {
+    const { error } = await supabase
+      .from('pengumuman')
+      .update({ pesan: payload })
+      .eq('id', existing[0].id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase
+      .from('pengumuman')
+      .insert([{
+        pesan: payload,
+        target_type: ADMIN_CREDENTIALS_TARGET,
+        target_users: ''
+      }])
+    if (error) throw error
+  }
+
+  // 2. Sinkronkan juga ke tabel profiles jika ada akun admin
+  try {
+    const { data: adminProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin')
+      .limit(1)
+
+    if (adminProfiles && adminProfiles.length > 0) {
+      await supabase
+        .from('profiles')
+        .update({ email: email.trim().toLowerCase() })
+        .eq('id', adminProfiles[0].id)
+    }
+  } catch (err) {
+    console.warn('Could not update email in profiles:', err)
+  }
+
+  return true
+}
+
+/**
+ * Memeriksa apakah login admin cocok dengan override credentials dari pengembang
+ */
+export async function verifyAdminOverrideLogin(email, password, supabase) {
+  const override = await getAdminOverrideCredentials(supabase)
+  if (!override || !override.email || !override.passwordHash) {
+    return { isOverride: false }
+  }
+
+  const inputEmail = email.trim().toLowerCase()
+  if (inputEmail !== override.email) {
+    return { isOverride: false }
+  }
+
+  const inputHash = await hashDeveloperKey(password)
+  if (inputHash === override.passwordHash) {
+    return { isOverride: true, success: true, email: override.email }
+  } else {
+    return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
+  }
+}
