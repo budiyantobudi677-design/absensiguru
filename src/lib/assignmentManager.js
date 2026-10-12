@@ -52,10 +52,13 @@ export async function syncCloudTeacherAssignments(supabase) {
         const parsed = JSON.parse(data[0].pesan)
         if (parsed && typeof parsed === 'object') {
           Object.entries(parsed).forEach(([tId, info]) => {
-            // Gabungkan dengan prioritas data classes jika ada
+            // Pengaturan eksplisit Admin memiliki otoritas tertinggi (menimpa classes lama)
             currentMap[tId] = {
-              ...info,
-              ...(currentMap[tId] || {})
+              ...(currentMap[tId] || {}),
+              ...info
+            }
+            if (info.tipe === 'tendik') {
+              currentMap[tId].assignedClasses = []
             }
           })
         }
@@ -69,10 +72,22 @@ export async function syncCloudTeacherAssignments(supabase) {
     
     // Cermin ke key localStorage per-guru
     Object.entries(currentMap).forEach(([teacherId, info]) => {
-      if (info.tipe) localStorage.setItem(`guru_tipe_${teacherId}`, info.tipe)
+      if (info.tipe) {
+        localStorage.setItem(`guru_tipe_${teacherId}`, info.tipe)
+        localStorage.setItem(`penugasan_tipe_${teacherId}`, info.tipe)
+      }
       if (info.mapel !== undefined) localStorage.setItem(`guru_mapel_${teacherId}`, info.mapel)
       if (Array.isArray(info.assignedClasses)) {
         localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(info.assignedClasses))
+      }
+      if (info.jabatan) {
+        localStorage.setItem(`guru_jabatan_${teacherId}`, info.jabatan)
+        localStorage.setItem(`tendik_penugasan_${teacherId}`, info.jabatan)
+      }
+      if (info.tipe === 'tendik') {
+        const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(info.jabatan || '')
+        localStorage.setItem(`tendik_kategori_${teacherId}`, isNonOp ? 'non_operator' : 'operator')
+        localStorage.setItem(`panrita_role_${teacherId}`, isNonOp ? 'nonoperator' : 'operator')
       }
     })
 
@@ -100,16 +115,31 @@ export function getCachedAssignmentsMap() {
 /**
  * Menyimpan atau memperbarui penugasan seorang guru ke Cloud Supabase (classes table + config) & LocalStorage
  */
-export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, assignedClasses, supabase }) {
+export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jabatan, assignedClasses, supabase }) {
   try {
     if (!teacherId) return
 
     const selectedClasses = Array.isArray(assignedClasses) ? assignedClasses : []
 
     // 1. Update localStorage lokal seketika
-    if (tipe) localStorage.setItem(`guru_tipe_${teacherId}`, tipe)
+    if (tipe) {
+      localStorage.setItem(`guru_tipe_${teacherId}`, tipe)
+      localStorage.setItem(`penugasan_tipe_${teacherId}`, tipe)
+    }
     if (mapel !== undefined) localStorage.setItem(`guru_mapel_${teacherId}`, mapel)
-    localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(selectedClasses))
+    if (jabatan !== undefined) {
+      localStorage.setItem(`guru_jabatan_${teacherId}`, jabatan)
+      localStorage.setItem(`tendik_penugasan_${teacherId}`, jabatan)
+    }
+
+    if (tipe === 'tendik') {
+      const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(jabatan || '')
+      localStorage.setItem(`tendik_kategori_${teacherId}`, isNonOp ? 'non_operator' : 'operator')
+      localStorage.setItem(`panrita_role_${teacherId}`, isNonOp ? 'nonoperator' : 'operator')
+      localStorage.setItem(`guru_assigned_classes_${teacherId}`, '[]')
+    } else {
+      localStorage.setItem(`guru_assigned_classes_${teacherId}`, JSON.stringify(selectedClasses))
+    }
 
     // 2. Ambil peta saat ini
     let currentMap = { ...getCachedAssignmentsMap() }
@@ -118,7 +148,8 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, ass
     currentMap[teacherId] = {
       tipe: tipe || currentMap[teacherId]?.tipe || 'guru_kelas',
       mapel: mapel !== undefined ? mapel : (currentMap[teacherId]?.mapel || ''),
-      assignedClasses: selectedClasses,
+      jabatan: jabatan !== undefined ? jabatan : (currentMap[teacherId]?.jabatan || ''),
+      assignedClasses: tipe === 'tendik' ? [] : selectedClasses,
       updatedAt: new Date().toISOString()
     }
 

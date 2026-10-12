@@ -363,12 +363,23 @@ export default function DashboardAdmin() {
     setLoadingData(true)
     loadKbmClasses()
     syncCloudSubjects(supabase)
-    await syncCloudTeacherAssignments(supabase)
+    const cloudAssignments = await syncCloudTeacherAssignments(supabase)
     const [profRes, bindRes] = await Promise.all([
       supabase.from('profiles').select('*'),
       fetchDeviceBindings(supabase)
     ])
-    if (profRes.data) setPegawaiData(profRes.data)
+    if (profRes.data) {
+      const merged = profRes.data.map(p => {
+        const assign = cloudAssignments?.[p.id]
+        return {
+          ...p,
+          penugasan_tipe: assign?.tipe || p.penugasan_tipe || p.role,
+          jabatan: assign?.jabatan || p.jabatan,
+          mata_pelajaran: assign?.mapel || p.mata_pelajaran
+        }
+      })
+      setPegawaiData(merged)
+    }
     if (bindRes) setDeviceBindings(bindRes)
     setLoadingData(false)
   }
@@ -1334,9 +1345,10 @@ export default function DashboardAdmin() {
              {loadingData ? <p className="text-center text-muted">Memuat data...</p> : (
                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
-                  {filteredPegawai.map(p => {
+                   {filteredPegawai.map(p => {
                     const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
-                    const isMapel = guruTipe === 'guru_mapel';
+                    const isTendik = guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan);
+                    const isMapel = !isTendik && (guruTipe === 'guru_mapel' || p.role === 'guru_mapel');
                     return (
                       <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                         <div className="flex gap-3 items-center" style={{ minWidth: 0, flex: 1 }}>
@@ -1349,11 +1361,11 @@ export default function DashboardAdmin() {
                                 fontWeight: '700',
                                 padding: '2px 7px',
                                 borderRadius: '8px',
-                                background: isMapel ? '#EEF2FF' : '#ECFDF5',
-                                color: isMapel ? '#4F46E5' : '#059669',
-                                border: `1px solid ${isMapel ? '#C7D2FE' : '#A7F3D0'}`
+                                background: isTendik ? '#E0F2FE' : (isMapel ? '#EEF2FF' : '#ECFDF5'),
+                                color: isTendik ? '#0369A1' : (isMapel ? '#4F46E5' : '#059669'),
+                                border: `1px solid ${isTendik ? '#BAE6FD' : (isMapel ? '#C7D2FE' : '#A7F3D0')}`
                               }}>
-                                {isMapel ? 'Guru Mapel' : 'Guru Kelas'}
+                                {isTendik ? (p.jabatan || 'Tendik') : (isMapel ? 'Guru Mapel' : 'Guru Kelas')}
                               </span>
                             </div>
                             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
@@ -1525,30 +1537,31 @@ export default function DashboardAdmin() {
                         teacherId: editingPegawai.id,
                         tipe: newRole,
                         mapel: newMapel,
+                        jabatan: formattedJabatan,
                         assignedClasses: assignedClasses,
                         supabase
                       })
 
-                      // Update profil di database (tanpa mengubah role utama agar tidak melanggar profiles_role_check)
-                      let { error } = await supabase.from('profiles').update({
-                        jabatan: formattedJabatan
-                      }).eq('id', editingPegawai.id)
-
-                      if (!error) {
-                        // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
-                        localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
-                        setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
-                          ...item, 
-                          penugasan_tipe: newRole, 
-                          mata_pelajaran: newMapel, 
-                          jabatan: formattedJabatan 
-                        } : item))
-                        setEditingPegawai(null)
-                        loadKbmClasses()
-                        alert("Penugasan guru berhasil diperbarui!")
-                      } else {
-                        alert("Gagal memperbarui: " + error.message)
+                      // Coba update profil di database (jika diizinkan oleh RLS database)
+                      try {
+                        await supabase.from('profiles').update({
+                          jabatan: formattedJabatan
+                        }).eq('id', editingPegawai.id)
+                      } catch (e) {
+                        console.warn('Profile update warning:', e)
                       }
+
+                      // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
+                      localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
+                      setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
+                        ...item, 
+                        penugasan_tipe: newRole, 
+                        mata_pelajaran: newMapel, 
+                        jabatan: formattedJabatan 
+                      } : item))
+                      setEditingPegawai(null)
+                      loadKbmClasses()
+                      alert("Penugasan pegawai berhasil diperbarui!")
                       setSavingPegawai(false)
                     }}>
                       <div className="input-group" style={{ marginBottom: '1rem' }}>

@@ -15,6 +15,7 @@ import {
   getDeveloperSession,
   verifyAdminOverrideLogin
 } from '../lib/developerManager'
+import { syncCloudTeacherAssignments } from '../lib/assignmentManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -160,23 +161,30 @@ export default function Login() {
         localStorage.removeItem('panrita_developer_session')
         localStorage.removeItem('intended_login_role')
 
-        const { data: profile } = await supabase.from('profiles').select('role, jabatan, full_name').eq('id', data.user.id).maybeSingle()
+        const [profRes, cloudAssignments] = await Promise.all([
+          supabase.from('profiles').select('role, jabatan, full_name').eq('id', data.user.id).maybeSingle(),
+          syncCloudTeacherAssignments(supabase)
+        ])
+        const profile = profRes?.data
+        const myAssignment = cloudAssignments?.[data.user.id]
+
         let userRole = profile?.role || 'guru'
+        const effectiveJabatan = myAssignment?.jabatan || profile?.jabatan || localStorage.getItem(`tendik_penugasan_${data.user.id}`) || ''
+        const effectiveTipe = myAssignment?.tipe || localStorage.getItem(`guru_tipe_${data.user.id}`) || ''
 
         const isAdmin = userRole === 'admin'
         const isKepsek = userRole === 'kepsek'
-        const isTendik = userRole === 'tendik' || profile?.jabatan?.includes('Tendik') || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+        const isTendik = userRole === 'tendik' || effectiveTipe === 'tendik' || effectiveJabatan?.includes('Tendik') || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(effectiveJabatan) || effectiveJabatan?.includes('Operator')
         const isGuru = !isAdmin && !isKepsek && !isTendik
 
         // Klasifikasikan tendik ke operator atau nonoperator
         if (isTendik) {
-          const isOperatorUser = profile?.jabatan?.includes('Operator') || (selectedRole === 'tendik' && tendikCategory === 'operator') || localStorage.getItem(`tendik_kategori_${data.user.id}`) === 'operator'
-          userRole = isOperatorUser ? 'operator' : 'nonoperator'
+          const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(effectiveJabatan) || localStorage.getItem(`tendik_kategori_${data.user.id}`) === 'non_operator'
+          userRole = isNonOp ? 'nonoperator' : 'operator'
         }
 
         localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
 
-        // VALIDASI PROTEKSI KUNCI PERANGKAT (1 PERANGKAT = 1 AKUN GURU/TENDIK)
         // Arahkan ke dashboard sesuai peran akun sebenarnya
         if (isAdmin) {
           navigate('/admin')

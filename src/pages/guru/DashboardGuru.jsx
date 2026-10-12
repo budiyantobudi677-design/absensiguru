@@ -172,9 +172,9 @@ function GuruDesktopWrapper({
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                   {(() => {
-                    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+                    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
                     if (isTendikUser) return profile?.jabatan || 'Tenaga Kependidikan'
-                    if (profile?.role === 'guru_mapel') return 'Guru Mapel'
+                    if (profile?.role === 'guru_mapel' || guruTipeState === 'guru_mapel') return 'Guru Mapel'
                     if (profile?.role === 'kepsek') return 'Kepala Sekolah'
                     return 'Guru Kelas'
                   })()}
@@ -714,12 +714,17 @@ export default function DashboardGuru() {
       const cloudAssignments = await syncCloudTeacherAssignments(supabase)
       const myCloudAssignment = cloudAssignments?.[currentUser.id]
 
+      // Cek apakah akun ini dikonfigurasi sebagai Tendik di cloud atau profil
+      const isTendikFromCloud = myCloudAssignment?.tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(myCloudAssignment?.jabatan)
+
       // Cari apakah guru ini sudah memiliki kelas di tabel classes Supabase (sumber utama)
-      const dbMyClass = cls?.find(c => c.teacher_id === currentUser.id)
+      const dbMyClass = isTendikFromCloud ? null : cls?.find(c => c.teacher_id === currentUser.id)
 
       // Ambil data penugasan kelas guru dari database & cloud terlebih dahulu (agar tidak pernah hilang saat ganti perangkat/akun baru)
       let storedAssigned = []
-      if (dbMyClass) {
+      if (isTendikFromCloud) {
+        storedAssigned = []
+      } else if (dbMyClass) {
         storedAssigned = [dbMyClass.id]
       } else if (myCloudAssignment && Array.isArray(myCloudAssignment.assignedClasses) && myCloudAssignment.assignedClasses.length > 0) {
         storedAssigned = myCloudAssignment.assignedClasses
@@ -742,15 +747,33 @@ export default function DashboardGuru() {
       const userMapel = myCloudAssignment?.mapel || currentProfile?.mata_pelajaran || await getLocalPref(`guru_mapel_${currentUser.id}`, '')
       setGuruMapelState(userMapel)
 
+      const userJabatan = myCloudAssignment?.jabatan || currentProfile?.jabatan || (userTipe === 'tendik' ? 'Tenaga Kependidikan' : currentProfile?.jabatan)
+
+      // Merge data penugasan ke profile state
+      const mergedProfile = {
+        ...(currentProfile || {}),
+        penugasan_tipe: userTipe,
+        jabatan: userJabatan,
+        mata_pelajaran: userMapel
+      }
+      setProfile(mergedProfile)
+
       // Pastikan tersimpan sinkron di localStorage perangkat ini
       if (storedAssigned.length > 0) {
         localStorage.setItem(`guru_assigned_classes_${currentUser.id}`, JSON.stringify(storedAssigned))
       }
-      if (userTipe) localStorage.setItem(`guru_tipe_${currentUser.id}`, userTipe)
+      if (userTipe) {
+        localStorage.setItem(`guru_tipe_${currentUser.id}`, userTipe)
+        localStorage.setItem(`penugasan_tipe_${currentUser.id}`, userTipe)
+      }
       if (userMapel) localStorage.setItem(`guru_mapel_${currentUser.id}`, userMapel)
+      if (userJabatan) {
+        localStorage.setItem(`guru_jabatan_${currentUser.id}`, userJabatan)
+        localStorage.setItem(`tendik_penugasan_${currentUser.id}`, userJabatan)
+      }
 
       // Hanya tampilkan reminder penugasan jika akun guru belum pernah disetting (Tendik tidak butuh rombel kelas)
-      const isTendikUser = currentProfile?.role === 'tendik' || currentProfile?.penugasan_tipe === 'tendik' || userTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(currentProfile?.jabatan)
+      const isTendikUser = mergedProfile?.role === 'tendik' || mergedProfile?.penugasan_tipe === 'tendik' || userTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(mergedProfile?.jabatan)
       const isConfigured = isTendikUser
         ? true
         : (userTipe === 'guru_mapel' 

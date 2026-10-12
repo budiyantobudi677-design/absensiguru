@@ -14,6 +14,7 @@ import DashboardOperator from './pages/operator/DashboardOperator'
 import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
+import { syncCloudTeacherAssignments } from './lib/assignmentManager'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -40,13 +41,23 @@ function App() {
       }
 
       try {
-        const { data } = await supabase.from('profiles').select('role, jabatan, full_name').eq('id', userSession.user.id).maybeSingle()
+        const [profRes, cloudAssignments] = await Promise.all([
+          supabase.from('profiles').select('role, jabatan, full_name').eq('id', userSession.user.id).maybeSingle(),
+          syncCloudTeacherAssignments(supabase)
+        ])
+        const data = profRes?.data
+        const myAssignment = cloudAssignments?.[userSession.user.id]
+
         let userRole = data?.role || cachedRole || 'guru'
-        
-        // Klasifikasikan tendik ke operator atau nonoperator jika rolenya tendik
-        if (userRole === 'tendik') {
-          const isOp = data?.jabatan?.includes('Operator') || localStorage.getItem(`tendik_kategori_${userSession.user.id}`) === 'operator'
-          userRole = isOp ? 'operator' : 'nonoperator'
+        const effectiveJabatan = myAssignment?.jabatan || data?.jabatan || localStorage.getItem(`tendik_penugasan_${userSession.user.id}`) || ''
+        const effectiveTipe = myAssignment?.tipe || localStorage.getItem(`guru_tipe_${userSession.user.id}`) || ''
+
+        // Cek apakah akun ini dikonfigurasi sebagai Tendik (baik via role, penugasan cloud, atau jabatan)
+        const isTendikUser = userRole === 'tendik' || effectiveTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(effectiveJabatan) || effectiveJabatan?.includes('Operator')
+
+        if (isTendikUser) {
+          const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(effectiveJabatan) || localStorage.getItem(`tendik_kategori_${userSession.user.id}`) === 'non_operator'
+          userRole = isNonOp ? 'nonoperator' : 'operator'
         }
         
         // Bersihkan intended role jika ada
