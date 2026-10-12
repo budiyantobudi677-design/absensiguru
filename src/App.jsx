@@ -10,6 +10,8 @@ import Login from './pages/Login'
 import DashboardGuru from './pages/guru/DashboardGuru'
 import DashboardAdmin from './pages/admin/DashboardAdmin'
 import DashboardKepsek from './pages/kepsek/DashboardKepsek'
+import DashboardOperator from './pages/operator/DashboardOperator'
+import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
 import { verifyOrBindDevice } from './lib/deviceManager'
@@ -39,8 +41,14 @@ function App() {
       }
 
       try {
-        const { data } = await supabase.from('profiles').select('role').eq('id', userSession.user.id).maybeSingle()
-        const userRole = data?.role || cachedRole || 'guru'
+        const { data } = await supabase.from('profiles').select('role, jabatan, penugasan_tipe, full_name').eq('id', userSession.user.id).maybeSingle()
+        let userRole = data?.role || cachedRole || 'guru'
+        
+        // Klasifikasikan tendik ke operator atau nonoperator jika rolenya tendik
+        if (userRole === 'tendik' || data?.penugasan_tipe === 'tendik') {
+          const isOp = data?.jabatan?.includes('Operator') || localStorage.getItem(`tendik_kategori_${userSession.user.id}`) === 'operator'
+          userRole = isOp ? 'operator' : 'nonoperator'
+        }
         
         // Cek intended role hanya jika ini adalah alur callback OAuth Google
         const isOAuthCallback = typeof window !== 'undefined' && (window.location.hash.includes('access_token') || window.location.search.includes('code'))
@@ -250,7 +258,15 @@ function App() {
       backHandle = await CapApp.addListener('backButton', ({ canGoBack }) => {
         const path = window.location.pathname
         // Jika sedang di dashboard utama atau halaman root, keluar aplikasi tanpa logout
-        if (path === '/' || path === '/guru' || path === '/guru/' || path === '/admin' || path === '/admin/' || path === '/kepsek' || path === '/kepsek/' || path === '/pengembang' || path === '/pengembang/') {
+        if (
+          path === '/' || 
+          path === '/guru' || path === '/guru/' || 
+          path === '/operator' || path === '/operator/' || 
+          path === '/nonoperator' || path === '/nonoperator/' || 
+          path === '/admin' || path === '/admin/' || 
+          path === '/kepsek' || path === '/kepsek/' || 
+          path === '/pengembang' || path === '/pengembang/'
+        ) {
           CapApp.exitApp()
         } else if (canGoBack) {
           window.history.back()
@@ -282,6 +298,8 @@ function App() {
   const isDevRole = role === 'pengembang' || role === 'developer'
   const isKepsekRole = role === 'kepsek'
   const isAdminRole = role === 'admin'
+  const isOperatorRole = role === 'operator'
+  const isNonOperatorRole = role === 'nonoperator'
 
   return (
     <PullToRefresh>
@@ -296,12 +314,20 @@ function App() {
                     ? <Navigate to="/pengembang" /> 
                     : (isKepsekRole 
                         ? <Navigate to="/kepsek" /> 
-                        : (isAdminRole ? <Navigate to="/admin" /> : <Navigate to="/guru" />)))
+                        : (isAdminRole 
+                            ? <Navigate to="/admin" /> 
+                            : (isOperatorRole 
+                                ? <Navigate to="/operator" /> 
+                                : (isNonOperatorRole ? <Navigate to="/nonoperator" /> : <Navigate to="/guru" />)))))
             } 
           />
           <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
+          <Route path="/operator/*" element={session ? <DashboardOperator /> : <Navigate to="/" />} />
+          <Route path="/nonoperator/*" element={session ? <DashboardTendik /> : <Navigate to="/" />} />
           <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
           <Route path="/kepsek/*" element={session ? <DashboardKepsek /> : <Navigate to="/" />} />
+          {/* Alias /kepalasekolah diarahkan langsung ke /kepsek */}
+          <Route path="/kepalasekolah/*" element={<Navigate to="/kepsek" replace />} />
           <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" />} />
         </Routes>
       </Router>

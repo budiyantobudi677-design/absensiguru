@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -583,24 +583,65 @@ export default function DashboardAdmin() {
     }
   }
 
+  const location = useLocation()
+
+  // Sinkronisasi ActiveTab dengan URL Path di Admin Dashboard
+  useEffect(() => {
+    const path = location.pathname.replace(/\/+$/, '')
+    if (path === '/admin/pegawai') {
+      setActiveTab('pegawai')
+      loadPegawai()
+    } else if (path === '/admin/kbm') {
+      setActiveTab('kbm')
+      loadKbmClasses()
+      loadPegawai()
+      loadKbmData()
+    } else if (path === '/admin/laporan') {
+      setActiveTab('laporan')
+      loadPegawai()
+      loadAbsensi()
+    } else if (path === '/admin/pengumuman') {
+      setActiveTab('pengumuman')
+      loadPengumuman()
+      loadPegawai()
+    } else if (path === '/admin/pengaturan') {
+      setActiveTab('pengaturan')
+      fetchSettings()
+      loadHariLibur()
+    } else if (path === '/admin') {
+      setActiveTab('overview')
+      fetchOverviewStats()
+    }
+  }, [location.pathname])
+
   const handleMenuClick = (menu) => {
     setActiveTab(menu)
-    if (menu === 'pegawai') loadPegawai()
+    if (menu === 'pegawai') {
+       navigate('/admin/pegawai')
+       loadPegawai()
+    }
     if (menu === 'kbm') {
+       navigate('/admin/kbm')
        loadKbmClasses()
        loadPegawai()
        loadKbmData()
     }
     if (menu === 'laporan') {
+       navigate('/admin/laporan')
        loadPegawai()
        loadAbsensi()
     }
-    if (menu === 'overview') fetchOverviewStats()
+    if (menu === 'overview') {
+       navigate('/admin')
+       fetchOverviewStats()
+    }
     if (menu === 'pengumuman') {
+       navigate('/admin/pengumuman')
        loadPengumuman()
        loadPegawai()
     }
     if (menu === 'pengaturan') {
+       navigate('/admin/pengaturan')
        fetchSettings()
        loadHariLibur()
     }
@@ -1003,7 +1044,7 @@ export default function DashboardAdmin() {
 
           {/* Menu Items Vertikal */}
           <nav className="admin-sidebar-nav">
-            <button className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => { setActiveTab('overview'); setIsSidebarOpen(false); }}>
+            <button className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => { handleMenuClick('overview'); setIsSidebarOpen(false); }}>
               <Activity size={18} />
               <span>Ringkasan (Overview)</span>
             </button>

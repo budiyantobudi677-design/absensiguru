@@ -247,6 +247,13 @@ export default function Login() {
           navigate('/admin')
         } else if (isKepsek) {
           navigate('/kepsek')
+        } else if (isTendik) {
+          const isOperatorUser = profile?.jabatan?.includes('Operator') || (selectedRole === 'tendik' && tendikCategory === 'operator')
+          if (isOperatorUser) {
+            navigate('/operator')
+          } else {
+            navigate('/nonoperator')
+          }
         } else {
           navigate('/guru')
         }

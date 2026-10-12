@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -583,24 +583,65 @@ export default function DashboardKepsek() {
     }
   }
 
+  const location = useLocation()
+
+  // Sinkronisasi ActiveTab dengan URL Path di Kepsek Dashboard
+  useEffect(() => {
+    const path = location.pathname.replace(/\/+$/, '')
+    if (path === '/kepsek/pegawai') {
+      setActiveTab('pegawai')
+      loadPegawai()
+    } else if (path === '/kepsek/kbm') {
+      setActiveTab('kbm')
+      loadKbmClasses()
+      loadPegawai()
+      loadKbmData()
+    } else if (path === '/kepsek/laporan') {
+      setActiveTab('laporan')
+      loadPegawai()
+      loadAbsensi()
+    } else if (path === '/kepsek/pengumuman') {
+      setActiveTab('pengumuman')
+      loadPengumuman()
+      loadPegawai()
+    } else if (path === '/kepsek/pengaturan') {
+      setActiveTab('pengaturan')
+      fetchSettings()
+      loadHariLibur()
+    } else if (path === '/kepsek') {
+      setActiveTab('overview')
+      fetchOverviewStats()
+    }
+  }, [location.pathname])
+
   const handleMenuClick = (menu) => {
     setActiveTab(menu)
-    if (menu === 'pegawai') loadPegawai()
+    if (menu === 'pegawai') {
+       navigate('/kepsek/pegawai')
+       loadPegawai()
+    }
     if (menu === 'kbm') {
+       navigate('/kepsek/kbm')
        loadKbmClasses()
        loadPegawai()
        loadKbmData()
     }
     if (menu === 'laporan') {
+       navigate('/kepsek/laporan')
        loadPegawai()
        loadAbsensi()
     }
-    if (menu === 'overview') fetchOverviewStats()
+    if (menu === 'overview') {
+       navigate('/kepsek')
+       fetchOverviewStats()
+    }
     if (menu === 'pengumuman') {
+       navigate('/kepsek/pengumuman')
        loadPengumuman()
        loadPegawai()
     }
     if (menu === 'pengaturan') {
+       navigate('/kepsek/pengaturan')
        fetchSettings()
        loadHariLibur()
     }
@@ -1003,7 +1044,7 @@ export default function DashboardKepsek() {
 
           {/* Menu Items Vertikal */}
           <nav className="admin-sidebar-nav">
-            <button className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => { setActiveTab('overview'); setIsSidebarOpen(false); }}>
+            <button className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => { handleMenuClick('overview'); setIsSidebarOpen(false); }}>
               <Activity size={18} />
               <span>Ringkasan (Overview)</span>
             </button>

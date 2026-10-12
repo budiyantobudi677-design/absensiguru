@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Save, ShieldCheck, ShieldAlert } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
@@ -363,6 +363,45 @@ export default function DashboardGuru() {
   }, [])
 
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Sinkronisasi ActiveTab dan KBM SubTab dengan URL Path
+  useEffect(() => {
+    const path = location.pathname.replace(/\/+$/, '') // normalize trailing slash
+    if (path.startsWith('/guru/kbm')) {
+      setActiveTab('kbm')
+      if (path === '/guru/kbm/presensi' || path === '/guru/kbm/presensi-siswa') setKbmSubTab('presensi_siswa')
+      else if (path === '/guru/kbm/jurnal') setKbmSubTab('jurnal')
+      else if (path === '/guru/kbm/nilai') setKbmSubTab('nilai')
+      else if (path === '/guru/kbm/rekap') setKbmSubTab('rekap')
+      else if (path === '/guru/kbm/master') setKbmSubTab('master_siswa')
+      else setKbmSubTab('menu')
+    } else if (path === '/guru/riwayat') {
+      setActiveTab('riwayat')
+    } else if (path === '/guru/pengumuman') {
+      setActiveTab('pengumuman')
+    } else if (path === '/guru/profil' || path === '/guru/pengaturan') {
+      setActiveTab('pengaturan')
+    } else if (path === '/guru') {
+      setActiveTab('absensi')
+    }
+  }, [location.pathname])
+
+  const handleTabChangeWithUrl = (newTab, subTab = null) => {
+    setActiveTab(newTab)
+    if (newTab === 'absensi') navigate('/guru')
+    else if (newTab === 'riwayat') navigate('/guru/riwayat')
+    else if (newTab === 'pengumuman') navigate('/guru/pengumuman')
+    else if (newTab === 'pengaturan') navigate('/guru/profil')
+    else if (newTab === 'kbm') {
+      if (subTab === 'presensi_siswa') { setKbmSubTab('presensi_siswa'); navigate('/guru/kbm/presensi'); }
+      else if (subTab === 'jurnal') { setKbmSubTab('jurnal'); navigate('/guru/kbm/jurnal'); }
+      else if (subTab === 'nilai') { setKbmSubTab('nilai'); navigate('/guru/kbm/nilai'); }
+      else if (subTab === 'rekap') { setKbmSubTab('rekap'); navigate('/guru/kbm/rekap'); }
+      else if (subTab === 'master_siswa') { setKbmSubTab('master_siswa'); navigate('/guru/kbm/master'); }
+      else { setKbmSubTab('menu'); navigate('/guru/kbm'); }
+    }
+  }
 
   // Helper untuk mengecek apakah penugasan guru sudah lengkap
   const checkAssignmentConfigured = () => {
@@ -1530,7 +1569,7 @@ export default function DashboardGuru() {
         schoolLogo={schoolLogo}
         schoolName={schoolName}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleTabChangeWithUrl}
         checkAssignmentConfigured={checkAssignmentConfigured}
         setShowAssignmentReminder={setShowAssignmentReminder}
         showPopup={showPopup}
@@ -2756,7 +2795,7 @@ export default function DashboardGuru() {
                       <>
                         {/* Card 1: Presensi Siswa */}
                         <div
-                          onClick={() => setKbmSubTab('presensi_siswa')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'presensi_siswa')}
                           className="card"
                           style={{
                             padding: '1.1rem 1.25rem',
@@ -2790,7 +2829,7 @@ export default function DashboardGuru() {
 
                         {/* Card 2: Jurnal Mengajar */}
                         <div
-                          onClick={() => setKbmSubTab('jurnal')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'jurnal')}
                           className="card"
                           style={{
                             padding: '1.1rem 1.25rem',
@@ -2824,7 +2863,7 @@ export default function DashboardGuru() {
 
                         {/* Card 3: Input Nilai Siswa */}
                         <div
-                          onClick={() => setKbmSubTab('nilai')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'nilai')}
                           className="card"
                           style={{
                             padding: '1.1rem 1.25rem',
@@ -2858,7 +2897,7 @@ export default function DashboardGuru() {
 
                         {/* Card 4: Rekap & Laporan */}
                         <div
-                          onClick={() => setKbmSubTab('rekap')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'rekap')}
                           className="card"
                           style={{
                             padding: '1.1rem 1.25rem',
@@ -2894,7 +2933,7 @@ export default function DashboardGuru() {
 
                     {/* Card 5: Master Siswa & Kelas (Bisa diakses Guru & Operator) */}
                     <div
-                      onClick={() => setKbmSubTab('master_siswa')}
+                      onClick={() => handleTabChangeWithUrl('kbm', 'master_siswa')}
                       className="card"
                       style={{
                         padding: '1.1rem 1.25rem',
@@ -2932,7 +2971,7 @@ export default function DashboardGuru() {
                   {/* Header Sub-Halaman dengan Tombol Kembali */}
                   <div className="card" style={{ padding: '0.75rem 1rem', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                     <button
-                      onClick={() => setKbmSubTab('menu')}
+                      onClick={() => handleTabChangeWithUrl('kbm')}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -2956,7 +2995,7 @@ export default function DashboardGuru() {
                     {!isOp ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', padding: '2px 0' }}>
                         <button
-                          onClick={() => setKbmSubTab('presensi_siswa')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'presensi_siswa')}
                           style={{
                             padding: '5px 10px',
                             borderRadius: '8px',
@@ -2972,7 +3011,7 @@ export default function DashboardGuru() {
                           📝 Presensi
                         </button>
                         <button
-                          onClick={() => setKbmSubTab('jurnal')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'jurnal')}
                           style={{
                             padding: '5px 10px',
                             borderRadius: '8px',
@@ -2988,7 +3027,7 @@ export default function DashboardGuru() {
                           📓 Jurnal
                         </button>
                         <button
-                          onClick={() => setKbmSubTab('nilai')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'nilai')}
                           style={{
                             padding: '5px 10px',
                             borderRadius: '8px',
@@ -3004,7 +3043,7 @@ export default function DashboardGuru() {
                           ✍️ Nilai
                         </button>
                         <button
-                          onClick={() => setKbmSubTab('rekap')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'rekap')}
                           style={{
                             padding: '5px 10px',
                             borderRadius: '8px',
@@ -3020,7 +3059,7 @@ export default function DashboardGuru() {
                           📊 Rekap
                         </button>
                         <button
-                          onClick={() => setKbmSubTab('master_siswa')}
+                          onClick={() => handleTabChangeWithUrl('kbm', 'master_siswa')}
                           style={{
                             padding: '5px 10px',
                             borderRadius: '8px',
@@ -3113,7 +3152,7 @@ export default function DashboardGuru() {
       {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
       {!isDesktop && (
         <nav className="bottom-nav">
-          <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('absensi')}>
+          <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('absensi')}>
             <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
           </button>
           <button
@@ -3143,7 +3182,7 @@ export default function DashboardGuru() {
             onClick={() => {
               const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
               if (isTendikUser) {
-                setActiveTab('kbm')
+                handleTabChangeWithUrl('kbm')
                 return
               }
               if (!checkAssignmentConfigured()) {
@@ -3151,7 +3190,7 @@ export default function DashboardGuru() {
                 showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
                 return;
               }
-              setActiveTab('kbm');
+              handleTabChangeWithUrl('kbm');
             }}
           >
             <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> 
@@ -3167,13 +3206,13 @@ export default function DashboardGuru() {
             className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}
             style={{ flex: 1 }}
             onClick={() => {
-              setActiveTab('riwayat')
+              handleTabChangeWithUrl('riwayat')
               loadHistory()
             }}
           >
             <History size={20} strokeWidth={activeTab === 'riwayat' ? 2.5 : 1.5} /> Riwayat
           </button>
-          <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => setActiveTab('pengaturan')}>
+          <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('pengaturan')}>
             <UserCircle size={20} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
           </button>
         </nav>
