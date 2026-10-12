@@ -6,12 +6,25 @@
 import { Preferences } from '@capacitor/preferences'
 
 export const GEMINI_MODELS = [
+  // 1. Generasi Terbaru Gemini 3.x (Top Priority)
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-pro',
+  'gemini-flash-latest',
+  'gemini-pro-latest',
+
+  // 2. Generasi Gemini 2.x
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
-  'gemini-flash-latest',
-  'gemini-pro-latest',
+
+  // 3. Fallback Legacy
   'gemini-1.5-flash-latest',
   'gemini-1.5-flash',
   'gemini-1.5-pro'
@@ -41,10 +54,22 @@ async function getAvailableModelsForKey(cleanKey) {
           .filter(Boolean)
 
         if (supported.length > 0) {
-          // Prioritaskan model flash (cepat dan hemat kuota)
-          const flashModels = supported.filter(m => m.includes('flash'))
-          const otherModels = supported.filter(m => !m.includes('flash'))
-          return [...flashModels, ...otherModels]
+          // Urutkan prioritas: Gemini 3.x -> Gemini 2.x -> Lainnya
+          const priorityWeight = (name) => {
+            if (name.includes('3.8')) return 100
+            if (name.includes('3.7')) return 95
+            if (name.includes('3.6')) return 90
+            if (name.includes('3.5')) return 85
+            if (name.includes('3.1')) return 80
+            if (name.includes('flash-latest')) return 75
+            if (name.includes('2.5')) return 70
+            if (name.includes('2.0')) return 65
+            if (name.includes('flash')) return 60
+            return 10
+          }
+
+          const sortedModels = supported.sort((a, b) => priorityWeight(b) - priorityWeight(a))
+          return sortedModels
         }
       }
     }
