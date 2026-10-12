@@ -48,6 +48,8 @@ function GuruDesktopWrapper({
   schoolName,
   activeTab,
   setActiveTab,
+  kbmSubTab,
+  handleTabChangeWithUrl,
   checkAssignmentConfigured,
   setShowAssignmentReminder,
   showPopup,
@@ -194,6 +196,7 @@ function GuruDesktopWrapper({
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 0.25rem 0' }}>
               {activeTab === 'absensi' && 'Presensi & Kehadiran Pegawai'}
               {activeTab === 'kbm' && 'Manajemen Data & Master KBM'}
+              {activeTab === 'modul_ajar' && 'Penyusunan Modul Ajar (RPM AI)'}
               {activeTab === 'riwayat' && 'Riwayat & Rekap Kehadiran'}
               {activeTab === 'pengumuman' && 'Pengumuman & Notifikasi'}
               {activeTab === 'pengaturan' && 'Profil Pegawai & Penugasan'}
@@ -1553,6 +1556,8 @@ export default function DashboardGuru() {
         schoolName={schoolName}
         activeTab={activeTab}
         setActiveTab={handleTabChangeWithUrl}
+        kbmSubTab={kbmSubTab}
+        handleTabChangeWithUrl={handleTabChangeWithUrl}
         checkAssignmentConfigured={checkAssignmentConfigured}
         setShowAssignmentReminder={setShowAssignmentReminder}
         showPopup={showPopup}
