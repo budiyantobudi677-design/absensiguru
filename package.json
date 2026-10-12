@@ -19,6 +19,7 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
     "@supabase/supabase-js": "^2.117.1",
+    "docx": "^9.10.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "html2pdf.js": "^0.14.0",

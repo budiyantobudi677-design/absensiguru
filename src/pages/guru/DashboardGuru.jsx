@@ -8,6 +8,7 @@ import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
 import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
 import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
+import PembuatanModulAjar from '../../components/kbm/PembuatanModulAjar'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -118,6 +119,13 @@ function GuruDesktopWrapper({
                   return 'Sistem KBM (Jurnal, Nilai, Siswa)'
                 })()}
               </span>
+            </button>
+            <button
+              className={`guru-desktop-nav-btn ${activeTab === 'modul_ajar' || (activeTab === 'kbm' && kbmSubTab === 'modul_ajar') ? 'active' : ''}`}
+              onClick={() => handleTabChangeWithUrl('modul_ajar')}
+            >
+              <Sparkles size={18} color="#F59E0B" />
+              <span>Modul Ajar (RPM AI)</span>
             </button>
             <button
               className={`guru-desktop-nav-btn ${activeTab === 'riwayat' ? 'active' : ''}`}
@@ -368,7 +376,10 @@ export default function DashboardGuru() {
   // Sinkronisasi ActiveTab dan KBM SubTab dengan URL Path
   useEffect(() => {
     const path = location.pathname.replace(/\/+$/, '') // normalize trailing slash
-    if (path.startsWith('/guru/kbm')) {
+    if (path === '/guru/modul-ajar' || path === '/guru/kbm/modul-ajar') {
+      setActiveTab('modul_ajar')
+      setKbmSubTab('modul_ajar')
+    } else if (path.startsWith('/guru/kbm')) {
       setActiveTab('kbm')
       if (path === '/guru/kbm/presensi' || path === '/guru/kbm/presensi-siswa') setKbmSubTab('presensi_siswa')
       else if (path === '/guru/kbm/jurnal') setKbmSubTab('jurnal')
@@ -393,12 +404,14 @@ export default function DashboardGuru() {
     else if (newTab === 'riwayat') navigate('/guru/riwayat')
     else if (newTab === 'pengumuman') navigate('/guru/pengumuman')
     else if (newTab === 'pengaturan') navigate('/guru/profil')
+    else if (newTab === 'modul_ajar') { setKbmSubTab('modul_ajar'); navigate('/guru/modul-ajar'); }
     else if (newTab === 'kbm') {
       if (subTab === 'presensi_siswa') { setKbmSubTab('presensi_siswa'); navigate('/guru/kbm/presensi'); }
       else if (subTab === 'jurnal') { setKbmSubTab('jurnal'); navigate('/guru/kbm/jurnal'); }
       else if (subTab === 'nilai') { setKbmSubTab('nilai'); navigate('/guru/kbm/nilai'); }
       else if (subTab === 'rekap') { setKbmSubTab('rekap'); navigate('/guru/kbm/rekap'); }
       else if (subTab === 'master_siswa') { setKbmSubTab('master_siswa'); navigate('/guru/kbm/master'); }
+      else if (subTab === 'modul_ajar') { setKbmSubTab('modul_ajar'); navigate('/guru/kbm/modul-ajar'); }
       else { setKbmSubTab('menu'); navigate('/guru/kbm'); }
     }
   }
@@ -2793,9 +2806,45 @@ export default function DashboardGuru() {
 
                   {/* Grid Menu Cards */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {/* Guru: Tampilkan Modul Presensi Siswa, Jurnal, Nilai, Rekap */}
+                    {/* Guru: Tampilkan Modul Ajar AI, Presensi Siswa, Jurnal, Nilai, Rekap */}
                     {!isOp && (
                       <>
+                        {/* Card Utama: Pembuatan Modul Ajar AI (RPM Deep Learning) */}
+                        <div
+                          onClick={() => handleTabChangeWithUrl('kbm', 'modul_ajar')}
+                          className="card"
+                          style={{
+                            padding: '1.2rem 1.35rem',
+                            borderRadius: '22px',
+                            background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 8px 20px rgba(67, 56, 202, 0.25)',
+                            transition: 'all 0.2s',
+                            marginBottom: '0.25rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ width: '50px', height: '50px', borderRadius: '16px', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FBBF24', flexShrink: 0 }}>
+                              <Sparkles size={26} />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <h4 style={{ fontSize: '1rem', fontWeight: '800', color: 'white', margin: 0 }}>Modul Ajar (RPM AI)</h4>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#FDE047', background: 'rgba(253, 224, 71, 0.2)', padding: '2px 8px', borderRadius: '8px' }}>Deep Learning</span>
+                              </div>
+                              <p style={{ fontSize: '0.78rem', color: '#E0E7FF', margin: '4px 0 0 0' }}>Susun Rencana Pembelajaran Mendalam, LKPD & Asesmen otomatis dengan AI</p>
+                            </div>
+                          </div>
+                          <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
+                            <ChevronRight size={20} />
+                          </div>
+                        </div>
+
                         {/* Card 1: Presensi Siswa */}
                         <div
                           onClick={() => handleTabChangeWithUrl('kbm', 'presensi_siswa')}
@@ -2998,6 +3047,25 @@ export default function DashboardGuru() {
                     {!isOp ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', padding: '2px 0' }}>
                         <button
+                          onClick={() => handleTabChangeWithUrl('kbm', 'modul_ajar')}
+                          style={{
+                            padding: '5px 11px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: kbmSubTab === 'modul_ajar' ? '#4338CA' : '#EEF2FF',
+                            color: kbmSubTab === 'modul_ajar' ? 'white' : '#4338CA',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Sparkles size={13} color={kbmSubTab === 'modul_ajar' ? '#FBBF24' : '#4338CA'} /> Modul Ajar AI
+                        </button>
+                        <button
                           onClick={() => handleTabChangeWithUrl('kbm', 'presensi_siswa')}
                           style={{
                             padding: '5px 10px',
@@ -3085,6 +3153,16 @@ export default function DashboardGuru() {
                     )}
                   </div>
 
+                {kbmSubTab === 'modul_ajar' && (
+                  <PembuatanModulAjar
+                    user={{ ...user, ...profile }}
+                    profile={profile}
+                    schoolName={schoolName}
+                    supabase={supabase}
+                    onBack={() => handleTabChangeWithUrl('kbm')}
+                  />
+                )}
+
                 {kbmSubTab === 'presensi_siswa' && (
                   <InputPresensiMurid
                     classes={filteredClassesList}
@@ -3133,6 +3211,19 @@ export default function DashboardGuru() {
             )}
           </div>
         )})()}
+
+        {/* Tab Mandiri: Modul Ajar AI */}
+        {activeTab === 'modul_ajar' && (
+          <div className="fade-in">
+            <PembuatanModulAjar
+              user={{ ...user, ...profile }}
+              profile={profile}
+              schoolName={schoolName}
+              supabase={supabase}
+              onBack={() => handleTabChangeWithUrl('kbm')}
+            />
+          </div>
+        )}
 
         {/* Footer Copyright & Branding GammaraApp */}
         <footer className="guru-footer-branding">
