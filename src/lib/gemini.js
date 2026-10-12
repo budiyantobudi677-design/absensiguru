@@ -6,13 +6,53 @@
 import { Preferences } from '@capacitor/preferences'
 
 export const GEMINI_MODELS = [
-  'gemini-3.8-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
-  'gemini-1.5-flash'
+  'gemini-2.0-flash-lite',
+  'gemini-flash-latest',
+  'gemini-pro-latest',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro'
 ]
 
 // Memory cache untuk akses instan antar komponen
 let inMemoryGeminiKey = ''
+
+/**
+ * Cache model aktif yang terverifikasi untuk key pengguna saat ini
+ */
+let verifiedWorkingModel = null
+
+/**
+ * Mendapatkan daftar model yang benar-benar didukung oleh API key pengguna dari Google ModelService
+ */
+async function getAvailableModelsForKey(cleanKey) {
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`)
+    if (listRes.ok) {
+      const data = await listRes.json()
+      if (Array.isArray(data?.models)) {
+        // Ambil model yang mendukung generateContent
+        const supported = data.models
+          .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+          .map(m => m.name?.replace('models/', ''))
+          .filter(Boolean)
+
+        if (supported.length > 0) {
+          // Prioritaskan model flash (cepat dan hemat kuota)
+          const flashModels = supported.filter(m => m.includes('flash'))
+          const otherModels = supported.filter(m => !m.includes('flash'))
+          return [...flashModels, ...otherModels]
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Gemini AI] Gagal listModels dari Google:', e)
+  }
+  return GEMINI_MODELS
+}
 
 /**
  * Mengambil API Key yang tersimpan secara sinkronus (untuk pemanggilan instan)
@@ -197,73 +237,87 @@ async function callGeminiWithFallback({ apiKey, contents, systemInstruction = nu
   const cleanKey = apiKey.trim()
   let lastError = null
 
-  for (const model of GEMINI_MODELS) {
-    try {
-      console.log(`[Gemini AI] Mencoba memanggil model: ${model}...`)
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`
+  // 1. Dapatkan model kandidat: Cek apakah sudah pernah berhasil sebelumnya, atau auto-query dari Google API
+  let candidateModels = []
+  if (verifiedWorkingModel) {
+    candidateModels = [verifiedWorkingModel, ...GEMINI_MODELS.filter(m => m !== verifiedWorkingModel)]
+  } else {
+    const liveModels = await getAvailableModelsForKey(cleanKey)
+    candidateModels = Array.from(new Set([...liveModels, ...GEMINI_MODELS]))
+  }
 
-      const bodyPayload = {
-        contents,
-        generationConfig: {
-          temperature: temperature,
-          maxOutputTokens: maxTokens,
+  for (const model of candidateModels) {
+    const apiVersions = ['v1beta', 'v1']
+
+    for (const apiVer of apiVersions) {
+      try {
+        console.log(`[Gemini AI] Mencoba memanggil ${model} (${apiVer})...`)
+        const endpoint = `https://generativelanguage.googleapis.com/${apiVer}/models/${model}:generateContent?key=${cleanKey}`
+
+        const bodyPayload = {
+          contents,
+          generationConfig: {
+            temperature: temperature,
+            maxOutputTokens: maxTokens,
+          }
         }
-      }
 
-      if (systemInstruction) {
-        bodyPayload.systemInstruction = {
-          parts: [{ text: systemInstruction }]
+        if (systemInstruction && apiVer === 'v1beta') {
+          bodyPayload.systemInstruction = {
+            parts: [{ text: systemInstruction }]
+          }
         }
-      }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bodyPayload)
-      })
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(bodyPayload)
+        })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMsg = errorData?.error?.message || `HTTP ${response.status} ${response.statusText}`
-        const status = response.status
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          const errorMsg = errorData?.error?.message || `HTTP ${response.status} ${response.statusText}`
+          const status = response.status
 
-        console.warn(`[Gemini AI] Model ${model} gagal (${status}): ${errorMsg}`)
+          console.warn(`[Gemini AI] Model ${model} (${apiVer}) gagal (${status}): ${errorMsg}`)
 
-        // Jika kuota habis (429 / RESOURCE_EXHAUSTED) atau model not found (404), lanjutkan fallback ke model berikutnya
-        if (status === 429 || status === 404 || status === 503 || errorMsg.includes('quota') || errorMsg.includes('not found')) {
-          lastError = new Error(`Model ${model} tidak tersedia / kuota limit: ${errorMsg}`)
+          // Jika API Key tidak valid (400 atau 403 INVALID_ARGUMENT / API_KEY_INVALID), hentikan langsung
+          if ((status === 400 || status === 403) && (errorMsg.toLowerCase().includes('api key') || errorMsg.includes('API_KEY_INVALID'))) {
+            throw new Error(`API Key Gemini tidak valid atau belum diaktifkan: ${errorMsg}`)
+          }
+
+          // Jika model tidak ditemukan / method not supported / kuota habis, coba kandidat berikutnya
+          if (status === 404 || status === 429 || status === 503 || errorMsg.includes('not found') || errorMsg.includes('supported') || errorMsg.includes('quota')) {
+            lastError = new Error(`Model ${model} (${apiVer}): ${errorMsg}`)
+            continue
+          }
+
+          lastError = new Error(`Gagal (${status}): ${errorMsg}`)
           continue
         }
 
-        // Jika API Key tidak valid (400 atau 403 INVALID_ARGUMENT / API_KEY_INVALID), hentikan langsung
-        if (status === 400 || status === 403 || errorMsg.toLowerCase().includes('api key')) {
-          throw new Error(`API Key Gemini tidak valid atau belum diaktifkan: ${errorMsg}`)
+        const data = await response.json()
+        const candidate = data.candidates?.[0]
+        const textOutput = candidate?.content?.parts?.map(p => p.text).join('') || ''
+
+        if (!textOutput) {
+          throw new Error('AI tidak mengembalikan teks jawaban.')
         }
 
-        lastError = new Error(`Gagal (${status}): ${errorMsg}`)
-        continue
-      }
-
-      const data = await response.json()
-      const candidate = data.candidates?.[0]
-      const textOutput = candidate?.content?.parts?.map(p => p.text).join('') || ''
-
-      if (!textOutput) {
-        throw new Error('AI tidak mengembalikan teks jawaban.')
-      }
-
-      console.log(`[Gemini AI] Berhasil dengan model: ${model}`)
-      return {
-        text: textOutput,
-        usedModel: model
-      }
-    } catch (err) {
-      console.warn(`[Gemini AI] Error saat mencoba ${model}:`, err.message)
-      lastError = err
-      if (err.message.includes('API Key Gemini tidak valid')) {
-        throw err
+        console.log(`[Gemini AI] Berhasil dengan model: ${model} (${apiVer})`)
+        verifiedWorkingModel = model
+        return {
+          text: textOutput,
+          usedModel: `${model} (${apiVer})`
+        }
+      } catch (err) {
+        console.warn(`[Gemini AI] Error saat mencoba ${model} (${apiVer}):`, err.message)
+        lastError = err
+        if (err.message.includes('API Key Gemini tidak valid')) {
+          throw err
+        }
       }
     }
   }
