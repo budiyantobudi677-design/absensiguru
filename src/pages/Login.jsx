@@ -7,7 +7,7 @@ import {
   LogIn, Mail, Lock, UserPlus, KeyRound, ArrowLeft, 
   ShieldCheck, BookOpen, SlidersHorizontal, Code2, 
   Eye, EyeOff, ShieldAlert, Key, Briefcase,
-  Users, ClipboardList, PenTool, CheckCircle2, Info
+  Users, ClipboardList, PenTool, CheckCircle2, Info, Smartphone
 } from 'lucide-react'
 import { 
   verifyDeveloperKey, 
@@ -15,6 +15,10 @@ import {
   getDeveloperSession,
   verifyAdminOverrideLogin
 } from '../lib/developerManager'
+import {
+  verifyOrBindDevice,
+  getDeviceBoundOwner
+} from '../lib/deviceManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -51,6 +55,25 @@ export default function Login() {
   
   const [namaSekolah, setNamaSekolah] = useState('Sistem Kehadiran')
   const navigate = useNavigate()
+
+  // Status Kunci Perangkat Saat Ini (1 HP = 1 Akun Guru)
+  const [boundOwnerInfo, setBoundOwnerInfo] = useState(null)
+
+  useEffect(() => {
+    if (mode === 'login' && (selectedRole === 'guru' || selectedRole === 'tendik')) {
+      getDeviceBoundOwner(supabase).then(info => {
+        if (info && info.isBound) {
+          setBoundOwnerInfo(info)
+        } else {
+          setBoundOwnerInfo(null)
+        }
+      }).catch(() => {
+        setBoundOwnerInfo(null)
+      })
+    } else {
+      setBoundOwnerInfo(null)
+    }
+  }, [mode, selectedRole])
 
   // Cek lockout status secara periodik jika role pengembang dipilih
   useEffect(() => {
@@ -184,6 +207,36 @@ export default function Login() {
         if (selectedRole === 'kepsek' && !isKepsek) {
           await supabase.auth.signOut()
           throw new Error('Akses ditolak: Akun Anda bukan Kepala Sekolah. Silakan pilih tipe login yang sesuai.')
+        }
+
+        // VALIDASI PROTEKSI KUNCI PERANGKAT (1 PERANGKAT = 1 AKUN GURU/TENDIK)
+        // Mencegah login akun berbeda di perangkat yang sama
+        if (isGuru || isTendik) {
+          const userFullName = profile?.full_name || email.split('@')[0]
+          const deviceCheck = await verifyOrBindDevice({
+            userId: data.user.id,
+            userName: userFullName,
+            userEmail: email,
+            userRole: userRole,
+            supabase
+          })
+
+          if (!deviceCheck.success) {
+            await supabase.auth.signOut()
+            localStorage.removeItem(`panrita_role_${data.user.id}`)
+
+            if (deviceCheck.error === 'PHONE_ALREADY_USED') {
+              throw new Error(
+                `Akses Ditolak: Perangkat ini sudah terikat secara permanen untuk akun guru lain (${deviceCheck.boundUserName || 'Guru Lain'}). Satu perangkat hanya dapat digunakan oleh 1 akun pengguna demi menjaga integritas presensi sekolah. Anda dilarang login dengan akun berbeda di perangkat yang sama.`
+              )
+            } else if (deviceCheck.error === 'DEVICE_MISMATCH') {
+              throw new Error(
+                `Akses Ditolak: Akun Anda telah terikat pada perangkat lain (${deviceCheck.boundDeviceName || 'HP Pribadi Anda'}). Anda dilarang login di perangkat lain. Silakan gunakan HP pribadi Anda yang telah terdaftar, atau hubungi Admin/Kepsek jika Anda mengganti HP baru.`
+              )
+            } else {
+              throw new Error('Akses Ditolak: Perangkat ini tidak diizinkan untuk login dengan akun ini.')
+            }
+          }
         }
 
         if (isAdmin) {
@@ -778,6 +831,49 @@ export default function Login() {
                         </p>
                       </div>
                     </div>
+                  )}
+
+                  {/* Indikator Status Kunci Perangkat (1 HP = 1 Akun Guru/Tendik) */}
+                  {mode === 'login' && (selectedRole === 'guru' || selectedRole === 'tendik') && (
+                    boundOwnerInfo?.isBound ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        background: '#FEF2F2',
+                        border: '1.5px solid #FCA5A5',
+                        borderRadius: '12px',
+                        padding: '0.75rem 0.9rem',
+                        marginBottom: '1.15rem'
+                      }}>
+                        <ShieldAlert size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#991B1B' }}>
+                            Perangkat Terkunci (1 HP = 1 Akun)
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: '#7F1D1D', marginTop: '2px', lineHeight: 1.4 }}>
+                            Ponsel ini sudah terikat resmi untuk akun: <strong>{boundOwnerInfo.userName || boundOwnerInfo.userEmail}</strong>. Akun guru lain dilarang masuk di perangkat ini.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#F0FDF4',
+                        border: '1px solid #BBF7D0',
+                        borderRadius: '12px',
+                        padding: '0.6rem 0.85rem',
+                        marginBottom: '1.15rem',
+                        fontSize: '0.75rem',
+                        color: '#166534',
+                        fontWeight: 600
+                      }}>
+                        <Smartphone size={16} color="#16A34A" style={{ flexShrink: 0 }} />
+                        <span>Perangkat belum terikat. Akun guru/tendik pertama yang login akan otomatis dikunci ke ponsel ini.</span>
+                      </div>
+                    )
                   )}
 
                   <div style={{ marginBottom: '1.15rem' }}>
