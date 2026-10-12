@@ -183,38 +183,24 @@ export default function Login() {
         localStorage.removeItem('panrita_developer_session')
         localStorage.removeItem('intended_login_role')
 
-        const { data: profile } = await supabase.from('profiles').select('role, jabatan, penugasan_tipe').eq('id', data.user.id).single()
-        const userRole = profile?.role || 'guru'
-        localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
+        const { data: profile } = await supabase.from('profiles').select('role, jabatan, full_name').eq('id', data.user.id).maybeSingle()
+        let userRole = profile?.role || 'guru'
 
-        // Validasi ketat kecocokan role yang dipilih dengan role di database
-        const isGuru = (userRole === 'guru' || userRole === 'guru_kelas' || userRole === 'guru_mapel') && !profile?.jabatan?.includes('Tendik') && profile?.penugasan_tipe !== 'tendik'
         const isAdmin = userRole === 'admin'
         const isKepsek = userRole === 'kepsek'
-        const isTendik = userRole === 'tendik' || profile?.penugasan_tipe === 'tendik' || profile?.jabatan?.includes('Tendik') || ['Operator Dapodik', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+        const isTendik = userRole === 'tendik' || profile?.jabatan?.includes('Tendik') || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+        const isGuru = !isAdmin && !isKepsek && !isTendik
 
-        if (selectedRole === 'tendik' && !isTendik) {
-          await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda bukan akun Tenaga Kependidikan (Tendik). Silakan pilih tipe login yang sesuai.')
+        // Klasifikasikan tendik ke operator atau nonoperator
+        if (isTendik) {
+          const isOperatorUser = profile?.jabatan?.includes('Operator') || (selectedRole === 'tendik' && tendikCategory === 'operator') || localStorage.getItem(`tendik_kategori_${data.user.id}`) === 'operator'
+          userRole = isOperatorUser ? 'operator' : 'nonoperator'
         }
 
-        if (selectedRole === 'guru' && !isGuru) {
-          await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda bukan akun Guru. Silakan pilih tipe login yang sesuai.')
-        }
-
-        if (selectedRole === 'admin' && !isAdmin) {
-          await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda bukan Administrator. Silakan pilih tipe login yang sesuai.')
-        }
-
-        if (selectedRole === 'kepsek' && !isKepsek) {
-          await supabase.auth.signOut()
-          throw new Error('Akses ditolak: Akun Anda bukan Kepala Sekolah. Silakan pilih tipe login yang sesuai.')
-        }
+        localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
 
         // VALIDASI PROTEKSI KUNCI PERANGKAT (1 PERANGKAT = 1 AKUN GURU/TENDIK)
-        // Mencegah login akun berbeda di perangkat yang sama
+        // Admin dan Kepsek dibebaskan dari kunci perangkat
         if (isGuru || isTendik) {
           const userFullName = profile?.full_name || email.split('@')[0]
           const deviceCheck = await verifyOrBindDevice({
@@ -231,11 +217,11 @@ export default function Login() {
 
             if (deviceCheck.error === 'PHONE_ALREADY_USED') {
               throw new Error(
-                `Akses Ditolak: Perangkat ini sudah terikat secara permanen untuk akun guru lain (${deviceCheck.boundUserName || 'Guru Lain'}). Satu perangkat hanya dapat digunakan oleh 1 akun pengguna demi menjaga integritas presensi sekolah. Anda dilarang login dengan akun berbeda di perangkat yang sama.`
+                `Akses Ditolak: Perangkat ini sudah terikat secara permanen untuk akun guru lain (${deviceCheck.boundUserName || 'Guru Lain'}). Satu perangkat hanya dapat digunakan oleh 1 akun pengguna demi menjaga integritas presensi sekolah.`
               )
             } else if (deviceCheck.error === 'DEVICE_MISMATCH') {
               throw new Error(
-                `Akses Ditolak: Akun Anda telah terikat pada perangkat lain (${deviceCheck.boundDeviceName || 'HP Pribadi Anda'}). Anda dilarang login di perangkat lain. Silakan gunakan HP pribadi Anda yang telah terdaftar, atau hubungi Admin/Kepsek jika Anda mengganti HP baru.`
+                `Akses Ditolak: Akun Anda telah terikat pada perangkat lain (${deviceCheck.boundDeviceName || 'HP Pribadi Anda'}). Silakan gunakan HP pribadi Anda yang telah terdaftar.`
               )
             } else {
               throw new Error('Akses Ditolak: Perangkat ini tidak diizinkan untuk login dengan akun ini.')
@@ -243,13 +229,13 @@ export default function Login() {
           }
         }
 
+        // Arahkan ke dashboard sesuai peran akun sebenarnya
         if (isAdmin) {
           navigate('/admin')
         } else if (isKepsek) {
           navigate('/kepsek')
         } else if (isTendik) {
-          const isOperatorUser = profile?.jabatan?.includes('Operator') || (selectedRole === 'tendik' && tendikCategory === 'operator')
-          if (isOperatorUser) {
+          if (userRole === 'operator') {
             navigate('/operator')
           } else {
             navigate('/nonoperator')

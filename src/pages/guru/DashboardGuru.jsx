@@ -663,6 +663,9 @@ export default function DashboardGuru() {
         currentUser = user
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         currentProfile = profile
+
+        if (profile?.role === 'admin') return navigate('/admin')
+        if (profile?.role === 'kepsek') return navigate('/kepsek')
       }
 
       setUser(currentUser)

@@ -41,44 +41,17 @@ function App() {
       }
 
       try {
-        const { data } = await supabase.from('profiles').select('role, jabatan, penugasan_tipe, full_name').eq('id', userSession.user.id).maybeSingle()
+        const { data } = await supabase.from('profiles').select('role, jabatan, full_name').eq('id', userSession.user.id).maybeSingle()
         let userRole = data?.role || cachedRole || 'guru'
         
         // Klasifikasikan tendik ke operator atau nonoperator jika rolenya tendik
-        if (userRole === 'tendik' || data?.penugasan_tipe === 'tendik') {
+        if (userRole === 'tendik') {
           const isOp = data?.jabatan?.includes('Operator') || localStorage.getItem(`tendik_kategori_${userSession.user.id}`) === 'operator'
           userRole = isOp ? 'operator' : 'nonoperator'
         }
         
-        // Cek intended role hanya jika ini adalah alur callback OAuth Google
-        const isOAuthCallback = typeof window !== 'undefined' && (window.location.hash.includes('access_token') || window.location.search.includes('code'))
-        const intended = localStorage.getItem('intended_login_role')
-        if (intended) {
-          localStorage.removeItem('intended_login_role')
-          if (isOAuthCallback) {
-            const isAdminType = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
-            if (intended === 'guru' && isAdminType) {
-              await supabase.auth.signOut()
-              alert('Akses ditolak: Akun Anda terdaftar sebagai Admin/Kepsek, bukan Guru. Silakan pilih tipe login "Admin".')
-              if (isMounted) {
-                setSession(null)
-                setRole(null)
-                setLoading(false)
-              }
-              return
-            }
-            if (intended === 'admin' && !isAdminType) {
-              await supabase.auth.signOut()
-              alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
-              if (isMounted) {
-                setSession(null)
-                setRole(null)
-                setLoading(false)
-              }
-              return
-            }
-          }
-        }
+        // Bersihkan intended role jika ada
+        localStorage.removeItem('intended_login_role')
 
         // Validasi Kunci Perangkat jika akun bertipe Guru / Tendik
         const isExemptRole = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
@@ -321,14 +294,59 @@ function App() {
                                 : (isNonOperatorRole ? <Navigate to="/nonoperator" /> : <Navigate to="/guru" />)))))
             } 
           />
-          <Route path="/guru/*" element={session ? <DashboardGuru /> : <Navigate to="/" />} />
-          <Route path="/operator/*" element={session ? <DashboardOperator /> : <Navigate to="/" />} />
-          <Route path="/nonoperator/*" element={session ? <DashboardTendik /> : <Navigate to="/" />} />
-          <Route path="/admin/*" element={session ? <DashboardAdmin /> : <Navigate to="/" />} />
-          <Route path="/kepsek/*" element={session ? <DashboardKepsek /> : <Navigate to="/" />} />
+          <Route 
+            path="/guru/*" 
+            element={
+              session 
+                ? (isAdminRole 
+                    ? <Navigate to="/admin" replace /> 
+                    : (isKepsekRole 
+                        ? <Navigate to="/kepsek" replace /> 
+                        : (isOperatorRole 
+                            ? <Navigate to="/operator" replace /> 
+                            : (isNonOperatorRole ? <Navigate to="/nonoperator" replace /> : <DashboardGuru />)))) 
+                : <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/operator/*" 
+            element={
+              session 
+                ? (isOperatorRole || isDevRole ? <DashboardOperator /> : <Navigate to="/" replace />) 
+                : <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/nonoperator/*" 
+            element={
+              session 
+                ? (isNonOperatorRole || isDevRole ? <DashboardTendik /> : <Navigate to="/" replace />) 
+                : <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/admin/*" 
+            element={
+              session 
+                ? (isAdminRole || isDevRole 
+                    ? <DashboardAdmin /> 
+                    : (isKepsekRole ? <Navigate to="/kepsek" replace /> : <Navigate to="/guru" replace />)) 
+                : <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/kepsek/*" 
+            element={
+              session 
+                ? (isKepsekRole || isDevRole 
+                    ? <DashboardKepsek /> 
+                    : (isAdminRole ? <Navigate to="/admin" replace /> : <Navigate to="/guru" replace />)) 
+                : <Navigate to="/" replace />
+            } 
+          />
           {/* Alias /kepalasekolah diarahkan langsung ke /kepsek */}
           <Route path="/kepalasekolah/*" element={<Navigate to="/kepsek" replace />} />
-          <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" />} />
+          <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" replace />} />
         </Routes>
       </Router>
     </PullToRefresh>

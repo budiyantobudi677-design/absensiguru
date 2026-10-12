@@ -256,7 +256,17 @@ export default function DashboardAdmin() {
     }
 
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
-    const fullUser = { ...currentUser, ...(profile || {}), role: profile?.role || 'admin' }
+    const userRole = profile?.role || localStorage.getItem(`panrita_role_${currentUser.id}`) || ''
+
+    // Proteksi ketat: Halaman ini HANYA untuk Administrator
+    if (userRole !== 'admin') {
+      if (userRole === 'kepsek') return navigate('/kepsek')
+      if (userRole === 'operator') return navigate('/operator')
+      if (userRole === 'tendik' || userRole === 'nonoperator') return navigate('/nonoperator')
+      return navigate('/guru')
+    }
+
+    const fullUser = { ...currentUser, ...(profile || {}), role: userRole }
     setAdmin(fullUser)
     const existingKey = await loadSavedGeminiKeyAsync(currentUser.id, fullUser, profile)
     setGeminiApiKey(existingKey)

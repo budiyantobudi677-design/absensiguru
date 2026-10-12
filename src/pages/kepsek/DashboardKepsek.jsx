@@ -256,7 +256,17 @@ export default function DashboardKepsek() {
     }
 
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
-    const fullUser = { ...currentUser, ...(profile || {}), role: profile?.role || 'kepsek' }
+    const userRole = profile?.role || localStorage.getItem(`panrita_role_${currentUser.id}`) || ''
+
+    // Proteksi ketat: Halaman ini HANYA untuk Kepala Sekolah
+    if (userRole !== 'kepsek') {
+      if (userRole === 'admin') return navigate('/admin')
+      if (userRole === 'operator') return navigate('/operator')
+      if (userRole === 'tendik' || userRole === 'nonoperator') return navigate('/nonoperator')
+      return navigate('/guru')
+    }
+
+    const fullUser = { ...currentUser, ...(profile || {}), role: userRole }
     setAdmin(fullUser)
     const existingKey = await loadSavedGeminiKeyAsync(currentUser.id, fullUser, profile)
     setGeminiApiKey(existingKey)
