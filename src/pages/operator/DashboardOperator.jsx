@@ -12,7 +12,6 @@ import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
-import { verifyOrBindDevice } from '../../lib/deviceManager'
 
 const getLocalPref = async (key, fallback = null) => {
   try {

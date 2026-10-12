@@ -117,145 +117,18 @@ export async function fetchDeviceBindings(supabase) {
  * Memeriksa apakah perangkat saat ini sudah terikat dengan salah satu akun guru
  */
 export async function getDeviceBoundOwner(supabase) {
-  try {
-    const currentDeviceId = await getOrCreateDeviceId()
-    const bindings = await fetchDeviceBindings(supabase)
-    const boundEntry = Object.entries(bindings).find(([tId, info]) => info.deviceId === currentDeviceId)
-    if (!boundEntry) {
-      return { isBound: false, currentDeviceId }
-    }
-
-    const [userId, info] = boundEntry
-    let userName = info.userName || ''
-    let userEmail = info.userEmail || ''
-
-    if ((!userName || !userEmail) && supabase) {
-      try {
-        const { data: p } = await supabase.from('profiles').select('full_name, email').eq('id', userId).maybeSingle()
-        if (p) {
-          if (!userName) userName = p.full_name || p.email
-          if (!userEmail) userEmail = p.email
-        }
-      } catch (e) {}
-    }
-
-    return {
-      isBound: true,
-      currentDeviceId,
-      userId,
-      userName: userName || userEmail || 'Guru Terdaftar',
-      userEmail: userEmail || '',
-      deviceName: info.deviceName || 'Ponsel Guru',
-      boundAt: info.boundAt
-    }
-  } catch (e) {
-    return { isBound: false }
-  }
+  return { isBound: false }
 }
 
 /**
- * Memvalidasi apakah akun diizinkan login / presensi di perangkat ini,
- * atau mengikat perangkat ini secara otomatis jika belum pernah terikat.
- * 
- * Return:
- * - { success: true, isBound: true, isNew: false }
- * - { success: true, isBound: true, isNew: true } -> pertama kali mengunci
- * - { success: false, error: 'DEVICE_MISMATCH', boundDeviceName, boundAt } -> ditolak karena akun terikat di HP lain
- * - { success: false, error: 'PHONE_ALREADY_USED', boundUserName, boundDeviceName, boundAt } -> ditolak karena HP milik guru lain
+ * Memvalidasi apakah akun diizinkan login / presensi di perangkat ini.
+ * Fitur kunci perangkat (1 perangkat 1 akun) telah dinonaktifkan sesuai permintaan sekolah.
  */
-export async function verifyOrBindDevice({ userId, userName = '', userEmail = '', userRole = 'guru', supabase }) {
-  if (!userId || !supabase) return { success: true }
-
-  // Pengecualian: Admin, Kepala Sekolah, dan Pengembang bebas login dari perangkat manapun (misal laptop dinas/komputer kantor)
-  const isExemptRole = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
-  if (isExemptRole) {
-    return { success: true, isExempt: true }
-  }
-
-  try {
-    const currentDeviceId = await getOrCreateDeviceId()
-    const deviceName = getDeviceModelName()
-    const bindings = await fetchDeviceBindings(supabase)
-
-    const existingBinding = bindings[userId]
-
-    // Kasus 1: Akun ini sudah terikat pada suatu perangkat sebelumnya
-    if (existingBinding && existingBinding.deviceId) {
-      if (existingBinding.deviceId === currentDeviceId) {
-        // Cocok! Ini adalah HP asli guru yang bersangkutan.
-        // Perbarui nama & email jika sebelumnya kosong
-        if ((!existingBinding.userName || !existingBinding.userEmail) && (userName || userEmail)) {
-          bindings[userId] = {
-            ...existingBinding,
-            userName: userName || existingBinding.userName || '',
-            userEmail: userEmail || existingBinding.userEmail || '',
-            updatedAt: new Date().toISOString()
-          }
-          saveBindingsToCloud(bindings, supabase).catch(() => {})
-        }
-
-        return { 
-          success: true, 
-          isBound: true, 
-          isNew: false,
-          deviceName: existingBinding.deviceName 
-        }
-      } else {
-        // TIDAK COCOK! Percobaan login / titip absen di HP lain
-        return {
-          success: false,
-          error: 'DEVICE_MISMATCH',
-          boundDeviceName: existingBinding.deviceName || 'HP Pribadi Anda',
-          boundAt: existingBinding.boundAt
-        }
-      }
-    }
-
-    // Kasus 2: Cek apakah HP ini sudah pernah dipakai & terikat oleh guru/tendik lain
-    const deviceUsedByOther = Object.entries(bindings).find(([tId, info]) => info.deviceId === currentDeviceId && tId !== userId)
-    if (deviceUsedByOther) {
-      let otherUserName = deviceUsedByOther[1]?.userName || deviceUsedByOther[1]?.userEmail || ''
-      if (!otherUserName && supabase) {
-        try {
-          const { data: p } = await supabase.from('profiles').select('full_name, email').eq('id', deviceUsedByOther[0]).maybeSingle()
-          if (p) otherUserName = p.full_name || p.email
-        } catch (e) {}
-      }
-
-      return {
-        success: false,
-        error: 'PHONE_ALREADY_USED',
-        boundUserId: deviceUsedByOther[0],
-        boundUserName: otherUserName || 'Guru Lain',
-        boundDeviceName: deviceUsedByOther[1]?.deviceName || 'HP Guru Lain',
-        boundAt: deviceUsedByOther[1]?.boundAt
-      }
-    }
-
-    // Kasus 3: Akun ini dan HP ini belum terikat pada perangkat manapun (Pertama kali login/presensi)
-    // Otomatis kuncikan akun ke perangkat ini sekarang!
-    bindings[userId] = {
-      deviceId: currentDeviceId,
-      deviceName: deviceName,
-      userName: userName || '',
-      userEmail: userEmail || '',
-      boundAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
-    await saveBindingsToCloud(bindings, supabase)
-
-    return { 
-      success: true, 
-      isBound: true, 
-      isNew: true,
-      deviceName 
-    }
-  } catch (err) {
-    console.error('Error verifying device binding:', err)
-    return { success: false, error: 'NETWORK_ERROR', message: err.message }
-  }
+export async function verifyOrBindDevice({ userId, userName = '', userEmail = '', userRole = 'guru', supabase } = {}) {
+  // Fitur kunci 1 perangkat 1 akun dinonaktifkan: Bebas login & presensi di perangkat manapun
+  return { success: true, isExempt: true }
 }
+
 
 /**
  * Menyimpan data binding ke Supabase Cloud

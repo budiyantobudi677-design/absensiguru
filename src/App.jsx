@@ -14,7 +14,6 @@ import DashboardOperator from './pages/operator/DashboardOperator'
 import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
-import { verifyOrBindDevice } from './lib/deviceManager'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -52,34 +51,6 @@ function App() {
         
         // Bersihkan intended role jika ada
         localStorage.removeItem('intended_login_role')
-
-        // Validasi Kunci Perangkat jika akun bertipe Guru / Tendik
-        const isExemptRole = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
-        if (!isExemptRole) {
-          const deviceCheck = await verifyOrBindDevice({
-            userId: userSession.user.id,
-            userName: data?.full_name || userSession.user.email?.split('@')[0],
-            userEmail: userSession.user.email,
-            userRole,
-            supabase
-          })
-
-          if (!deviceCheck.success) {
-            await supabase.auth.signOut()
-            localStorage.removeItem(`panrita_role_${userSession.user.id}`)
-            alert(
-              deviceCheck.error === 'PHONE_ALREADY_USED'
-                ? `Akses Ditolak: Perangkat ini sudah terikat secara permanen dengan akun guru lain (${deviceCheck.boundUserName || 'Guru Lain'}). Satu perangkat hanya diizinkan untuk 1 akun demi integritas presensi.`
-                : `Akses Ditolak: Akun Anda telah terikat pada perangkat lain (${deviceCheck.boundDeviceName || 'HP Pribadi Anda'}). Silakan gunakan HP pribadi Anda yang telah terdaftar.`
-            )
-            if (isMounted) {
-              setSession(null)
-              setRole(null)
-              setLoading(false)
-            }
-            return
-          }
-        }
 
         localStorage.setItem(`panrita_role_${userSession.user.id}`, userRole)
         if (isMounted) {
