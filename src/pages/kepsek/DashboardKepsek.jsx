@@ -199,7 +199,7 @@ export default function DashboardKepsek() {
   }
 
   const fetchAdmin = async () => {
-    // Cek jika sedang dibuka oleh Akun Pengembang (Super Admin Mode)
+    // 1. Cek jika sedang dibuka oleh Akun Pengembang / Kepsek Override (Super Admin Mode)
     const devSession = localStorage.getItem('panrita_developer_session')
     if (devSession) {
       try {
@@ -207,7 +207,7 @@ export default function DashboardKepsek() {
         if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
           const devUser = {
             id: parsed.user.id || 'developer-master-uid',
-            email: parsed.user.email || 'developer@panrita.edu',
+            email: parsed.user.email || 'kepsek@sekolah.edu',
             full_name: parsed.user.full_name || 'Kepala Sekolah (Supervisi Eksekutif)',
             role: 'kepsek',
             isDeveloperPreview: true
@@ -221,14 +221,46 @@ export default function DashboardKepsek() {
       } catch (e) {}
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return navigate('/')
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-    const fullUser = { ...user, ...(profile || {}), role: profile?.role || 'kepsek' }
+    // 2. Ambil user dari session lokal terlebih dahulu (tahan delay jaringan)
+    let currentUser = null
+    try {
+      const { data: sessData } = await supabase.auth.getSession()
+      if (sessData?.session?.user) {
+        currentUser = sessData.session.user
+      }
+    } catch (e) {}
+
+    // 3. Fallback ke getUser jika session lokal belum ter-resolve
+    if (!currentUser) {
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        if (userData?.user) {
+          currentUser = userData.user
+        }
+      } catch (e) {}
+    }
+
+    // 4. Beri toleransi delay singkat (400ms) untuk sinkronisasi token storage sebelum memutuskan keluar
+    if (!currentUser) {
+      await new Promise(r => setTimeout(r, 400))
+      try {
+        const { data: retrySess } = await supabase.auth.getSession()
+        if (retrySess?.session?.user) {
+          currentUser = retrySess.session.user
+        }
+      } catch (e) {}
+    }
+
+    if (!currentUser) {
+      return navigate('/')
+    }
+
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
+    const fullUser = { ...currentUser, ...(profile || {}), role: profile?.role || 'kepsek' }
     setAdmin(fullUser)
-    const existingKey = await loadSavedGeminiKeyAsync(user.id, fullUser, profile)
+    const existingKey = await loadSavedGeminiKeyAsync(currentUser.id, fullUser, profile)
     setGeminiApiKey(existingKey)
-    loadKepsekTodayAbsensi(user.id)
+    loadKepsekTodayAbsensi(currentUser.id)
   }
 
   const loadKepsekTodayAbsensi = async (userId) => {

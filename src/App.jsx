@@ -42,29 +42,33 @@ function App() {
         const { data } = await supabase.from('profiles').select('role').eq('id', userSession.user.id).maybeSingle()
         const userRole = data?.role || cachedRole || 'guru'
         
+        // Cek intended role hanya jika ini adalah alur callback OAuth Google
+        const isOAuthCallback = typeof window !== 'undefined' && (window.location.hash.includes('access_token') || window.location.search.includes('code'))
         const intended = localStorage.getItem('intended_login_role')
         if (intended) {
           localStorage.removeItem('intended_login_role')
-          const isAdminType = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
-          if (intended === 'guru' && isAdminType) {
-            await supabase.auth.signOut()
-            alert('Akses ditolak: Akun Anda terdaftar sebagai Admin/Kepsek, bukan Guru. Silakan pilih tipe login "Admin".')
-            if (isMounted) {
-              setSession(null)
-              setRole(null)
-              setLoading(false)
+          if (isOAuthCallback) {
+            const isAdminType = userRole === 'admin' || userRole === 'kepsek' || userRole === 'pengembang' || userRole === 'developer'
+            if (intended === 'guru' && isAdminType) {
+              await supabase.auth.signOut()
+              alert('Akses ditolak: Akun Anda terdaftar sebagai Admin/Kepsek, bukan Guru. Silakan pilih tipe login "Admin".')
+              if (isMounted) {
+                setSession(null)
+                setRole(null)
+                setLoading(false)
+              }
+              return
             }
-            return
-          }
-          if (intended === 'admin' && !isAdminType) {
-            await supabase.auth.signOut()
-            alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
-            if (isMounted) {
-              setSession(null)
-              setRole(null)
-              setLoading(false)
+            if (intended === 'admin' && !isAdminType) {
+              await supabase.auth.signOut()
+              alert('Akses ditolak: Akun Anda terdaftar sebagai Guru, bukan Admin. Silakan pilih tipe login "Guru".')
+              if (isMounted) {
+                setSession(null)
+                setRole(null)
+                setLoading(false)
+              }
+              return
             }
-            return
           }
         }
 
@@ -114,7 +118,7 @@ function App() {
     const devSession = getDeveloperSession()
     if (devSession) {
       setSession(devSession)
-      setRole('pengembang')
+      setRole(devSession.role || 'pengembang')
       setLoading(false)
     } else {
       supabase.auth.getSession().then(({ data: { session } }) => {
@@ -135,7 +139,7 @@ function App() {
       const activeDev = getDeveloperSession()
       if (activeDev) {
         setSession(activeDev)
-        setRole('pengembang')
+        setRole(activeDev.role || 'pengembang')
         setLoading(false)
       } else {
         supabase.auth.getSession().then(({ data: { session } }) => {

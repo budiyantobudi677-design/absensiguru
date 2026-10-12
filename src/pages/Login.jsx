@@ -179,6 +179,10 @@ export default function Login() {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         
+        // Bersihkan sesi developer atau intended role lama agar tidak menimpa akun resmi
+        localStorage.removeItem('panrita_developer_session')
+        localStorage.removeItem('intended_login_role')
+
         const { data: profile } = await supabase.from('profiles').select('role, jabatan, penugasan_tipe').eq('id', data.user.id).single()
         const userRole = profile?.role || 'guru'
         localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
