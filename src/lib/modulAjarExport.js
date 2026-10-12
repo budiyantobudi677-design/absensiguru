@@ -7,7 +7,7 @@ import { saveAs } from 'file-saver'
 
 /**
  * Ekspor dokumen Modul Ajar ke format Microsoft Word (.doc)
- * Format HTML Word didukung penuh oleh MS Word, WPS Office, dan Google Docs dengan mempertahankan styling tabel & layout.
+ * Format HTML Word didukung penuh oleh MS Word, WPS Office, dan Google Docs dengan tabel rapi, borders terstruktur, font konsisten, dan page breaks.
  */
 export function exportModulAjarToWord(modul) {
   if (!modul) return
@@ -28,89 +28,158 @@ export function exportModulAjarToWord(modul) {
 <head>
   <meta charset='utf-8'>
   <title>${m.judul || 'Modul Ajar Deep Learning'}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
   <style>
     @page {
-      size: A4 portrait;
-      margin: 2cm 2cm 2cm 2cm;
+      size: 21.0cm 29.7cm; /* A4 */
+      margin: 2.5cm 2.0cm 2.0cm 2.0cm;
       mso-page-orientation: portrait;
+      mso-header-margin: 35.4pt;
+      mso-footer-margin: 35.4pt;
     }
     body {
-      font-family: 'Calibri', 'Arial', sans-serif;
+      font-family: 'Times New Roman', Times, serif;
       font-size: 11pt;
-      line-height: 1.4;
-      color: #000;
+      line-height: 1.35;
+      color: #000000;
+      margin: 0;
+      padding: 0;
     }
-    h1 {
-      font-size: 14pt;
-      font-weight: bold;
+    .header-kop {
       text-align: center;
-      margin-bottom: 4px;
+      margin-bottom: 18px;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 8px;
+    }
+    .header-title {
+      font-size: 13pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 0 0 4px 0;
+      letter-spacing: 0.5px;
+    }
+    .header-sub {
+      font-size: 11pt;
+      font-weight: bold;
+      margin: 0 0 2px 0;
       text-transform: uppercase;
     }
-    h2 {
-      font-size: 12pt;
-      font-weight: bold;
-      margin-top: 16px;
-      margin-bottom: 6px;
-      border-bottom: 1px solid #000;
-      padding-bottom: 2px;
+    .header-meta {
+      font-size: 10pt;
+      color: #333333;
+      margin: 0;
     }
-    h3 {
+    h2.section-header {
+      font-size: 11.5pt;
+      font-weight: bold;
+      margin-top: 18px;
+      margin-bottom: 6px;
+      background-color: #E2E8F0;
+      border: 1px solid #000000;
+      padding: 5px 8px;
+      text-transform: uppercase;
+    }
+    h3.sub-header {
       font-size: 11pt;
       font-weight: bold;
-      margin-top: 10px;
+      margin-top: 12px;
       margin-bottom: 4px;
+      color: #000000;
     }
     p {
-      margin-top: 2px;
-      margin-bottom: 4px;
+      margin-top: 3px;
+      margin-bottom: 5px;
       text-align: justify;
     }
-    table {
+    table.data-table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 6px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       font-size: 10pt;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
     }
-    th, td {
-      border: 1px solid #000;
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
       padding: 6px 8px;
       vertical-align: top;
     }
-    th {
-      background-color: #f2f2f2;
+    table.data-table th {
+      background-color: #F1F5F9;
       font-weight: bold;
-      text-align: left;
+      text-align: center;
     }
-    .table-clean td {
+    table.info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      margin-bottom: 10px;
+      font-size: 10.5pt;
+    }
+    table.info-table td {
       border: none;
-      padding: 3px 6px;
+      padding: 3px 5px;
+      vertical-align: top;
     }
-    .badge {
-      display: inline-block;
-      padding: 2px 6px;
-      background: #e2e8f0;
-      border-radius: 4px;
-      font-weight: bold;
+    .box-bordered {
+      border: 1px solid #000000;
+      padding: 10px 14px;
+      margin-top: 8px;
+      margin-bottom: 14px;
+      background-color: #FFFFFF;
+    }
+    ul, ol {
+      margin-top: 3px;
+      margin-bottom: 6px;
+      padding-left: 24px;
+    }
+    li {
+      margin-bottom: 3px;
+      text-align: justify;
     }
     .page-break {
       page-break-before: always;
+      mso-break-type: page-break;
+    }
+    .signature-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 35px;
+      font-size: 10.5pt;
+      page-break-inside: avoid;
+    }
+    .signature-table td {
+      border: none;
+      vertical-align: top;
+      text-align: center;
+      padding: 6px;
     }
   </style>
 </head>
 <body>
 
-  <!-- JUDUL DOKUMEN -->
-  <h1>${m.judul || 'RENCANA PEMBELAJARAN MENDALAM (RPM) KURIKULUM MERDEKA - DEEP LEARNING'}</h1>
-  <p style="text-align: center; font-weight: bold; margin-bottom: 20px;">
-    ${iden.mataPelajaran || ''} • ${iden.kelasFase || ''} • ${iden.tahunPelajaran || ''}
-  </p>
+  <!-- KOP & JUDUL DOKUMEN -->
+  <div class="header-kop">
+    <div class="header-title">${m.judul || 'RENCANA PEMBELAJARAN MENDALAM (RPM) KURIKULUM MERDEKA'}</div>
+    <div class="header-sub">${iden.sekolah || 'SATUAN PENDIDIKAN'}</div>
+    <div class="header-meta">
+      Mata Pelajaran: <strong>${iden.mataPelajaran || '-'}</strong> | ${iden.kelasFase || 'Kelas 5 / Fase C'} | Tahun Pelajaran: <strong>${iden.tahunPelajaran || '2026/2027'}</strong> | Semester: <strong>${iden.semester || '1'}</strong>
+    </div>
+  </div>
 
   <!-- A. IDENTIFIKASI -->
-  <h2>A. IDENTIFIKASI</h2>
-  <table class="table-clean" style="margin-bottom: 12px;">
-    <tr><td style="width: 25%; font-weight: bold;">Penyusun</td><td style="width: 2%;">:</td><td>${iden.penyusun || '-'}</td></tr>
+  <h2 class="section-header">A. IDENTIFIKASI</h2>
+  <table class="info-table">
+    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Satuan Pendidikan</td><td>:</td><td>${iden.sekolah || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Tahun Pelajaran</td><td>:</td><td>${iden.tahunPelajaran || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Semester</td><td>:</td><td>${iden.semester || '-'}</td></tr>
@@ -120,34 +189,42 @@ export function exportModulAjarToWord(modul) {
     <tr><td style="font-weight: bold;">Alokasi Waktu</td><td>:</td><td>${iden.alokasiWaktu || '-'}</td></tr>
   </table>
 
-  <h3>Pengetahuan Awal</h3>
+  <h3 class="sub-header">1. Pengetahuan Awal Siswa</h3>
   <ul>
     ${(iden.pengetahuanAwal || []).map(p => `<li>${p}</li>`).join('')}
   </ul>
 
-  <h3>Minat Belajar</h3>
+  <h3 class="sub-header">2. Minat Belajar Siswa</h3>
   <ul>
-    ${(iden.minatBelajar || []).map(m => `<li>${m}</li>`).join('')}
+    ${(iden.minatBelajar || []).map(mb => `<li>${mb}</li>`).join('')}
   </ul>
 
-  <h3>Latar Belakang</h3>
+  <h3 class="sub-header">3. Latar Belakang Lingkungan Siswa</h3>
   <p>${iden.latarBelakang || '-'}</p>
 
-  <h3>Kebutuhan Belajar</h3>
-  <ul>
-    <li><strong>Visual:</strong> ${iden.kebutuhanBelajar?.visual || '-'}</li>
-    <li><strong>Kinestetik:</strong> ${iden.kebutuhanBelajar?.kinestetik || '-'}</li>
-    <li><strong>Audio:</strong> ${iden.kebutuhanBelajar?.audio || '-'}</li>
-    <li><strong>Pendampingan Khusus:</strong> ${iden.kebutuhanBelajar?.pendampinganKhusus || '-'}</li>
-  </ul>
-
-  <!-- B. DIMENSI PROFIL LULUSAN -->
-  <h2>B. IDENTIFIKASI DIMENSI PROFIL KELULUSAN (DPL)</h2>
-  <table>
+  <h3 class="sub-header">4. Pemetaan Kebutuhan Belajar (Diferensiasi)</h3>
+  <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 30%;">Dimensi Profil Lulusan</th>
-        <th>Deskripsi Penerapan dalam Materi</th>
+        <th style="width: 25%;">Gaya Belajar</th>
+        <th style="width: 75%;">Deskripsi Strategi & Pendampingan</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Visual</strong></td><td>${iden.kebutuhanBelajar?.visual || '-'}</td></tr>
+      <tr><td><strong>Kinestetik</strong></td><td>${iden.kebutuhanBelajar?.kinestetik || '-'}</td></tr>
+      <tr><td><strong>Audio / Auditorial</strong></td><td>${iden.kebutuhanBelajar?.audio || '-'}</td></tr>
+      <tr><td><strong>Pendampingan Khusus</strong></td><td>${iden.kebutuhanBelajar?.pendampinganKhusus || '-'}</td></tr>
+    </tbody>
+  </table>
+
+  <!-- B. DIMENSI PROFIL LULUSAN -->
+  <h2 class="section-header">B. IDENTIFIKASI DIMENSI PROFIL KELULUSAN (DPL)</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 32%;">Dimensi Profil Lulusan</th>
+        <th style="width: 68%;">Deskripsi Penerapan dalam Materi Pembelajaran</th>
       </tr>
     </thead>
     <tbody>
@@ -161,21 +238,22 @@ export function exportModulAjarToWord(modul) {
   </table>
 
   <!-- C. DESAIN PEMBELAJARAN -->
-  <h2>C. DESAIN PEMBELAJARAN</h2>
-  <h3>Capaian Pembelajaran</h3>
+  <h2 class="section-header">C. DESAIN PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Capaian Pembelajaran (CP)</h3>
   <p>${dp.capaianPembelajaran || '-'}</p>
 
-  <h3>Tujuan Pembelajaran</h3>
+  <h3 class="sub-header">2. Tujuan Pembelajaran (TP)</h3>
   <ol>
     ${(dp.tujuanPembelajaran || []).map(tp => `<li>${tp}</li>`).join('')}
   </ol>
 
-  <h3>Lintas Disiplin Ilmu</h3>
-  <table>
+  <h3 class="sub-header">3. Integrasi Lintas Disiplin Ilmu</h3>
+  <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 30%;">Mata Pelajaran Terkait</th>
-        <th>Uraian Integrasi Materi</th>
+        <th style="width: 32%;">Mata Pelajaran Terkait</th>
+        <th style="width: 68%;">Uraian Integrasi Materi</th>
       </tr>
     </thead>
     <tbody>
@@ -188,15 +266,15 @@ export function exportModulAjarToWord(modul) {
     </tbody>
   </table>
 
-  <h3>Praktik Pedagogi</h3>
-  <table class="table-clean">
-    <tr><td style="width: 20%; font-weight: bold;">Model</td><td style="width: 2%;">:</td><td>${dp.praktikPedagogi?.model || '-'}</td></tr>
+  <h3 class="sub-header">4. Praktik Pedagogi</h3>
+  <table class="info-table">
+    <tr><td style="width: 22%; font-weight: bold;">Model Pembelajaran</td><td style="width: 3%;">:</td><td>${dp.praktikPedagogi?.model || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Pendekatan</td><td>:</td><td>${dp.praktikPedagogi?.pendekatan || 'Deep Learning (Berkesadaran, Bermakna, Menggembirakan)'}</td></tr>
     <tr><td style="font-weight: bold;">Metode</td><td>:</td><td>${dp.praktikPedagogi?.metode || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Strategi</td><td>:</td><td>${dp.praktikPedagogi?.strategi || '-'}</td></tr>
   </table>
 
-  <h3>Lingkungan Belajar</h3>
+  <h3 class="sub-header">5. Lingkungan Belajar</h3>
   <ul>
     <li><strong>Ruang Fisik:</strong> ${dp.lingkunganBelajar?.ruangFisik || '-'}</li>
     <li><strong>Platform Virtual:</strong> ${dp.lingkunganBelajar?.platformVirtual || '-'}</li>
@@ -204,12 +282,12 @@ export function exportModulAjarToWord(modul) {
     <li><strong>Sumber Belajar:</strong> ${dp.lingkunganBelajar?.sumberBelajar || '-'}</li>
   </ul>
 
-  <h3>Pemanfaatan Digital</h3>
-  <table>
+  <h3 class="sub-header">6. Pemanfaatan Teknologi Digital</h3>
+  <table class="data-table">
     <thead>
       <tr>
         <th style="width: 35%;">Alat / Platform Digital</th>
-        <th>Kegunaan dalam Pembelajaran</th>
+        <th style="width: 65%;">Kegunaan dalam Pembelajaran</th>
       </tr>
     </thead>
     <tbody>
@@ -224,37 +302,37 @@ export function exportModulAjarToWord(modul) {
 
   <!-- D. PENGALAMAN BELAJAR -->
   <div class="page-break"></div>
-  <h2>D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN)</h2>
+  <h2 class="section-header">D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN DEEP LEARNING)</h2>
   ${pb.map(sesi => `
-    <div style="margin-bottom: 20px;">
-      <h3>${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (Durasi: ${sesi.durasi || '3 × 35 Menit'})</h3>
-      <table>
+    <div style="margin-bottom: 22px;">
+      <h3 class="sub-header">${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (Alokasi: ${sesi.durasi || '3 × 35 Menit'})</h3>
+      <table class="data-table">
         <thead>
           <tr>
-            <th style="width: 22%;">Tahapan Kegiatan</th>
-            <th style="width: 58%;">Deskripsi Kegiatan Pembelajaran</th>
-            <th style="width: 20%;">Waktu & Prinsip</th>
+            <th style="width: 20%;">Tahapan Kegiatan</th>
+            <th style="width: 62%;">Uraian Kegiatan Pembelajaran</th>
+            <th style="width: 18%;">Waktu & Prinsip</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>KEGIATAN PEMBUKA</strong></td>
             <td>${sesi.pembuka?.deskripsi || '-'}</td>
-            <td>${sesi.pembuka?.waktuPrinsip || '10 Menit | Bermakna'}</td>
+            <td style="text-align: center;">${sesi.pembuka?.waktuPrinsip || '10 Menit | Bermakna'}</td>
           </tr>
           <tr>
             <td><strong>KEGIATAN INTI</strong></td>
             <td>
-              <p><strong>1. Memahami (Orientasi Masalah):</strong><br>${sesi.inti?.memahami || '-'}</p>
-              <p><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
-              <p><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
+              <p><strong>1. Memahami (Orientasi & Pengenalan Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
+              <p><strong>2. Mengaplikasikan (Penyelidikan Mandiri/Kelompok & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
+              <p><strong>3. Merefleksikan (Evaluasi & Refleksi Pembelajaran):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
             </td>
-            <td>${sesi.inti?.waktuPrinsip || '85 Menit | Bermakna, Menggembirakan, Berkesadaran'}</td>
+            <td style="text-align: center;">${sesi.inti?.waktuPrinsip || '85 Menit | Bermakna, Menggembirakan, Berkesadaran'}</td>
           </tr>
           <tr>
             <td><strong>KEGIATAN PENUTUP</strong></td>
             <td>${sesi.penutup?.deskripsi || '-'}</td>
-            <td>${sesi.penutup?.waktuPrinsip || '10 Menit | Berkesadaran'}</td>
+            <td style="text-align: center;">${sesi.penutup?.waktuPrinsip || '10 Menit | Berkesadaran'}</td>
           </tr>
         </tbody>
       </table>
@@ -262,12 +340,15 @@ export function exportModulAjarToWord(modul) {
   `).join('')}
 
   <!-- E. PENILAIAN / ASESMEN -->
-  <h2>E. PENILAIAN / ASESMEN</h2>
-  <table>
+  <div class="page-break"></div>
+  <h2 class="section-header">E. PENILAIAN / ASESMEN PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Tabel Rencana Asesmen</h3>
+  <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 30%;">Jenis Asesmen</th>
-        <th style="width: 45%;">Bentuk & Instrumen</th>
+        <th style="width: 25%;">Jenis Asesmen</th>
+        <th style="width: 50%;">Bentuk & Instrumen</th>
         <th style="width: 25%;">Waktu Pelaksanaan</th>
       </tr>
     </thead>
@@ -276,29 +357,31 @@ export function exportModulAjarToWord(modul) {
         <tr>
           <td><strong>${t.jenis}</strong></td>
           <td>${t.instrumen}</td>
-          <td>${t.waktu}</td>
+          <td style="text-align: center;">${t.waktu}</td>
         </tr>
       `).join('')}
     </tbody>
   </table>
 
-  <!-- LAMPIRAN ASESMEN -->
-  <h3>Lampiran Asesmen Awal (Diagnostik)</h3>
+  <h3 class="sub-header">2. Lampiran Asesmen Awal (Diagnostik)</h3>
   <ul>
     ${(ases.lampiranAsesmenAwal || []).map(a => `
-      <li><strong>Pertanyaan:</strong> "${a.soal}"<br><em>Harapan Jawaban:</em> ${a.harapanJawaban}</li>
+      <li style="margin-bottom: 6px;">
+        <strong>Pertanyaan Pemantik:</strong> "${a.soal}"<br>
+        <em>Tolak Ukur/Kriteria Jawaban:</em> ${a.harapanJawaban}
+      </li>
     `).join('')}
   </ul>
 
-  <h3>Rubrik Penilaian Sikap</h3>
-  <table>
+  <h3 class="sub-header">3. Rubrik Penilaian Sikap (Formatif)</h3>
+  <table class="data-table">
     <thead>
       <tr>
-        <th>Aspek Sikap</th>
-        <th>Skor 4 (Sangat Baik)</th>
-        <th>Skor 3 (Baik)</th>
-        <th>Skor 2 (Cukup)</th>
-        <th>Skor 1 (Perlu Bimbingan)</th>
+        <th style="width: 20%;">Aspek Profil</th>
+        <th style="width: 20%;">Skor 4 (Sangat Baik)</th>
+        <th style="width: 20%;">Skor 3 (Baik)</th>
+        <th style="width: 20%;">Skor 2 (Cukup)</th>
+        <th style="width: 20%;">Skor 1 (Perlu Bimbingan)</th>
       </tr>
     </thead>
     <tbody>
@@ -314,68 +397,105 @@ export function exportModulAjarToWord(modul) {
     </tbody>
   </table>
 
-  <h3>Soal Asesmen Sumatif (Uraian HOTS)</h3>
+  <h3 class="sub-header">4. Soal Asesmen Sumatif (Uraian HOTS)</h3>
   <ol>
     ${(ases.soalSumatifHots || []).map(s => `
       <li style="margin-bottom: 8px;">
         <strong>${s.soal}</strong><br>
-        <em>Kunci Jawaban & Rubrik:</em> ${s.kunciJawaban}
+        <em>Kunci Jawaban & Rubrik Penskoran:</em> ${s.kunciJawaban}
       </li>
     `).join('')}
   </ol>
 
   <!-- LAMPIRAN MATERI AJAR -->
   <div class="page-break"></div>
-  <h2>LAMPIRAN MATERI AJAR</h2>
-  <p>${mat.pendahuluan || ''}</p>
-  ${(mat.poinPenting || []).map(p => `
-    <h3>${p.subjudul}</h3>
-    <p>${p.uraian}</p>
-  `).join('')}
-  <p><strong>Rangkuman:</strong> ${mat.rangkuman || ''}</p>
+  <h2 class="section-header">LAMPIRAN 1: BAHAN BACAAN & MATERI AJAR GURU & SISWA</h2>
+  <div class="box-bordered">
+    <p><strong>Pendahuluan:</strong></p>
+    <p>${mat.pendahuluan || '-'}</p>
+    ${(mat.poinPenting || []).map((p, idx) => `
+      <h3 class="sub-header">${idx + 1}. ${p.subjudul}</h3>
+      <p>${p.uraian}</p>
+    `).join('')}
+    <div style="background-color: #F8FAFC; border-left: 4px solid #000000; padding: 8px 12px; margin-top: 10px;">
+      <p style="margin: 0;"><strong>Rangkuman Materi:</strong><br>${mat.rangkuman || '-'}</p>
+    </div>
+  </div>
 
   <!-- LAMPIRAN LKPD -->
   <div class="page-break"></div>
-  <h2>LAMPIRAN LEMBAR KERJA PESERTA DIDIK (LKPD)</h2>
-  ${lkpd.map(item => `
-    <div style="border: 1px solid #000; padding: 12px; margin-bottom: 16px;">
-      <h3 style="text-align: center; margin-top: 0;">${item.judul}</h3>
-      <p style="text-align: center; font-size: 9pt;"><em>Sintaks: ${item.sintaksPbl || '-'}</em></p>
-      <hr>
-      <p><strong>Nama Siswa:</strong> ______________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>Kelas:</strong> ________</p>
-      <p><strong>A. Stimulus & Pemahaman:</strong><br>${item.kegiatanMemahami?.bacaanAtauStimulus || '-'}</p>
+  <h2 class="section-header">LAMPIRAN 2: LEMBAR KERJA PESERTA DIDIK (LKPD)</h2>
+  ${lkpd.map((item, idx) => `
+    <div class="box-bordered" style="margin-bottom: 20px;">
+      <div style="text-align: center; border-bottom: 1px solid #000000; padding-bottom: 6px; margin-bottom: 10px;">
+        <strong style="font-size: 12pt; text-transform: uppercase;">LKPD ${idx + 1}: ${item.judul}</strong><br>
+        <span style="font-size: 9.5pt; font-style: italic;">Pendekatan Deep Learning - Sintaks: ${item.sintaksPbl || 'Problem Based Learning'}</span>
+      </div>
+      <table class="info-table" style="margin-bottom: 8px;">
+        <tr>
+          <td style="width: 50%;"><strong>Nama Siswa:</strong> .................................................</td>
+          <td style="width: 50%;"><strong>Kelas:</strong> .............................</td>
+        </tr>
+      </table>
+      
+      <p><strong>A. Kegiatan Memahami (Stimulus & Pertanyaan):</strong></p>
+      <div style="background-color: #F8FAFC; border: 1px solid #CCCCCC; padding: 8px; margin-bottom: 8px;">
+        <p style="margin: 0;">${item.kegiatanMemahami?.bacaanAtauStimulus || '-'}</p>
+      </div>
       <ol>
         ${(item.kegiatanMemahami?.pertanyaan || []).map(q => `<li>${q}</li>`).join('')}
       </ol>
-      <p><strong>B. Petunjuk Kerja & Penugasan:</strong><br>${item.kegiatanMengaplikasikan?.petunjuk || '-'}</p>
-      <p>${item.kegiatanMengaplikasikan?.tabelAtauTugas || '-'}</p>
-      <p><strong>C. Rubrik Mandiri Siswa:</strong></p>
+
+      <p><strong>B. Kegiatan Mengaplikasikan (Penugasan & Praktik):</strong></p>
+      <p>${item.kegiatanMengaplikasikan?.petunjuk || '-'}</p>
+      <div style="border: 1px dashed #666666; padding: 8px; min-height: 60px; margin-bottom: 10px;">
+        ${item.kegiatanMengaplikasikan?.tabelAtauTugas || '<em>(Ruang Pengerjaan / Tabel Jawaban Siswa)</em>'}
+      </div>
+
+      <p><strong>C. Rubrik Penilaian Diri (Refleksi Mandiri Siswa):</strong></p>
       <ul>
-        ${(item.rubrikMandiri || []).map(rm => `<li>[ &nbsp; ] ${rm}</li>`).join('')}
+        ${(item.rubrikMandiri || []).map(rm => `<li>[ &nbsp;&nbsp; ] ${rm}</li>`).join('')}
       </ul>
     </div>
   `).join('')}
 
   <!-- TINDAK LANJUT & REFLEKSI -->
-  <h2>TINDAK LANJUT DAN REFLEKSI</h2>
-  <p><strong>Program Remedial:</strong> ${tindak.programRemedial || '-'}</p>
-  <p><strong>Program Pengayaan:</strong> ${tindak.programPengayaan || '-'}</p>
+  <div class="page-break"></div>
+  <h2 class="section-header">F. TINDAK LANJUT DAN REFLEKSI PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Program Pembelajaran Remedial & Pengayaan</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 50%;">Program Remedial (Bagi Siswa Belum Tuntas)</th>
+        <th style="width: 50%;">Program Pengayaan (Bagi Siswa Tuntas Lebih Cepat)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>${tindak.programRemedial || '-'}</td>
+        <td>${tindak.programPengayaan || '-'}</td>
+      </tr>
+    </tbody>
+  </table>
 
-  <h3>Refleksi Guru</h3>
+  <h3 class="sub-header">2. Refleksi Guru</h3>
   <ul>
     ${(tindak.refleksiGuru || []).map(rg => `<li>${rg}</li>`).join('')}
   </ul>
 
-  <h3>Refleksi Siswa</h3>
+  <h3 class="sub-header">3. Refleksi Siswa</h3>
   <ul>
     ${(tindak.refleksiSiswa || []).map(rs => `<li>${rs}</li>`).join('')}
   </ul>
 
   <!-- GLOSARIUM & DAFTAR PUSTAKA -->
-  <h2>GLOSARIUM</h2>
-  <table>
+  <h2 class="section-header">G. GLOSARIUM DAN DAFTAR PUSTAKA</h2>
+  
+  <h3 class="sub-header">Glosarium</h3>
+  <table class="data-table">
     <thead>
-      <tr><th style="width: 30%;">Istilah</th><th>Definisi</th></tr>
+      <tr><th style="width: 25%;">Istilah</th><th style="width: 75%;">Definisi & Penjelasan</th></tr>
     </thead>
     <tbody>
       ${(m.glosarium || []).map(g => `
@@ -384,28 +504,28 @@ export function exportModulAjarToWord(modul) {
     </tbody>
   </table>
 
-  <h2>DAFTAR PUSTAKA</h2>
+  <h3 class="sub-header">Daftar Pustaka</h3>
   <ul>
     ${(m.daftarPustaka || []).map(dp => `<li>${dp}</li>`).join('')}
   </ul>
 
-  <!-- PENGESAHAN -->
-  <div style="margin-top: 40px; page-break-inside: avoid;">
-    <table class="table-clean" style="width: 100%;">
+  <!-- LEMBAR PENGESAHAN -->
+  <div style="margin-top: 35px; page-break-inside: avoid;">
+    <table class="signature-table">
       <tr>
-        <td style="width: 50%; text-align: center;">
+        <td style="width: 50%;">
           Mengetahui,<br>
           Kepala Sekolah
-          <br><br><br><br>
-          <strong><u>${sah.kepalaSekolah?.nama || '( ........................................ )'}</u></strong><br>
-          NIP. ${sah.kepalaSekolah?.nip || '...........................................'}
+          <br><br><br><br><br>
+          <strong><u>${sah.kepalaSekolah?.nama || '( .................................................... )'}</u></strong><br>
+          NIP. ${sah.kepalaSekolah?.nip || '...................................................'}
         </td>
-        <td style="width: 50%; text-align: center;">
-          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID')}<br>
-          Guru Kelas / Pengampu
-          <br><br><br><br>
-          <strong><u>${sah.guru?.nama || iden.penyusun || '( ........................................ )'}</u></strong><br>
-          NIP. ${sah.guru?.nip || '...........................................'}
+        <td style="width: 50%;">
+          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
+          Guru Kelas / Pengampu Mata Pelajaran
+          <br><br><br><br><br>
+          <strong><u>${sah.guru?.nama || iden.penyusun || '( .................................................... )'}</u></strong><br>
+          NIP. ${sah.guru?.nip || '...................................................'}
         </td>
       </tr>
     </table>
@@ -424,6 +544,7 @@ export function exportModulAjarToWord(modul) {
 
 /**
  * Cetak Dokumen Modul Ajar (Print to PDF / Printer Fisik)
+ * Layout rapi A4 siap cetak dengan styling kop formal, tabel proporsional, dan penataan halaman bersih.
  */
 export function printModulAjar(modul) {
   if (!modul) return
@@ -441,89 +562,138 @@ export function printModulAjar(modul) {
 
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
-    alert('Pop-up jendela cetak diblokir oleh browser. Silakan izinkan pop-up untuk mencetak.')
+    alert('Pop-up jendela cetak diblokir oleh browser. Silakan izinkan pop-up untuk mencetak atau simpan PDF.')
     return
   }
 
   const printHtml = `
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
   <meta charset="utf-8">
   <title>${m.judul || 'Cetak Modul Ajar Deep Learning'}</title>
   <style>
     @page {
       size: A4 portrait;
-      margin: 1.5cm;
+      margin: 20mm 18mm 18mm 18mm;
     }
     body {
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 10.5pt;
-      line-height: 1.45;
-      color: #111;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 11pt;
+      line-height: 1.35;
+      color: #000000;
       padding: 0;
       margin: 0;
+      background: #FFFFFF;
     }
     .header-box {
       text-align: center;
-      border-bottom: 2px solid #000;
+      border-bottom: 2.5px solid #000000;
       padding-bottom: 8px;
       margin-bottom: 16px;
     }
-    h1 {
+    h1.main-title {
       font-size: 13pt;
       font-weight: bold;
-      margin: 0 0 4px 0;
+      margin: 0 0 3px 0;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
-    h2 {
+    .school-title {
+      font-size: 11.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 0 0 3px 0;
+    }
+    .meta-subtitle {
+      font-size: 10pt;
+      color: #333333;
+      margin: 0;
+    }
+    h2.section-header {
       font-size: 11.5pt;
       font-weight: bold;
       margin-top: 18px;
-      margin-bottom: 6px;
-      background: #f1f5f9;
-      padding: 4px 8px;
-      border-left: 4px solid #3b82f6;
+      margin-bottom: 8px;
+      background: #E2E8F0;
+      border: 1px solid #000000;
+      padding: 5px 8px;
+      text-transform: uppercase;
+      page-break-after: avoid;
     }
-    h3 {
-      font-size: 10.5pt;
+    h3.sub-header {
+      font-size: 11pt;
       font-weight: bold;
-      margin-top: 10px;
+      margin-top: 12px;
       margin-bottom: 4px;
+      page-break-after: avoid;
     }
     p {
-      margin: 3px 0;
+      margin: 3px 0 5px 0;
       text-align: justify;
     }
-    table {
+    table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 8px 0;
-      font-size: 9.5pt;
+      margin: 8px 0 12px 0;
+      font-size: 10pt;
+      page-break-inside: auto;
     }
-    th, td {
-      border: 1px solid #333;
-      padding: 5px 8px;
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
+      padding: 6px 8px;
       vertical-align: top;
     }
-    th {
-      background-color: #f8fafc;
+    table.data-table th {
+      background-color: #F1F5F9;
       font-weight: bold;
-      text-align: left;
+      text-align: center;
     }
-    .table-info td {
+    table.data-table tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+    table.info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0 10px 0;
+      font-size: 10.5pt;
+    }
+    table.info-table td {
       border: none;
-      padding: 2px 4px;
+      padding: 3px 4px;
+      vertical-align: top;
+    }
+    .box-bordered {
+      border: 1px solid #000000;
+      padding: 10px 14px;
+      margin-top: 8px;
+      margin-bottom: 14px;
+      page-break-inside: avoid;
     }
     ul, ol {
-      margin: 4px 0;
-      padding-left: 20px;
+      margin: 4px 0 6px 0;
+      padding-left: 24px;
     }
     li {
-      margin-bottom: 2px;
+      margin-bottom: 3px;
+      text-align: justify;
     }
     .page-break {
       page-break-before: always;
+    }
+    .signature-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 35px;
+      font-size: 10.5pt;
+      page-break-inside: avoid;
+    }
+    .signature-table td {
+      border: none;
+      text-align: center;
+      padding: 6px;
+      vertical-align: top;
     }
     @media print {
       body {
@@ -531,25 +701,26 @@ export function printModulAjar(modul) {
         print-color-adjust: exact;
       }
       .no-print {
-        display: none;
+        display: none !important;
       }
     }
   </style>
 </head>
 <body>
+
+  <!-- KOP DOKUMEN -->
   <div class="header-box">
-    <h1>${m.judul || 'RENCANA PEMBELAJARAN MENDALAM (RPM) KURIKULUM MERDEKA'}</h1>
-    <div style="font-weight: bold; font-size: 11pt; color: #1e293b;">
-      ${iden.sekolah || 'SATUAN PENDIDIKAN'}
-    </div>
-    <div style="font-size: 9.5pt; color: #475569;">
-      ${iden.mataPelajaran || ''} • ${iden.kelasFase || ''} • Tahun Pelajaran ${iden.tahunPelajaran || ''} • Semester ${iden.semester || ''}
+    <h1 class="main-title">${m.judul || 'RENCANA PEMBELAJARAN MENDALAM (RPM) KURIKULUM MERDEKA'}</h1>
+    <div class="school-title">${iden.sekolah || 'SATUAN PENDIDIKAN'}</div>
+    <div class="meta-subtitle">
+      Mata Pelajaran: <strong>${iden.mataPelajaran || '-'}</strong> | ${iden.kelasFase || 'Kelas 5 / Fase C'} | Tahun Pelajaran: <strong>${iden.tahunPelajaran || '2026/2027'}</strong> | Semester: <strong>${iden.semester || '1'}</strong>
     </div>
   </div>
 
-  <h2>A. IDENTIFIKASI PEMBELAJARAN</h2>
-  <table class="table-info">
-    <tr><td style="width: 25%; font-weight: bold;">Penyusun</td><td style="width: 2%;">:</td><td>${iden.penyusun || '-'}</td></tr>
+  <!-- A. IDENTIFIKASI -->
+  <h2 class="section-header">A. IDENTIFIKASI PEMBELAJARAN</h2>
+  <table class="info-table">
+    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Satuan Pendidikan</td><td>:</td><td>${iden.sekolah || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Tahun Pelajaran</td><td>:</td><td>${iden.tahunPelajaran || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Semester</td><td>:</td><td>${iden.semester || '-'}</td></tr>
@@ -559,125 +730,337 @@ export function printModulAjar(modul) {
     <tr><td style="font-weight: bold;">Alokasi Waktu</td><td>:</td><td>${iden.alokasiWaktu || '-'}</td></tr>
   </table>
 
-  <h3>Pengetahuan Awal</h3>
+  <h3 class="sub-header">1. Pengetahuan Awal Siswa</h3>
   <ul>${(iden.pengetahuanAwal || []).map(p => `<li>${p}</li>`).join('')}</ul>
 
-  <h3>Minat Belajar</h3>
+  <h3 class="sub-header">2. Minat Belajar Siswa</h3>
   <ul>${(iden.minatBelajar || []).map(mb => `<li>${mb}</li>`).join('')}</ul>
 
-  <h3>Latar Belakang & Kebutuhan Belajar</h3>
+  <h3 class="sub-header">3. Latar Belakang Lingkungan Siswa</h3>
   <p>${iden.latarBelakang || '-'}</p>
-  <ul>
-    <li><strong>Visual:</strong> ${iden.kebutuhanBelajar?.visual || '-'}</li>
-    <li><strong>Kinestetik:</strong> ${iden.kebutuhanBelajar?.kinestetik || '-'}</li>
-    <li><strong>Audio:</strong> ${iden.kebutuhanBelajar?.audio || '-'}</li>
-    <li><strong>Pendampingan Khusus:</strong> ${iden.kebutuhanBelajar?.pendampinganKhusus || '-'}</li>
-  </ul>
 
-  <h2>B. DIMENSI PROFIL LULUSAN (DPL)</h2>
-  <table>
-    <thead><tr><th style="width: 30%;">Dimensi</th><th>Deskripsi Penerapan dalam Materi</th></tr></thead>
+  <h3 class="sub-header">4. Pemetaan Kebutuhan Belajar Siswa</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Gaya Belajar</th>
+        <th style="width: 75%;">Deskripsi Strategi & Pendampingan Guru</th>
+      </tr>
+    </thead>
     <tbody>
-      ${dpl.map(item => `<tr><td><strong>${item.dimensi}</strong></td><td>${item.deskripsi}</td></tr>`).join('')}
+      <tr><td><strong>Visual</strong></td><td>${iden.kebutuhanBelajar?.visual || '-'}</td></tr>
+      <tr><td><strong>Kinestetik</strong></td><td>${iden.kebutuhanBelajar?.kinestetik || '-'}</td></tr>
+      <tr><td><strong>Audio / Auditorial</strong></td><td>${iden.kebutuhanBelajar?.audio || '-'}</td></tr>
+      <tr><td><strong>Pendampingan Khusus</strong></td><td>${iden.kebutuhanBelajar?.pendampinganKhusus || '-'}</td></tr>
     </tbody>
   </table>
 
-  <h2>C. DESAIN PEMBELAJARAN</h2>
-  <h3>Capaian Pembelajaran</h3>
+  <!-- B. DIMENSI PROFIL LULUSAN -->
+  <h2 class="section-header">B. DIMENSI PROFIL KELULUSAN (DPL)</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 32%;">Dimensi Profil Lulusan</th>
+        <th style="width: 68%;">Deskripsi Penerapan dalam Materi</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${dpl.map(item => `
+        <tr>
+          <td><strong>${item.dimensi}</strong></td>
+          <td>${item.deskripsi}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <!-- C. DESAIN PEMBELAJARAN -->
+  <h2 class="section-header">C. DESAIN PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Capaian Pembelajaran (CP)</h3>
   <p>${dp.capaianPembelajaran || '-'}</p>
 
-  <h3>Tujuan Pembelajaran</h3>
+  <h3 class="sub-header">2. Tujuan Pembelajaran (TP)</h3>
   <ol>${(dp.tujuanPembelajaran || []).map(tp => `<li>${tp}</li>`).join('')}</ol>
 
-  <h3>Praktik Pedagogi & Lingkungan Belajar</h3>
-  <table class="table-info">
-    <tr><td style="width: 20%; font-weight: bold;">Model</td><td style="width: 2%;">:</td><td>${dp.praktikPedagogi?.model || '-'}</td></tr>
-    <tr><td style="font-weight: bold;">Pendekatan</td><td>:</td><td>${dp.praktikPedagogi?.pendekatan || '-'}</td></tr>
+  <h3 class="sub-header">3. Integrasi Lintas Disiplin Ilmu</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 32%;">Mata Pelajaran Terkait</th>
+        <th style="width: 68%;">Uraian Integrasi Materi</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(dp.lintasDisiplinIlmu || []).map(l => `
+        <tr>
+          <td><strong>${l.mapel}</strong></td>
+          <td>${l.uraian}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <h3 class="sub-header">4. Praktik Pedagogi</h3>
+  <table class="info-table">
+    <tr><td style="width: 22%; font-weight: bold;">Model Pembelajaran</td><td style="width: 3%;">:</td><td>${dp.praktikPedagogi?.model || '-'}</td></tr>
+    <tr><td style="font-weight: bold;">Pendekatan</td><td>:</td><td>${dp.praktikPedagogi?.pendekatan || 'Deep Learning (Berkesadaran, Bermakna, Menggembirakan)'}</td></tr>
     <tr><td style="font-weight: bold;">Metode</td><td>:</td><td>${dp.praktikPedagogi?.metode || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Strategi</td><td>:</td><td>${dp.praktikPedagogi?.strategi || '-'}</td></tr>
   </table>
 
+  <h3 class="sub-header">5. Lingkungan Belajar</h3>
+  <ul>
+    <li><strong>Ruang Fisik:</strong> ${dp.lingkunganBelajar?.ruangFisik || '-'}</li>
+    <li><strong>Platform Virtual:</strong> ${dp.lingkunganBelajar?.platformVirtual || '-'}</li>
+    <li><strong>Budaya Belajar:</strong> ${dp.lingkunganBelajar?.budayaBelajar || '-'}</li>
+    <li><strong>Sumber Belajar:</strong> ${dp.lingkunganBelajar?.sumberBelajar || '-'}</li>
+  </ul>
+
+  <h3 class="sub-header">6. Pemanfaatan Teknologi Digital</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35%;">Alat / Platform Digital</th>
+        <th style="width: 65%;">Kegunaan dalam Pembelajaran</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(dp.pemanfaatanDigital || []).map(p => `
+        <tr>
+          <td><strong>${p.alat}</strong></td>
+          <td>${p.kegunaan}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <!-- D. PENGALAMAN BELAJAR -->
   <div class="page-break"></div>
-  <h2>D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN)</h2>
+  <h2 class="section-header">D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN DEEP LEARNING)</h2>
   ${pb.map(sesi => `
-    <div style="margin-bottom: 14px;">
-      <h3>${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (${sesi.durasi || '3 × 35 Menit'})</h3>
-      <table>
+    <div style="margin-bottom: 20px;">
+      <h3 class="sub-header">${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (Alokasi: ${sesi.durasi || '3 × 35 Menit'})</h3>
+      <table class="data-table">
         <thead>
-          <tr><th style="width: 22%;">Tahapan</th><th style="width: 58%;">Kegiatan Pembelajaran</th><th style="width: 20%;">Waktu & Prinsip</th></tr>
+          <tr>
+            <th style="width: 20%;">Tahapan Kegiatan</th>
+            <th style="width: 62%;">Uraian Kegiatan Pembelajaran</th>
+            <th style="width: 18%;">Waktu & Prinsip</th>
+          </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>PEMBUKA</strong></td>
+            <td><strong>KEGIATAN PEMBUKA</strong></td>
             <td>${sesi.pembuka?.deskripsi || '-'}</td>
-            <td>${sesi.pembuka?.waktuPrinsip || '-'}</td>
+            <td style="text-align: center;">${sesi.pembuka?.waktuPrinsip || '10 Menit | Bermakna'}</td>
           </tr>
           <tr>
-            <td><strong>INTI</strong></td>
+            <td><strong>KEGIATAN INTI</strong></td>
             <td>
-              <p><strong>1. Memahami:</strong> ${sesi.inti?.memahami || '-'}</p>
-              <p><strong>2. Mengaplikasikan:</strong> ${sesi.inti?.mengaplikasikan || '-'}</p>
-              <p><strong>3. Merefleksikan:</strong> ${sesi.inti?.merefleksikan || '-'}</p>
+              <p><strong>1. Memahami (Orientasi Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
+              <p><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
+              <p><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
             </td>
-            <td>${sesi.inti?.waktuPrinsip || '-'}</td>
+            <td style="text-align: center;">${sesi.inti?.waktuPrinsip || '85 Menit | Bermakna, Menggembirakan, Berkesadaran'}</td>
           </tr>
           <tr>
-            <td><strong>PENUTUP</strong></td>
+            <td><strong>KEGIATAN PENUTUP</strong></td>
             <td>${sesi.penutup?.deskripsi || '-'}</td>
-            <td>${sesi.penutup?.waktuPrinsip || '-'}</td>
+            <td style="text-align: center;">${sesi.penutup?.waktuPrinsip || '10 Menit | Berkesadaran'}</td>
           </tr>
         </tbody>
       </table>
     </div>
   `).join('')}
 
-  <h2>E. PENILAIAN / ASESMEN</h2>
-  <table>
-    <thead><tr><th>Jenis Asesmen</th><th>Bentuk & Instrumen</th><th>Waktu</th></tr></thead>
+  <!-- E. PENILAIAN / ASESMEN -->
+  <div class="page-break"></div>
+  <h2 class="section-header">E. PENILAIAN / ASESMEN PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Tabel Rencana Asesmen</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Jenis Asesmen</th>
+        <th style="width: 50%;">Bentuk & Instrumen</th>
+        <th style="width: 25%;">Waktu Pelaksanaan</th>
+      </tr>
+    </thead>
     <tbody>
-      ${(ases.tabelJenis || []).map(t => `<tr><td><strong>${t.jenis}</strong></td><td>${t.instrumen}</td><td>${t.waktu}</td></tr>`).join('')}
+      ${(ases.tabelJenis || []).map(t => `
+        <tr>
+          <td><strong>${t.jenis}</strong></td>
+          <td>${t.instrumen}</td>
+          <td style="text-align: center;">${t.waktu}</td>
+        </tr>
+      `).join('')}
     </tbody>
   </table>
 
-  <h3>Rubrik Penilaian Sikap</h3>
-  <table>
-    <thead><tr><th>Aspek</th><th>Skor 4</th><th>Skor 3</th><th>Skor 2</th><th>Skor 1</th></tr></thead>
+  <h3 class="sub-header">2. Lampiran Asesmen Awal (Diagnostik)</h3>
+  <ul>
+    ${(ases.lampiranAsesmenAwal || []).map(a => `
+      <li style="margin-bottom: 6px;">
+        <strong>Pertanyaan Pemantik:</strong> "${a.soal}"<br>
+        <em>Tolak Ukur/Kriteria Jawaban:</em> ${a.harapanJawaban}
+      </li>
+    `).join('')}
+  </ul>
+
+  <h3 class="sub-header">3. Rubrik Penilaian Sikap (Formatif)</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 20%;">Aspek Profil</th>
+        <th style="width: 20%;">Skor 4 (Sangat Baik)</th>
+        <th style="width: 20%;">Skor 3 (Baik)</th>
+        <th style="width: 20%;">Skor 2 (Cukup)</th>
+        <th style="width: 20%;">Skor 1 (Perlu Bimbingan)</th>
+      </tr>
+    </thead>
     <tbody>
-      ${(ases.rubrikSikap || []).map(r => `<tr><td><strong>${r.aspek}</strong></td><td>${r.skor4}</td><td>${r.skor3}</td><td>${r.skor2}</td><td>${r.skor1}</td></tr>`).join('')}
+      ${(ases.rubrikSikap || []).map(r => `
+        <tr>
+          <td><strong>${r.aspek}</strong></td>
+          <td>${r.skor4}</td>
+          <td>${r.skor3}</td>
+          <td>${r.skor2}</td>
+          <td>${r.skor1}</td>
+        </tr>
+      `).join('')}
     </tbody>
   </table>
 
-  <h3>Asesmen Sumatif (Soal HOTS)</h3>
+  <h3 class="sub-header">4. Soal Asesmen Sumatif (Uraian HOTS)</h3>
   <ol>
-    ${(ases.soalSumatifHots || []).map(s => `<li><strong>${s.soal}</strong><br><em>Kunci:</em> ${s.kunciJawaban}</li>`).join('')}
+    ${(ases.soalSumatifHots || []).map(s => `
+      <li style="margin-bottom: 8px;">
+        <strong>${s.soal}</strong><br>
+        <em>Kunci Jawaban & Rubrik Penskoran:</em> ${s.kunciJawaban}
+      </li>
+    `).join('')}
   </ol>
 
+  <!-- LAMPIRAN MATERI AJAR -->
   <div class="page-break"></div>
-  <h2>LAMPIRAN LEMBAR KERJA PESERTA DIDIK (LKPD)</h2>
-  ${lkpd.map(item => `
-    <div style="border: 1px solid #333; padding: 10px; margin-bottom: 12px;">
-      <h3 style="text-align: center; margin-top: 0;">${item.judul}</h3>
-      <p><strong>Stimulus:</strong> ${item.kegiatanMemahami?.bacaanAtauStimulus || '-'}</p>
-      <ol>${(item.kegiatanMemahami?.pertanyaan || []).map(q => `<li>${q}</li>`).join('')}</ol>
-      <p><strong>Tugas Aplikasi:</strong> ${item.kegiatanMengaplikasikan?.petunjuk || '-'}</p>
+  <h2 class="section-header">LAMPIRAN 1: BAHAN BACAAN & MATERI AJAR GURU & SISWA</h2>
+  <div class="box-bordered">
+    <p><strong>Pendahuluan:</strong></p>
+    <p>${mat.pendahuluan || '-'}</p>
+    ${(mat.poinPenting || []).map((p, idx) => `
+      <h3 class="sub-header">${idx + 1}. ${p.subjudul}</h3>
+      <p>${p.uraian}</p>
+    `).join('')}
+    <div style="background-color: #F8FAFC; border-left: 4px solid #000000; padding: 8px 12px; margin-top: 10px;">
+      <p style="margin: 0;"><strong>Rangkuman Materi:</strong><br>${mat.rangkuman || '-'}</p>
+    </div>
+  </div>
+
+  <!-- LAMPIRAN LKPD -->
+  <div class="page-break"></div>
+  <h2 class="section-header">LAMPIRAN 2: LEMBAR KERJA PESERTA DIDIK (LKPD)</h2>
+  ${lkpd.map((item, idx) => `
+    <div class="box-bordered" style="margin-bottom: 20px;">
+      <div style="text-align: center; border-bottom: 1px solid #000000; padding-bottom: 6px; margin-bottom: 10px;">
+        <strong style="font-size: 12pt; text-transform: uppercase;">LKPD ${idx + 1}: ${item.judul}</strong><br>
+        <span style="font-size: 9.5pt; font-style: italic;">Pendekatan Deep Learning - Sintaks: ${item.sintaksPbl || 'Problem Based Learning'}</span>
+      </div>
+      <table class="info-table" style="margin-bottom: 8px;">
+        <tr>
+          <td style="width: 50%;"><strong>Nama Siswa:</strong> .................................................</td>
+          <td style="width: 50%;"><strong>Kelas:</strong> .............................</td>
+        </tr>
+      </table>
+      
+      <p><strong>A. Kegiatan Memahami (Stimulus & Pertanyaan):</strong></p>
+      <div style="background-color: #F8FAFC; border: 1px solid #CCCCCC; padding: 8px; margin-bottom: 8px;">
+        <p style="margin: 0;">${item.kegiatanMemahami?.bacaanAtauStimulus || '-'}</p>
+      </div>
+      <ol>
+        ${(item.kegiatanMemahami?.pertanyaan || []).map(q => `<li>${q}</li>`).join('')}
+      </ol>
+
+      <p><strong>B. Kegiatan Mengaplikasikan (Penugasan & Praktik):</strong></p>
+      <p>${item.kegiatanMengaplikasikan?.petunjuk || '-'}</p>
+      <div style="border: 1px dashed #666666; padding: 8px; min-height: 60px; margin-bottom: 10px;">
+        ${item.kegiatanMengaplikasikan?.tabelAtauTugas || '<em>(Ruang Pengerjaan / Tabel Jawaban Siswa)</em>'}
+      </div>
+
+      <p><strong>C. Rubrik Penilaian Diri (Refleksi Mandiri Siswa):</strong></p>
+      <ul>
+        ${(item.rubrikMandiri || []).map(rm => `<li>[ &nbsp;&nbsp; ] ${rm}</li>`).join('')}
+      </ul>
     </div>
   `).join('')}
 
-  <div style="margin-top: 30px; page-break-inside: avoid;">
-    <table class="table-info" style="width: 100%;">
+  <!-- TINDAK LANJUT & REFLEKSI -->
+  <div class="page-break"></div>
+  <h2 class="section-header">F. TINDAK LANJUT DAN REFLEKSI PEMBELAJARAN</h2>
+  
+  <h3 class="sub-header">1. Program Pembelajaran Remedial & Pengayaan</h3>
+  <table class="data-table">
+    <thead>
       <tr>
-        <td style="width: 50%; text-align: center;">
-          Mengetahui,<br>Kepala Sekolah
-          <br><br><br><br>
-          <strong><u>${sah.kepalaSekolah?.nama || '( ........................................ )'}</u></strong><br>
-          NIP. ${sah.kepalaSekolah?.nip || '...........................................'}
+        <th style="width: 50%;">Program Remedial (Bagi Siswa Belum Tuntas)</th>
+        <th style="width: 50%;">Program Pengayaan (Bagi Siswa Tuntas Lebih Cepat)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>${tindak.programRemedial || '-'}</td>
+        <td>${tindak.programPengayaan || '-'}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="sub-header">2. Refleksi Guru</h3>
+  <ul>
+    ${(tindak.refleksiGuru || []).map(rg => `<li>${rg}</li>`).join('')}
+  </ul>
+
+  <h3 class="sub-header">3. Refleksi Siswa</h3>
+  <ul>
+    ${(tindak.refleksiSiswa || []).map(rs => `<li>${rs}</li>`).join('')}
+  </ul>
+
+  <!-- GLOSARIUM & DAFTAR PUSTAKA -->
+  <h2 class="section-header">G. GLOSARIUM DAN DAFTAR PUSTAKA</h2>
+  
+  <h3 class="sub-header">Glosarium</h3>
+  <table class="data-table">
+    <thead>
+      <tr><th style="width: 25%;">Istilah</th><th style="width: 75%;">Definisi & Penjelasan</th></tr>
+    </thead>
+    <tbody>
+      ${(m.glosarium || []).map(g => `
+        <tr><td><strong>${g.istilah}</strong></td><td>${g.definisi}</td></tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <h3 class="sub-header">Daftar Pustaka</h3>
+  <ul>
+    ${(m.daftarPustaka || []).map(dp => `<li>${dp}</li>`).join('')}
+  </ul>
+
+  <!-- LEMBAR PENGESAHAN -->
+  <div style="margin-top: 35px; page-break-inside: avoid;">
+    <table class="signature-table">
+      <tr>
+        <td style="width: 50%;">
+          Mengetahui,<br>
+          Kepala Sekolah
+          <br><br><br><br><br>
+          <strong><u>${sah.kepalaSekolah?.nama || '( .................................................... )'}</u></strong><br>
+          NIP. ${sah.kepalaSekolah?.nip || '...................................................'}
         </td>
-        <td style="width: 50%; text-align: center;">
-          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID')}<br>
-          Guru Kelas / Pengampu
-          <br><br><br><br>
-          <strong><u>${sah.guru?.nama || iden.penyusun || '( ........................................ )'}</u></strong><br>
-          NIP. ${sah.guru?.nip || '...........................................'}
+        <td style="width: 50%;">
+          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
+          Guru Kelas / Pengampu Mata Pelajaran
+          <br><br><br><br><br>
+          <strong><u>${sah.guru?.nama || iden.penyusun || '( .................................................... )'}</u></strong><br>
+          NIP. ${sah.guru?.nip || '...................................................'}
         </td>
       </tr>
     </table>
@@ -685,7 +1068,9 @@ export function printModulAjar(modul) {
 
   <script>
     window.onload = function() {
-      window.print();
+      setTimeout(function() {
+        window.print();
+      }, 350);
     }
   </script>
 </body>

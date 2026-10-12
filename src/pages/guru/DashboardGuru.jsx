@@ -1621,7 +1621,7 @@ export default function DashboardGuru() {
             </button>
             <button
               onClick={() => setShowCameraModal(true)}
-              title="Kamera Timemark"
+              title="Kamera GTag"
               style={{
                 background: 'rgba(255,255,255,0.15)',
                 border: 'none',
@@ -1986,7 +1986,7 @@ export default function DashboardGuru() {
                             cursor: 'pointer'
                           }}
                         >
-                          <Camera size={16} /> Kamera Timemark
+                          <Camera size={16} /> Kamera GTag
                         </button>
 
                         <label
@@ -3218,32 +3218,14 @@ export default function DashboardGuru() {
       {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
       {!isDesktop && (
         <nav className="bottom-nav">
+          {/* 1. Presensi */}
           <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('absensi')}>
             <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
           </button>
+
+          {/* 2. Pembelajaran (KBM) - Berada di posisi kedua setelah Presensi */}
           <button
-            className="nav-item"
-            style={{ flex: 1, color: '#0284C7' }}
-            onClick={() => setShowCameraModal(true)}
-          >
-            <div style={{
-              background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-              color: 'white',
-              borderRadius: '50%',
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: '-14px',
-              boxShadow: '0 4px 10px rgba(2, 132, 199, 0.4)'
-            }}>
-              <Camera size={18} />
-            </div>
-            <span style={{ fontSize: '0.7rem', fontWeight: '600' }}>Timemark</span>
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'kbm' ? 'active' : ''}`}
+            className={`nav-item ${activeTab === 'kbm' || activeTab === 'modul_ajar' ? 'active' : ''}`}
             style={{ flex: 1 }}
             onClick={() => {
               const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
@@ -3259,7 +3241,7 @@ export default function DashboardGuru() {
               handleTabChangeWithUrl('kbm');
             }}
           >
-            <BookOpen size={20} strokeWidth={activeTab === 'kbm' ? 2.5 : 1.5} /> 
+            <BookOpen size={20} strokeWidth={activeTab === 'kbm' || activeTab === 'modul_ajar' ? 2.5 : 1.5} /> 
             {(() => {
               const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
               const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
@@ -3268,6 +3250,31 @@ export default function DashboardGuru() {
               return 'Pembelajaran'
             })()}
           </button>
+
+          {/* 3. GTag (Kamera Ber-watermark GPS) - Posisi Center / Tengah */}
+          <button
+            className="nav-item"
+            style={{ flex: 1, color: '#0284C7' }}
+            onClick={() => setShowCameraModal(true)}
+          >
+            <div style={{
+              background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+              color: 'white',
+              borderRadius: '50%',
+              width: '38px',
+              height: '38px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: '-14px',
+              boxShadow: '0 4px 10px rgba(2, 132, 199, 0.4)'
+            }}>
+              <Camera size={19} />
+            </div>
+            <span style={{ fontSize: '0.7rem', fontWeight: '700' }}>GTag</span>
+          </button>
+
+          {/* 4. Riwayat */}
           <button
             className={`nav-item ${activeTab === 'riwayat' ? 'active' : ''}`}
             style={{ flex: 1 }}
@@ -3278,6 +3285,8 @@ export default function DashboardGuru() {
           >
             <History size={20} strokeWidth={activeTab === 'riwayat' ? 2.5 : 1.5} /> Riwayat
           </button>
+
+          {/* 5. Profil */}
           <button className={`nav-item ${activeTab === 'pengaturan' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('pengaturan')}>
             <UserCircle size={20} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.5} /> Profil
           </button>

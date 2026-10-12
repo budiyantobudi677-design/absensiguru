@@ -1878,7 +1878,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         <div style={{ width: '100%', maxWidth: '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
             <Camera size={22} color="#38BDF8" />
-            <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera Timemark</span>
+            <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera GTag</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {/* Tombol Segarkan GPS */}
@@ -1970,7 +1970,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             }}
           >
             <Camera size={16} color="#38BDF8" />
-            <span style={{ fontWeight: '600', fontSize: '0.8rem' }}>Kamera Timemark</span>
+            <span style={{ fontWeight: '600', fontSize: '0.8rem' }}>Kamera GTag</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }}>
             {/* Tombol Segarkan GPS Landscape */}
