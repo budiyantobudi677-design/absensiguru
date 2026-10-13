@@ -201,7 +201,7 @@ export async function getSecureLocation(options = { timeout: 8000, enableHighAcc
   }
 
   try {
-    return await getWebPosition(options)
+    return await getWebPosition({ maximumAge: 0, ...options })
   } catch (firstErr) {
     // Jika GPS High Accuracy gagal mengunci (misal di dalam ruangan), coba toleransi network/cache
     if (options.enableHighAccuracy) {

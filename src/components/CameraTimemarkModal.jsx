@@ -237,35 +237,52 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }
 
-  // Helper Konversi Koordinat GPS ke Tile Slippy Map
-  const getTileCoordinates = (lat, lng, zoom = 16) => {
+  // Helper Konversi Koordinat GPS ke Posisi Sub-Tile Presisi (Grid 2x2 Tile @ Zoom 17)
+  // Memastikan titik koordinat (lat, lng) berada tepat 100% di titik tengah pin merah peta mini (tanpa bergeser ke pusat tile)
+  const getExactTilePosition = (lat, lng, zoom = 17) => {
     if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) return null
-    const x = Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
+    const scale = Math.pow(2, zoom)
+    const u = ((lng + 180) / 360) * scale
     const latRad = (lat * Math.PI) / 180
-    const y = Math.floor(
-      ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * Math.pow(2, zoom)
-    )
-    return { x, y, zoom }
+    const v = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale
+
+    const tileX = Math.floor(u)
+    const tileY = Math.floor(v)
+    const fx = u - tileX
+    const fy = v - tileY
+
+    const startX = fx < 0.5 ? tileX - 1 : tileX
+    const startY = fy < 0.5 ? tileY - 1 : tileY
+
+    const normX = u - startX // Selalu di rentang [0.5, 1.5)
+    const normY = v - startY // Selalu di rentang [0.5, 1.5)
+    const centerPx = normX * 256
+    const centerPy = normY * 256
+
+    return {
+      zoom,
+      startX,
+      startY,
+      normX,
+      normY,
+      centerPx,
+      centerPy,
+      tiles: [
+        { dx: 0, dy: 0, x: startX, y: startY },
+        { dx: 1, dy: 0, x: startX + 1, y: startY },
+        { dx: 0, dy: 1, x: startX, y: startY + 1 },
+        { dx: 1, dy: 1, x: startX + 1, y: startY + 1 }
+      ]
+    }
   }
 
-  // URL Tile Map Bersih & Cepat (Google Maps Standard Road Tile, bebas API Key & mendukung CORS penuh)
-  const getMapTileUrl = (lat, lng, zoom = 16) => {
-    const coords = getTileCoordinates(lat, lng, zoom)
-    if (!coords) return ''
-    return `https://mt1.google.com/vt/lyrs=m&x=${coords.x}&y=${coords.y}&z=${coords.zoom}&hl=id`
-  }
+  const getSingleTileUrl = (x, y, zoom = 17) =>
+    `https://mt1.google.com/vt/lyrs=m&x=${x}&y=${y}&z=${zoom}&hl=id`
 
-  // URL Fallback Tile Map (Esri ArcGIS World Street Map, bebas API Key & mendukung CORS penuh)
-  const getFallbackMapTileUrl = (lat, lng, zoom = 16) => {
-    const coords = getTileCoordinates(lat, lng, zoom)
-    if (!coords) return ''
-    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${coords.zoom}/${coords.y}/${coords.x}`
-  }
+  const getSingleFallbackTileUrl = (x, y, zoom = 17) =>
+    `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${y}/${x}`
 
-  // Pre-load Gambar Tile Peta untuk Digambar ke Canvas Watermark Foto
-  const loadMapImage = (lat, lng) => {
-    const url = getMapTileUrl(lat, lng, 16)
-    if (!url) return Promise.resolve(null)
+  const loadSingleTileImage = (x, y, zoom = 17) => {
     return new Promise((resolve) => {
       let resolved = false
       const onDone = (res) => {
@@ -278,21 +295,65 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       img.crossOrigin = 'anonymous'
       img.onload = () => onDone(img)
       img.onerror = () => {
-        const fallbackUrl = getFallbackMapTileUrl(lat, lng, 16)
-        if (fallbackUrl) {
-          const fallbackImg = new Image()
-          fallbackImg.crossOrigin = 'anonymous'
-          fallbackImg.onload = () => onDone(fallbackImg)
-          fallbackImg.onerror = () => onDone(null)
-          fallbackImg.src = fallbackUrl
-          setTimeout(() => onDone(null), 1500)
-        } else {
-          onDone(null)
-        }
+        const fallbackImg = new Image()
+        fallbackImg.crossOrigin = 'anonymous'
+        fallbackImg.onload = () => onDone(fallbackImg)
+        fallbackImg.onerror = () => onDone(null)
+        fallbackImg.src = getSingleFallbackTileUrl(x, y, zoom)
+        setTimeout(() => onDone(null), 1500)
       }
-      img.src = url
+      img.src = getSingleTileUrl(x, y, zoom)
       setTimeout(() => onDone(null), 1800)
     })
+  }
+
+  // Pre-load & Gabungkan Grid 2x2 Tile Peta dengan Titik Koordinat Tepat di Tengah Canvas
+  const loadMapImage = async (lat, lng) => {
+    const pos = getExactTilePosition(lat, lng, 17)
+    if (!pos) return null
+    try {
+      const loadedTiles = await Promise.all(
+        pos.tiles.map((t) => loadSingleTileImage(t.x, t.y, pos.zoom))
+      )
+      if (loadedTiles.every((img) => img === null)) return null
+
+      // Gabungkan 2x2 tile pada kanvas 512x512
+      const stitchCanvas = document.createElement('canvas')
+      stitchCanvas.width = 512
+      stitchCanvas.height = 512
+      const sCtx = stitchCanvas.getContext('2d')
+      sCtx.fillStyle = '#E2E8F0'
+      sCtx.fillRect(0, 0, 512, 512)
+
+      pos.tiles.forEach((t, idx) => {
+        const img = loadedTiles[idx]
+        if (img) {
+          sCtx.drawImage(img, t.dx * 256, t.dy * 256, 256, 256)
+        }
+      })
+
+      // Potong (crop) area 224x168 (rasio 4:3) yang berpusat persis di (centerPx, centerPy)
+      const cropW = 224
+      const cropH = 168
+      const outCanvas = document.createElement('canvas')
+      outCanvas.width = cropW
+      outCanvas.height = cropH
+      const outCtx = outCanvas.getContext('2d')
+      outCtx.drawImage(
+        stitchCanvas,
+        pos.centerPx - cropW / 2,
+        pos.centerPy - cropH / 2,
+        cropW,
+        cropH,
+        0,
+        0,
+        cropW,
+        cropH
+      )
+      return outCanvas
+    } catch {
+      return null
+    }
   }
 
   // Helper Gambar Mini Map Kotak Presisi di Canvas Watermark Foto
@@ -420,8 +481,72 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     fetchLocation()
     const timer = setInterval(() => setCurrentDateTime(getSecureServerDate()), 1000)
 
+    // Pemantauan GPS High-Accuracy Berkelanjutan (Memperbaiki titik lokasi kasar BTS menjadi presisi satelit secara real-time)
+    let watchId = null
+    let lastGeocodedLat = null
+    let lastGeocodedLng = null
+    let bestWatchedAccuracy = Infinity
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude
+          const lng = pos.coords.longitude
+          const acc = pos.coords.accuracy || 999
+          const alt = pos.coords.altitude
+          const head = pos.coords.heading
+
+          // Hanya terima update jika akurasi lebih baik atau sudah cukup tajam (<= 35m)
+          if (acc <= bestWatchedAccuracy + 10 || acc <= 35) {
+            if (acc < bestWatchedAccuracy) bestWatchedAccuracy = acc
+
+            setGeoData((prev) => ({
+              latitude: lat,
+              longitude: lng,
+              altitude: alt !== null && !isNaN(alt) ? Math.round(alt) : prev.altitude,
+              accuracy: Math.round(acc),
+              heading: head !== null && !isNaN(head) ? Math.round(head) : prev.heading
+            }))
+
+            if (head !== null && !isNaN(head)) {
+              setCompassHeading(Math.round(head))
+            }
+
+            // Hitung jarak pergeseran dari titik geocoding sebelumnya
+            let movedMeters = Infinity
+            if (lastGeocodedLat !== null && lastGeocodedLng !== null) {
+              const R = 6371000
+              const dLat = ((lat - lastGeocodedLat) * Math.PI) / 180
+              const dLon = ((lng - lastGeocodedLng) * Math.PI) / 180
+              const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos((lastGeocodedLat * Math.PI) / 180) *
+                  Math.cos((lat * Math.PI) / 180) *
+                  Math.sin(dLon / 2) *
+                  Math.sin(dLon / 2)
+              movedMeters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            }
+
+            // Jika lokasi bergeser > 10m dari titik sebelumnya, perbarui nama tempat detail (SD/Masjid/Jalan)
+            if (movedMeters > 10) {
+              lastGeocodedLat = lat
+              lastGeocodedLng = lng
+              fetchAddressName(lat, lng).then((address) => {
+                if (address) setLocationText(address)
+              })
+            }
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      )
+    }
+
     return () => {
       clearInterval(timer)
+      if (watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId)
+      }
       stopCamera()
     }
   }, [isOpen])
@@ -1932,19 +2057,21 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     })
   }
 
-  // Render Mini Map Preview Widget di Layar Kamera Langsung
+  // Render Mini Map Preview Widget di Layar Kamera Langsung (Terpusat Presisi pada Koordinat GPS)
   const renderPreviewMiniMap = (customStyle = {}) => {
     if (!showMapInTimemark) return null
     const lat = geoData.latitude !== null ? geoData.latitude : -5.125379
     const lng = geoData.longitude !== null ? geoData.longitude : 119.530402
-    const mapUrl = getMapTileUrl(lat, lng)
-    const fallbackUrl = getFallbackMapTileUrl(lat, lng)
+    const pos = getExactTilePosition(lat, lng, 17)
+    const boxW = isLandscape ? 68 : 76
+    const boxH = isLandscape ? 52 : 58
+    const tileDisplaySize = 128
 
     return (
       <div
         style={{
-          width: isLandscape ? '68px' : '76px',
-          height: isLandscape ? '52px' : '58px',
+          width: `${boxW}px`,
+          height: `${boxH}px`,
           borderRadius: '8px',
           overflow: 'hidden',
           position: 'relative',
@@ -1958,19 +2085,45 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           ...customStyle
         }}
       >
-        {mapUrl ? (
-          <img
-            src={mapUrl}
-            alt="Peta Mini"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            onError={(e) => {
-              if (fallbackUrl && e.currentTarget.src !== fallbackUrl) {
-                e.currentTarget.src = fallbackUrl
-              } else {
-                e.currentTarget.style.display = 'none'
-              }
+        {pos ? (
+          <div
+            style={{
+              position: 'absolute',
+              width: `${tileDisplaySize * 2}px`,
+              height: `${tileDisplaySize * 2}px`,
+              left: `${Math.round(boxW / 2 - pos.normX * tileDisplaySize)}px`,
+              top: `${Math.round(boxH / 2 - pos.normY * tileDisplaySize)}px`,
+              pointerEvents: 'none'
             }}
-          />
+          >
+            {pos.tiles.map((t) => {
+              const primaryUrl = getSingleTileUrl(t.x, t.y, pos.zoom)
+              const fallbackUrl = getSingleFallbackTileUrl(t.x, t.y, pos.zoom)
+              return (
+                <img
+                  key={`${pos.zoom}-${t.x}-${t.y}`}
+                  src={primaryUrl}
+                  alt="Tile Peta"
+                  style={{
+                    position: 'absolute',
+                    left: `${t.dx * tileDisplaySize}px`,
+                    top: `${t.dy * tileDisplaySize}px`,
+                    width: `${tileDisplaySize}px`,
+                    height: `${tileDisplaySize}px`,
+                    display: 'block',
+                    objectFit: 'cover'
+                  }}
+                  onError={(e) => {
+                    if (fallbackUrl && e.currentTarget.src !== fallbackUrl) {
+                      e.currentTarget.src = fallbackUrl
+                    } else {
+                      e.currentTarget.style.display = 'none'
+                    }
+                  }}
+                />
+              )
+            })}
+          </div>
         ) : null}
         <div
           style={{
