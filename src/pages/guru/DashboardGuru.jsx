@@ -1802,25 +1802,6 @@ export default function DashboardGuru({ roleOverride = null }) {
               {darkMode ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#E0E7FF" />}
             </button>
             <button
-              onClick={() => setShowCameraModal(true)}
-              title="Kamera GTag"
-              style={{
-                background: 'rgba(255,255,255,0.15)',
-                border: 'none',
-                width: '34px',
-                height: '34px',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              <Camera size={17} />
-            </button>
-            <button
               onClick={() => setActiveTab('pengumuman')}
               title="Pengumuman"
               style={{
@@ -1839,29 +1820,6 @@ export default function DashboardGuru({ roleOverride = null }) {
             >
               <Bell size={17} />
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#EF4444', width: '8px', height: '8px', borderRadius: '50%' }}></span>}
-            </button>
-            <button
-              onClick={() => {
-                if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
-                  localStorage.removeItem('panrita_developer_session')
-                  supabase.auth.signOut().then(() => navigate('/'))
-                }
-              }}
-              title="Keluar"
-              style={{
-                background: 'rgba(239, 68, 68, 0.25)',
-                border: '1px solid rgba(252, 165, 165, 0.4)',
-                width: '34px',
-                height: '34px',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FEE2E2',
-                cursor: 'pointer'
-              }}
-            >
-              <LogOut size={16} />
             </button>
           </div>
         </div>
