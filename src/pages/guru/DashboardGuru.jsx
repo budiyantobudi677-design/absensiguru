@@ -180,7 +180,7 @@ function GuruDesktopWrapper({
                 </div>
               </div>
             </div>
-            <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => { localStorage.removeItem('panrita_developer_session'); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               <LogOut size={16} />
             </button>
           </div>
@@ -621,7 +621,8 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   const checkUnsynced = () => {
     const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-    setUnsyncedCount(offlineData.length)
+    const myOffline = user?.id ? offlineData.filter(d => d.user_id === user.id && d.tanggal > '2026-10-09') : []
+    setUnsyncedCount(myOffline.length)
   }
 
   const syncOfflineData = async () => {
@@ -630,33 +631,55 @@ export default function DashboardGuru({ roleOverride = null }) {
 
     setLoading(true)
     let syncSuccessCount = 0
+    const remainingOffline = []
     
     for (const record of offlineData) {
+      // Abaikan data lama / duplikat uji coba sebelum 10 Okt 2026
+      if (!record.user_id || !record.tanggal || record.tanggal <= '2026-10-09') {
+        continue
+      }
+      if (user?.id && record.user_id !== user.id) {
+        remainingOffline.push(record)
+        continue
+      }
       if (record.jenis === 'masuk') {
-        const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: 'hadir' })
-        if (!error) syncSuccessCount++
+        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
+        if (!exist || exist.length === 0) {
+          const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: 'hadir' })
+          if (!error) syncSuccessCount++
+        }
       } else if (record.jenis === 'pulang') {
         const { error } = await supabase.from('absensi').update({ waktu_pulang: record.waktu, lokasi_pulang: record.loc }).eq('user_id', record.user_id).eq('tanggal', record.tanggal)
         if (!error) syncSuccessCount++
       } else if (record.jenis === 'sakit' || record.jenis === 'izin') {
-        const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: record.jenis, keterangan: record.keterangan })
-        if (!error) syncSuccessCount++
+        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
+        if (!exist || exist.length === 0) {
+          const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: record.jenis, keterangan: record.keterangan })
+          if (!error) syncSuccessCount++
+        }
       } else if (record.jenis === 'tugas_luar') {
-        const { error } = await supabase.from('absensi').insert({
-          user_id: record.user_id,
-          waktu_masuk: record.waktu_masuk,
-          waktu_pulang: record.waktu_pulang,
-          tanggal: record.tanggal,
-          lokasi_masuk: record.loc,
-          lokasi_pulang: record.loc,
-          status: 'hadir',
-          keterangan: record.keterangan
-        })
-        if (!error) syncSuccessCount++
+        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
+        if (!exist || exist.length === 0) {
+          const { error } = await supabase.from('absensi').insert({
+            user_id: record.user_id,
+            waktu_masuk: record.waktu_masuk,
+            waktu_pulang: record.waktu_pulang,
+            tanggal: record.tanggal,
+            lokasi_masuk: record.loc,
+            lokasi_pulang: record.loc,
+            status: 'hadir',
+            keterangan: record.keterangan
+          })
+          if (!error) syncSuccessCount++
+        }
       }
     }
     
-    localStorage.removeItem('offlineAbsensi')
+    if (remainingOffline.length > 0) {
+      localStorage.setItem('offlineAbsensi', JSON.stringify(remainingOffline))
+    } else {
+      localStorage.removeItem('offlineAbsensi')
+    }
     setUnsyncedCount(0)
     setLoading(false)
     if (syncSuccessCount > 0) {
@@ -679,7 +702,11 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       const activeTargetId = overrideTeacherId !== null ? overrideTeacherId : selectedViewTeacherId
 
-      if (isDev) {
+      // Cek apakah ada sesi Supabase Auth resmi yang sedang aktif
+      const { data: authUserData } = await supabase.auth.getUser()
+      const realSupabaseUser = authUserData?.user || null
+
+      if (isDev && (!realSupabaseUser || activeTargetId)) {
         try {
           const parsed = JSON.parse(devSession)
           if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
@@ -699,7 +726,7 @@ export default function DashboardGuru({ roleOverride = null }) {
               }
             }
 
-            if (!currentUser) {
+            if (!currentUser && !realSupabaseUser) {
               const isRouteOp = window.location.pathname.startsWith('/operator') || roleOverride === 'operator'
               const isRouteNonOp = window.location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator'
               currentUser = {
@@ -723,10 +750,9 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
 
       if (!currentUser) {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return navigate('/')
-        currentUser = user
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        if (!realSupabaseUser) return navigate('/')
+        currentUser = realSupabaseUser
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', realSupabaseUser.id).maybeSingle()
         currentProfile = profile
 
         if (profile?.role === 'admin') return navigate('/admin')
@@ -838,6 +864,13 @@ export default function DashboardGuru({ roleOverride = null }) {
         setShowAssignmentReminder(false)
       }
 
+      // Bersihkan sisa data uji coba lama (<= 2026-10-09) pada akun Tendik (Operator / Non-Operator)
+      if (isTendikCheck && currentUser.id && currentUser.id !== 'developer-master-uid' && currentUser.id !== 'admin-master-uid') {
+        try {
+          await supabase.from('absensi').delete().eq('user_id', currentUser.id).lte('tanggal', '2026-10-09')
+        } catch {}
+      }
+
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
       const hariKerja = settings?.hari_kerja || 5
       if (settings?.nama_sekolah) {
@@ -890,9 +923,9 @@ export default function DashboardGuru({ roleOverride = null }) {
         setTodayStatus(absensi.status)
         setTodayAbsensi(absensi)
       } else {
-        // Also check if there's offline check-in for today
+        // Also check if there's offline check-in for today belonging to currentUser
         const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-        const offlineToday = offlineData.find(d => d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+        const offlineToday = offlineData.find(d => d.user_id === currentUser.id && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
         if (offlineToday) {
            setHasCheckedIn(true)
            setTodayStatus(offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
@@ -903,6 +936,9 @@ export default function DashboardGuru({ roleOverride = null }) {
            setTodayAbsensi(null)
         }
       }
+
+      // Muat ulang riwayat kehadiran untuk akun aktif ini
+      await loadHistory(historyMonth, currentUser, isTendikCheck)
 
       // Fetch Pengumuman
       const { data: pData } = await supabase.from('pengumuman')
@@ -950,24 +986,71 @@ export default function DashboardGuru({ roleOverride = null }) {
     }
   }
 
-  const loadHistory = async (targetMonth = historyMonth) => {
-    if (!user) return
+  const loadHistory = async (targetMonth = historyMonth, overrideUser = null, forceTendikClean = null) => {
+    const activeUser = overrideUser || user
+    if (!activeUser?.id || activeUser.id === 'developer-master-uid' || activeUser.id === 'admin-master-uid') {
+      setHistoryList([])
+      setHistoryLoading(false)
+      return
+    }
     setHistoryLoading(true)
     try {
       const [year, month] = targetMonth.split('-')
       const firstDay = new Date(year, month - 1, 1).toLocaleDateString('en-CA')
       const lastDay = new Date(year, month, 0).toLocaleDateString('en-CA')
 
+      const isCurrentUserTendik = forceTendikClean !== null ? forceTendikClean : isTendikUser
+
+      // Jika akun Tendik (Operator / Non-Operator), pastikan data uji coba lama (<= 2026-10-09) dihapus
+      if (isCurrentUserTendik) {
+        try {
+          await supabase.from('absensi').delete().eq('user_id', activeUser.id).lte('tanggal', '2026-10-09')
+        } catch {}
+      }
+
       const { data, error } = await supabase
         .from('absensi')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', activeUser.id)
         .gte('tanggal', firstDay)
         .lte('tanggal', lastDay)
         .order('tanggal', { ascending: false })
+        .order('waktu_masuk', { ascending: false })
 
       if (!error && data) {
-        setHistoryList(data)
+        const regAt = localStorage.getItem(`account_registered_at_${activeUser.id}`)
+        const regTime = regAt ? new Date(regAt).getTime() : 0
+        const seenDates = new Set()
+        const duplicateIds = []
+        const cleaned = []
+
+        for (const row of data) {
+          // Saring baris uji coba lama pada akun Tendik (Operator & Non-Operator)
+          if (isCurrentUserTendik && row.tanggal <= '2026-10-09') {
+            if (row.id) duplicateIds.push(row.id)
+            continue
+          }
+          // Saring baris sebelum waktu registrasi akun baru
+          if (regTime > 0 && row.created_at && new Date(row.created_at).getTime() < regTime - 5000) {
+            if (row.id) duplicateIds.push(row.id)
+            continue
+          }
+          // Deduplikasi baris ganda di tanggal yang sama (hanya simpan 1 baris terbaru per tanggal)
+          if (seenDates.has(row.tanggal)) {
+            if (row.id) duplicateIds.push(row.id)
+            continue
+          }
+          seenDates.add(row.tanggal)
+          cleaned.push(row)
+        }
+
+        if (duplicateIds.length > 0) {
+          supabase.from('absensi').delete().in('id', duplicateIds).then(() => {}).catch(() => {})
+        }
+
+        setHistoryList(cleaned)
+      } else {
+        setHistoryList([])
       }
     } catch (e) {
       console.error(e)
@@ -975,6 +1058,12 @@ export default function DashboardGuru({ roleOverride = null }) {
       setHistoryLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (activeTab === 'riwayat' && user?.id) {
+      loadHistory(historyMonth, user)
+    }
+  }, [activeTab, user?.id, historyMonth, isTendikUser])
 
   const downloadHistoryExcel = async () => {
     if (historyList.length === 0) {
@@ -1246,20 +1335,34 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       try {
         if (jenis === 'masuk') {
-          const { data: insData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().maybeSingle()
-          if (error) throw error
+          const { data: existRows } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).limit(1)
+          let insData = existRows?.[0] || null
+          if (!insData) {
+            const { data: createdRows, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().limit(1)
+            if (error) throw error
+            insData = createdRows?.[0] || null
+          }
           setHasCheckedIn(true)
           setTodayStatus('hadir')
           setTodayAbsensi(insData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
           showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
         } else if (jenis === 'pulang') {
-          const { data: updData, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().maybeSingle()
+          const { data: updRows, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().limit(1)
           if (error) throw error
-          setTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
+          setTodayAbsensi(prev => ({ ...(prev || {}), ...(updRows?.[0] || {}), waktu_pulang: now, lokasi_pulang: loc }))
           showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
         } else if (jenis === 'sakit' || jenis === 'izin') {
-          const { data: izinData, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().maybeSingle()
-          if (error) throw error
+          const { data: existRows } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).limit(1)
+          let izinData = null
+          if (existRows && existRows.length > 0) {
+            const { data: updRows, error } = await supabase.from('absensi').update({ waktu_masuk: now, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).eq('id', existRows[0].id).select().limit(1)
+            if (error) throw error
+            izinData = updRows?.[0] || null
+          } else {
+            const { data: createdRows, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().limit(1)
+            if (error) throw error
+            izinData = createdRows?.[0] || null
+          }
           setHasCheckedIn(true)
           setTodayStatus(jenis)
           setTodayAbsensi(izinData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
@@ -1736,6 +1839,29 @@ export default function DashboardGuru({ roleOverride = null }) {
             >
               <Bell size={17} />
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#EF4444', width: '8px', height: '8px', borderRadius: '50%' }}></span>}
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
+                  localStorage.removeItem('panrita_developer_session')
+                  supabase.auth.signOut().then(() => navigate('/'))
+                }
+              }}
+              title="Keluar"
+              style={{
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid rgba(252, 165, 165, 0.4)',
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FEE2E2',
+                cursor: 'pointer'
+              }}
+            >
+              <LogOut size={16} />
             </button>
           </div>
         </div>
@@ -2659,6 +2785,35 @@ export default function DashboardGuru({ roleOverride = null }) {
                 </button>
               </form>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
+                  localStorage.removeItem('panrita_developer_session')
+                  supabase.auth.signOut().then(() => navigate('/'))
+                }
+              }}
+              className="btn"
+              style={{
+                width: '100%',
+                marginTop: '1.25rem',
+                padding: '0.95rem',
+                background: '#FEF2F2',
+                color: '#EF4444',
+                border: '1px solid #FCA5A5',
+                borderRadius: '14px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
+              <LogOut size={18} />
+              <span>Keluar dari Akun</span>
+            </button>
           </div>
         )}
 

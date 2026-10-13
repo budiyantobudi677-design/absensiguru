@@ -15,7 +15,7 @@ import {
   getDeveloperSession,
   verifyAdminOverrideLogin
 } from '../lib/developerManager'
-import { syncCloudTeacherAssignments } from '../lib/assignmentManager'
+import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -205,8 +205,11 @@ export default function Login() {
           throw new Error('Pendaftaran akun Kepala Sekolah dan Administrator hanya dapat dilakukan melalui Akun Pengembang Sistem.')
         }
 
+        localStorage.removeItem('panrita_developer_session')
+        localStorage.removeItem('offlineAbsensi')
+
         const formattedJabatan = selectedRole === 'tendik' 
-          ? (tendikCategory === 'operator' ? 'Operator Dapodik' : 'Tenaga Kependidikan') 
+          ? (tendikCategory === 'operator' ? 'Operator Dapodik' : 'Pustakawan') 
           : 'Guru Kelas'
 
         const signUpData = {
@@ -280,6 +283,9 @@ export default function Login() {
         throw new Error('Silakan masukkan 6 digit kode verifikasi dengan benar.')
       }
 
+      localStorage.removeItem('panrita_developer_session')
+      localStorage.removeItem('offlineAbsensi')
+
       const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
         email: otpSentEmail,
         token: cleanOtp,
@@ -288,25 +294,50 @@ export default function Login() {
       if (verifyError) throw verifyError
 
       const userId = verifyData?.user?.id || pendingUserData?.userId
+      let targetPath = '/guru'
+
+      if (userId) {
+        // Bersihkan riwayat absensi lama jika email pernah dipakai uji coba sebelumnya
+        try {
+          await supabase.from('absensi').delete().eq('user_id', userId)
+        } catch {}
+        localStorage.setItem(`account_registered_at_${userId}`, new Date().toISOString())
+      }
+
       if (userId && pendingUserData) {
-        await supabase.from('profiles').upsert({
-          id: userId,
-          email: pendingUserData.email,
-          full_name: pendingUserData.fullName,
-          role: pendingUserData.role,
-          jabatan: pendingUserData.jabatan
-        }).catch(() => {})
+        try {
+          await supabase.from('profiles').upsert({
+            id: userId,
+            email: pendingUserData.email,
+            full_name: pendingUserData.fullName,
+            role: pendingUserData.role,
+            jabatan: pendingUserData.jabatan
+          })
+        } catch {}
 
         if (pendingUserData.penugasan_tipe === 'tendik') {
+          const isNonOp = pendingUserData.tendik_kategori === 'non_operator'
+          const targetRole = isNonOp ? 'nonoperator' : 'operator'
           localStorage.setItem(`guru_tipe_${userId}`, 'tendik')
-          if (pendingUserData.tendik_kategori) {
-            localStorage.setItem(`tendik_kategori_${userId}`, pendingUserData.tendik_kategori)
-          }
+          localStorage.setItem(`tendik_kategori_${userId}`, isNonOp ? 'non_operator' : 'operator')
+          localStorage.setItem(`tendik_penugasan_${userId}`, pendingUserData.jabatan)
+          localStorage.setItem(`panrita_role_${userId}`, targetRole)
+          await saveTeacherAssignmentToCloud({
+            teacherId: userId,
+            tipe: 'tendik',
+            mapel: '',
+            jabatan: pendingUserData.jabatan,
+            assignedClasses: [],
+            supabase
+          })
+          targetPath = isNonOp ? '/nonoperator' : '/operator'
+        } else {
+          localStorage.setItem(`panrita_role_${userId}`, 'guru')
         }
       }
 
       setSuccess('Verifikasi berhasil! Akun Anda telah aktif.')
-      navigate('/guru')
+      navigate(targetPath)
     } catch (err) {
       setError(err.message || 'Kode verifikasi tidak valid atau telah kedaluwarsa.')
     } finally {

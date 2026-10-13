@@ -138,6 +138,9 @@ function App() {
         setRole(null)
         setLoading(false)
       } else if (session) {
+        if (event === 'SIGNED_IN') {
+          localStorage.removeItem('panrita_developer_session')
+        }
         setSession(session)
         syncUserRole(session)
       }
