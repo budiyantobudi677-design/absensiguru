@@ -29,9 +29,10 @@ export default function GeofenceMapPicker({ lat, lng, radius, onLocationChange }
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current).setView([initialLat, initialLng], 16)
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
+      L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=id', {
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        attribution: '&copy; Google Maps',
+        maxZoom: 20
       }).addTo(map)
 
       // Marker yang bisa digeser (draggable)

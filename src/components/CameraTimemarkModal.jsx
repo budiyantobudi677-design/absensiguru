@@ -237,7 +237,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }
 
-  // Helper Konversi Koordinat GPS ke Tile Slippy Map OpenStreetMap / CartoDB
+  // Helper Konversi Koordinat GPS ke Tile Slippy Map
   const getTileCoordinates = (lat, lng, zoom = 16) => {
     if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) return null
     const x = Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
@@ -248,11 +248,18 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     return { x, y, zoom }
   }
 
-  // URL Tile Map Bersih & Cepat (CartoDB Voyager basemap, mendukung CORS penuh)
+  // URL Tile Map Bersih & Cepat (Google Maps Standard Road Tile, bebas API Key & mendukung CORS penuh)
   const getMapTileUrl = (lat, lng, zoom = 16) => {
     const coords = getTileCoordinates(lat, lng, zoom)
     if (!coords) return ''
-    return `https://a.basemaps.cartocdn.com/rastertiles/voyager/${coords.zoom}/${coords.x}/${coords.y}.png`
+    return `https://mt1.google.com/vt/lyrs=m&x=${coords.x}&y=${coords.y}&z=${coords.zoom}&hl=id`
+  }
+
+  // URL Fallback Tile Map (Esri ArcGIS World Street Map, bebas API Key & mendukung CORS penuh)
+  const getFallbackMapTileUrl = (lat, lng, zoom = 16) => {
+    const coords = getTileCoordinates(lat, lng, zoom)
+    if (!coords) return ''
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${coords.zoom}/${coords.y}/${coords.x}`
   }
 
   // Pre-load Gambar Tile Peta untuk Digambar ke Canvas Watermark Foto
@@ -271,13 +278,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       img.crossOrigin = 'anonymous'
       img.onload = () => onDone(img)
       img.onerror = () => {
-        const coords = getTileCoordinates(lat, lng, 16)
-        if (coords) {
+        const fallbackUrl = getFallbackMapTileUrl(lat, lng, 16)
+        if (fallbackUrl) {
           const fallbackImg = new Image()
           fallbackImg.crossOrigin = 'anonymous'
           fallbackImg.onload = () => onDone(fallbackImg)
           fallbackImg.onerror = () => onDone(null)
-          fallbackImg.src = `https://tile.openstreetmap.org/${coords.zoom}/${coords.x}/${coords.y}.png`
+          fallbackImg.src = fallbackUrl
           setTimeout(() => onDone(null), 1500)
         } else {
           onDone(null)
@@ -444,7 +451,183 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   }, [isOpen, isReviewMode])
 
   const fetchAddressName = async (latitude, longitude) => {
-    // 1. Coba BigDataCloud Reverse Geocoding Client (Cepat, ramah CORS browser & mobile, bahasa Indonesia)
+    const calcDistMeters = (lat1, lon1, lat2, lon2) => {
+      if ([lat1, lon1, lat2, lon2].some((v) => v === null || v === undefined || isNaN(v))) return Infinity
+      const R = 6371000
+      const dLat = ((lat2 - lat1) * Math.PI) / 180
+      const dLon = ((lon2 - lon1) * Math.PI) / 180
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
+    const isValidPoiName = (name) => {
+      if (!name || typeof name !== 'string') return false
+      const trimmed = name.trim()
+      if (trimmed.length < 3) return false
+      if (/^(rumah|home|house|kos|kost|counter|lokasi|jalan|jl\.?)$/i.test(trimmed)) return false
+      return true
+    }
+
+    const isImportantLandmark = (placeName = '', placeType = '') => {
+      const landmarkTypeRegex = /School|Education|College|University|Library|Mosque|Place of Worship|Church|Temple|Synagogue|Religious|Government|City Hall|Courthouse|Police|Post Office|Hospital|Medical|Clinic|Health|Park|Stadium|Sports|Museum|Bank|Community Center/i
+      const landmarkNameRegex = /\b(SD|SDN|SDI|SDIT|SMP|SMPN|SMPIT|SMA|SMAN|SMK|SMKN|MI|MIN|MIS|MTs|MTsN|MTsS|MA|MAN|MAS|TK|PAUD|RA|SLB|UPT|UPTD|Sekolah|Madrasah|Pesantren|Kampus|Universitas|Institut|Politeknik|STIE|STKIP|STIKES|Masjid|Mesjid|Musholla|Musala|Mushalla|Langgar|Surau|Gereja|Pura|Vihara|Klenteng|Kantor|Dinas|Balai|Kelurahan|Kecamatan|Desa|Kabupaten|Walikota|Bupati|Gubernur|DPRD|KUA|Koramil|Polsek|Polres|Polda|Puskesmas|Posyandu|RS|RSUD|RSU|RSIA|Rumah Sakit|Klinik|Apotek|Bank|BRI|BNI|Mandiri|BCA|BSI|BTN|BPD|Lapangan|Taman|Gedung|Aula|Asrama|Pasar|Terminal|Stasiun|Bandara|Pelabuhan)\b/i
+      return landmarkTypeRegex.test(placeType) || landmarkNameRegex.test(placeName)
+    }
+
+    const buildDeduplicatedAddress = (parts) => {
+      const result = []
+      for (const raw of parts) {
+        if (!raw || typeof raw !== 'string') continue
+        const clean = raw.trim()
+        if (!clean) continue
+        const lower = clean.toLowerCase()
+        const isDuplicate = result.some((existing) => {
+          const exLower = existing.toLowerCase()
+          return exLower === lower || exLower.includes(lower) || lower.includes(exLower)
+        })
+        if (!isDuplicate) {
+          result.push(clean)
+        }
+      }
+      return result.join(', ')
+    }
+
+    // 1. Prioritas Utama: ArcGIS World Geocode & POI Detection (Mendeteksi nama SD/Sekolah, Masjid, Kantor, Toko, Jalan & Kelurahan)
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 4000)
+
+      const poiUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=pjson&category=POI&location=${longitude},${latitude}&distance=100&maxLocations=15&outFields=PlaceName,Place_addr,Type,StAddr,Nbrhd,City,Subregion,Region`
+      const revUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=pjson&featureTypes=POI,PointAddress,StreetAddress,StreetName&location=${longitude},${latitude}&langCode=id`
+
+      const [poiResp, revResp] = await Promise.allSettled([
+        fetch(poiUrl, { signal: controller.signal }),
+        fetch(revUrl, { signal: controller.signal })
+      ])
+      clearTimeout(timer)
+
+      let poiCandidates = []
+      if (poiResp.status === 'fulfilled' && poiResp.value.ok) {
+        const poiJson = await poiResp.value.json()
+        if (Array.isArray(poiJson?.candidates)) {
+          poiCandidates = poiJson.candidates
+            .map((c) => ({
+              placeName: c.attributes?.PlaceName || c.address || '',
+              type: c.attributes?.Type || '',
+              stAddr: c.attributes?.StAddr || '',
+              nbrhd: c.attributes?.Nbrhd || '',
+              city: c.attributes?.City || '',
+              subregion: c.attributes?.Subregion || '',
+              region: c.attributes?.Region || '',
+              dist: calcDistMeters(latitude, longitude, c.location?.y, c.location?.x)
+            }))
+            .filter((c) => isValidPoiName(c.placeName))
+            .sort((a, b) => a.dist - b.dist)
+        }
+      }
+
+      let revAddr = null
+      if (revResp.status === 'fulfilled' && revResp.value.ok) {
+        const revJson = await revResp.value.json()
+        revAddr = revJson?.address || null
+      }
+
+      // Pilih nama tempat terbaik:
+      // Utamakan landmark penting (Sekolah/SD/SMP/SMA, Masjid/Musholla, Kantor, Puskesmas, dll.) dalam radius 90m
+      let selectedPoi = poiCandidates.find((c) => isImportantLandmark(c.placeName, c.type) && c.dist <= 90)
+
+      // Jika tidak ada di daftar kandidat tetapi reverseGeocode mengembalikan landmark penting dalam radius 90m
+      if (!selectedPoi && revAddr && isValidPoiName(revAddr.PlaceName)) {
+        const revDist = calcDistMeters(latitude, longitude, revAddr.Y, revAddr.X)
+        if (isImportantLandmark(revAddr.PlaceName, revAddr.Type) && revDist <= 90) {
+          selectedPoi = {
+            placeName: revAddr.PlaceName,
+            stAddr: revAddr.Address || '',
+            nbrhd: revAddr.Neighborhood || revAddr.District || '',
+            city: revAddr.City || '',
+            subregion: revAddr.Subregion || revAddr.MetroArea || ''
+          }
+        }
+      }
+
+      // Jika bukan landmark utama, ambil tempat/POI terdekat (Toko, Gedung, Cafe, Tempat Umum, dll.) dalam radius 55m
+      if (!selectedPoi) {
+        if (poiCandidates.length > 0 && poiCandidates[0].dist <= 55) {
+          selectedPoi = poiCandidates[0]
+        } else if (revAddr && isValidPoiName(revAddr.PlaceName)) {
+          const revDist = calcDistMeters(latitude, longitude, revAddr.Y, revAddr.X)
+          if (revDist <= 60) {
+            selectedPoi = {
+              placeName: revAddr.PlaceName,
+              stAddr: revAddr.Address || '',
+              nbrhd: revAddr.Neighborhood || revAddr.District || '',
+              city: revAddr.City || '',
+              subregion: revAddr.Subregion || revAddr.MetroArea || ''
+            }
+          }
+        }
+      }
+
+      const placeName = selectedPoi?.placeName || ''
+      const street = selectedPoi?.stAddr || revAddr?.Address || ''
+      const neighborhood = selectedPoi?.nbrhd || revAddr?.Neighborhood || revAddr?.District || ''
+      const subdistrict = selectedPoi?.city || revAddr?.City || ''
+      const city = selectedPoi?.subregion || revAddr?.Subregion || revAddr?.MetroArea || ''
+
+      const formatted = buildDeduplicatedAddress([placeName, street, neighborhood, subdistrict, city])
+      if (formatted) {
+        return formatted
+      }
+    } catch (e) {
+      // Lanjut ke fallback berikutnya
+    }
+
+    // 2. Fallback ke OpenStreetMap Nominatim (zoom=18 untuk detail nama gedung/sekolah/masjid)
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3500)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&namedetails=1&accept-language=id`,
+        { signal: controller.signal }
+      )
+      clearTimeout(timer)
+      if (response.ok) {
+        const data = await response.json()
+        if (data && data.address) {
+          const addr = data.address
+          const poiName =
+            data.name ||
+            addr.amenity ||
+            addr.school ||
+            addr.college ||
+            addr.university ||
+            addr.place_of_worship ||
+            addr.building ||
+            addr.office ||
+            addr.shop ||
+            addr.tourism ||
+            addr.leisure ||
+            ''
+          const road = addr.road || addr.pedestrian || addr.residential || ''
+          const village = addr.village || addr.suburb || addr.neighbourhood || ''
+          const district = addr.city_district || addr.subdistrict || addr.municipality || ''
+          const city = addr.city || addr.town || addr.county || ''
+
+          const formatted = buildDeduplicatedAddress([poiName, road, village, district, city])
+          if (formatted) {
+            return formatted
+          } else if (data.display_name) {
+            return data.display_name.split(',').slice(0, 4).join(',').trim()
+          }
+        }
+      }
+    } catch (e) {
+      // Fallback ke BigDataCloud
+    }
+
+    // 3. Fallback Terakhir ke BigDataCloud Reverse Geocoding Client
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 3500)
@@ -458,38 +641,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         const locality = data.locality || data.neighbourhood || ''
         const city = data.city || data.localityInfo?.administrative?.[2]?.name || ''
         const province = data.principalSubdivision || ''
-        const parts = [locality, city, province].filter(Boolean)
-        if (parts.length > 0) {
-          return parts.join(', ')
-        }
-      }
-    } catch (e) {
-      // Fallback ke OpenStreetMap
-    }
-
-    // 2. Fallback ke OpenStreetMap Nominatim dengan proteksi timeout keras (3.5s)
-    try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 3500)
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=id`,
-        { signal: controller.signal, headers: { 'User-Agent': 'PresensiaAbsensiApp/1.0' } }
-      )
-      clearTimeout(timer)
-      if (response.ok) {
-        const data = await response.json()
-        if (data && data.address) {
-          const addr = data.address
-          const road = addr.road || addr.pedestrian || addr.suburb || ''
-          const district = addr.city_district || addr.subdistrict || addr.county || ''
-          const city = addr.city || addr.town || addr.municipality || ''
-          
-          const parts = [road, district, city].filter(Boolean)
-          if (parts.length > 0) {
-            return parts.join(', ')
-          } else if (data.display_name) {
-            return data.display_name.split(',').slice(0, 3).join(',')
-          }
+        const formatted = buildDeduplicatedAddress([locality, city, province])
+        if (formatted) {
+          return formatted
         }
       }
     } catch (e) {
@@ -1781,10 +1935,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   // Render Mini Map Preview Widget di Layar Kamera Langsung
   const renderPreviewMiniMap = (customStyle = {}) => {
     if (!showMapInTimemark) return null
-    const mapUrl = getMapTileUrl(
-      geoData.latitude !== null ? geoData.latitude : -5.125379,
-      geoData.longitude !== null ? geoData.longitude : 119.530402
-    )
+    const lat = geoData.latitude !== null ? geoData.latitude : -5.125379
+    const lng = geoData.longitude !== null ? geoData.longitude : 119.530402
+    const mapUrl = getMapTileUrl(lat, lng)
+    const fallbackUrl = getFallbackMapTileUrl(lat, lng)
 
     return (
       <div
@@ -1810,7 +1964,11 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             alt="Peta Mini"
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             onError={(e) => {
-              e.currentTarget.style.display = 'none'
+              if (fallbackUrl && e.currentTarget.src !== fallbackUrl) {
+                e.currentTarget.src = fallbackUrl
+              } else {
+                e.currentTarget.style.display = 'none'
+              }
             }}
           />
         ) : null}
