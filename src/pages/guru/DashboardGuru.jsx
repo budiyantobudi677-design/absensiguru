@@ -56,6 +56,10 @@ function GuruDesktopWrapper({
   loadHistory,
   profile,
   user,
+  isTendikUser,
+  isOpUser,
+  isNonOpUser,
+  guruTipeState,
   allProfiles,
   selectedViewTeacherId,
   onSelectTeacher,
@@ -71,14 +75,16 @@ function GuruDesktopWrapper({
 
   return (
     <div className="guru-desktop-shell">
-      {/* Desktop Left Sidebar for Teacher */}
+      {/* Desktop Left Sidebar for Teacher / Operator / Non-Operator */}
       <aside className="guru-desktop-sidebar">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
             <img src={schoolLogo || "/panrita_logo.webp"} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '12px', objectFit: 'contain' }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schoolLogo ? schoolName : 'GammaraApp'}</h4>
-              <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600' }}>Portal Pendidik (KBM Web)</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600' }}>
+                {isNonOpUser ? 'Portal Tenaga Kependidikan' : isOpUser ? 'Portal Operator Sekolah' : 'Portal Pendidik (KBM Web)'}
+              </span>
             </div>
           </div>
 
@@ -91,43 +97,37 @@ function GuruDesktopWrapper({
               <Clock size={18} />
               <span>Presensi & Kehadiran</span>
             </button>
-            <button
-              className={`guru-desktop-nav-btn ${activeTab === 'kbm' ? 'active' : ''}`}
-              onClick={() => {
-                const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-                const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
-                
-                if (isTendikUser) {
-                  // Tendik langsung diarahkan ke Master KBM / Siswa & Rombel
+            {!isNonOpUser && (
+              <button
+                className={`guru-desktop-nav-btn ${activeTab === 'kbm' ? 'active' : ''}`}
+                onClick={() => {
+                  if (isTendikUser || isOpUser) {
+                    setActiveTab('kbm')
+                    return
+                  }
+                  if (!checkAssignmentConfigured()) {
+                    setShowAssignmentReminder(true)
+                    showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error")
+                    return
+                  }
                   setActiveTab('kbm')
-                  return
-                }
-                if (!checkAssignmentConfigured()) {
-                  setShowAssignmentReminder(true)
-                  showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error")
-                  return
-                }
-                setActiveTab('kbm')
-              }}
-            >
-              <BookOpen size={18} />
-              <span>
-                {(() => {
-                  const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-                  const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
-                  if (isNonOp) return 'Data Siswa & Kelas'
-                  if (isTendikUser) return 'Master KBM (Kelas & Siswa)'
-                  return 'Sistem KBM (Jurnal, Nilai, Siswa)'
-                })()}
-              </span>
-            </button>
-            <button
-              className={`guru-desktop-nav-btn ${activeTab === 'modul_ajar' || (activeTab === 'kbm' && kbmSubTab === 'modul_ajar') ? 'active' : ''}`}
-              onClick={() => handleTabChangeWithUrl('modul_ajar')}
-            >
-              <Sparkles size={18} color="#F59E0B" />
-              <span>Modul Ajar (RPM AI)</span>
-            </button>
+                }}
+              >
+                <BookOpen size={18} />
+                <span>
+                  {isOpUser ? 'Menu KBM (Siswa & Kelas)' : 'Sistem KBM (Jurnal, Nilai, Siswa)'}
+                </span>
+              </button>
+            )}
+            {!isTendikUser && (
+              <button
+                className={`guru-desktop-nav-btn ${activeTab === 'modul_ajar' || (activeTab === 'kbm' && kbmSubTab === 'modul_ajar') ? 'active' : ''}`}
+                onClick={() => handleTabChangeWithUrl('modul_ajar')}
+              >
+                <Sparkles size={18} color="#F59E0B" />
+                <span>Modul Ajar (RPM AI)</span>
+              </button>
+            )}
             <button
               className={`guru-desktop-nav-btn ${activeTab === 'riwayat' ? 'active' : ''}`}
               onClick={() => {
@@ -172,8 +172,7 @@ function GuruDesktopWrapper({
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                   {(() => {
-                    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-                    if (isTendikUser) return profile?.jabatan || 'Tenaga Kependidikan'
+                    if (isTendikUser) return profile?.jabatan || (isNonOpUser ? 'Tendik Non-Operator' : 'Operator Sekolah')
                     if (profile?.role === 'guru_mapel' || guruTipeState === 'guru_mapel') return 'Guru Mapel'
                     if (profile?.role === 'kepsek') return 'Kepala Sekolah'
                     return 'Guru Kelas'
@@ -293,7 +292,7 @@ function GuruDesktopWrapper({
   )
 }
 
-export default function DashboardGuru() {
+export default function DashboardGuru({ roleOverride = null }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -375,57 +374,103 @@ export default function DashboardGuru() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Sinkronisasi ActiveTab dan KBM SubTab dengan URL Path
+  // Deteksi peran Tendik (Operator vs Non-Operator) secara terpadu
+  const isInspectingSpecificUser = Boolean(selectedViewTeacherId)
+  const isPathNonOp = !isInspectingSpecificUser && (location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator')
+  const isPathOp = !isInspectingSpecificUser && (location.pathname.startsWith('/operator') || roleOverride === 'operator')
+  const isTendikUser = isPathNonOp || isPathOp || profile?.role === 'tendik' || profile?.role === 'operator' || profile?.role === 'nonoperator' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+  const isNonOpUser = isPathNonOp || profile?.role === 'nonoperator' || (isTendikUser && !isPathOp && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)))
+  const isOpUser = !isNonOpUser && (isPathOp || profile?.role === 'operator' || isTendikUser)
+
+  const getBasePath = () => {
+    if (location.pathname.startsWith('/operator') || roleOverride === 'operator') return '/operator'
+    if (location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator') return '/nonoperator'
+    return '/guru'
+  }
+
+  // Sinkronisasi ActiveTab dan KBM SubTab dengan URL Path (/guru, /operator, /nonoperator)
   useEffect(() => {
-    const path = location.pathname.replace(/\/+$/, '') // normalize trailing slash
-    if (path === '/guru/modul-ajar' || path === '/guru/kbm/modul-ajar') {
-      setActiveTab('modul_ajar')
-      setKbmSubTab('modul_ajar')
-    } else if (path.startsWith('/guru/kbm')) {
-      setActiveTab('kbm')
-      if (path === '/guru/kbm/presensi' || path === '/guru/kbm/presensi-siswa') setKbmSubTab('presensi_siswa')
-      else if (path === '/guru/kbm/jurnal') setKbmSubTab('jurnal')
-      else if (path === '/guru/kbm/nilai') setKbmSubTab('nilai')
-      else if (path === '/guru/kbm/rekap') setKbmSubTab('rekap')
-      else if (path === '/guru/kbm/master') setKbmSubTab('master_siswa')
-      else setKbmSubTab('menu')
-    } else if (path === '/guru/riwayat') {
+    const rawPath = location.pathname.replace(/\/+$/, '') // normalize trailing slash
+    const subPath = rawPath.replace(/^\/(guru|operator|nonoperator)/, '')
+    if (subPath === '/modul-ajar' || subPath === '/kbm/modul-ajar') {
+      if (isNonOpUser) {
+        setActiveTab('absensi')
+      } else if (isOpUser) {
+        setActiveTab('kbm')
+        setKbmSubTab('master_siswa')
+      } else {
+        setActiveTab('modul_ajar')
+        setKbmSubTab('modul_ajar')
+      }
+    } else if (subPath.startsWith('/kbm') || subPath === '/master') {
+      if (isNonOpUser) {
+        setActiveTab('absensi')
+      } else {
+        setActiveTab('kbm')
+        if (isOpUser) {
+          setKbmSubTab('master_siswa')
+        } else if (subPath === '/kbm/presensi' || subPath === '/kbm/presensi-siswa') setKbmSubTab('presensi_siswa')
+        else if (subPath === '/kbm/jurnal') setKbmSubTab('jurnal')
+        else if (subPath === '/kbm/nilai') setKbmSubTab('nilai')
+        else if (subPath === '/kbm/rekap') setKbmSubTab('rekap')
+        else if (subPath === '/kbm/master' || subPath === '/master') setKbmSubTab('master_siswa')
+        else setKbmSubTab('menu')
+      }
+    } else if (subPath === '/riwayat') {
       setActiveTab('riwayat')
-    } else if (path === '/guru/pengumuman') {
+    } else if (subPath === '/pengumuman') {
       setActiveTab('pengumuman')
-    } else if (path === '/guru/profil' || path === '/guru/pengaturan') {
+    } else if (subPath === '/profil' || subPath === '/pengaturan') {
       setActiveTab('pengaturan')
-    } else if (path === '/guru') {
+    } else if (subPath === '') {
       setActiveTab('absensi')
     }
-  }, [location.pathname])
+  }, [location.pathname, isNonOpUser, isOpUser])
 
   const handleTabChangeWithUrl = (newTab, subTab = null) => {
+    const base = getBasePath()
+    if (isNonOpUser && (newTab === 'kbm' || newTab === 'modul_ajar')) {
+      setActiveTab('absensi')
+      navigate(base)
+      return
+    }
     setActiveTab(newTab)
-    if (newTab === 'absensi') navigate('/guru')
-    else if (newTab === 'riwayat') navigate('/guru/riwayat')
-    else if (newTab === 'pengumuman') navigate('/guru/pengumuman')
-    else if (newTab === 'pengaturan') navigate('/guru/profil')
-    else if (newTab === 'modul_ajar') { setKbmSubTab('modul_ajar'); navigate('/guru/modul-ajar'); }
+    if (newTab === 'absensi') navigate(base)
+    else if (newTab === 'riwayat') navigate(`${base}/riwayat`)
+    else if (newTab === 'pengumuman') navigate(`${base}/pengumuman`)
+    else if (newTab === 'pengaturan') navigate(`${base}/profil`)
+    else if (newTab === 'modul_ajar') {
+      if (isOpUser) {
+        setActiveTab('kbm')
+        setKbmSubTab('master_siswa')
+        navigate(`${base}/kbm`)
+      } else {
+        setKbmSubTab('modul_ajar')
+        navigate(`${base}/modul-ajar`)
+      }
+    }
     else if (newTab === 'kbm') {
-      if (subTab === 'presensi_siswa') { setKbmSubTab('presensi_siswa'); navigate('/guru/kbm/presensi'); }
-      else if (subTab === 'jurnal') { setKbmSubTab('jurnal'); navigate('/guru/kbm/jurnal'); }
-      else if (subTab === 'nilai') { setKbmSubTab('nilai'); navigate('/guru/kbm/nilai'); }
-      else if (subTab === 'rekap') { setKbmSubTab('rekap'); navigate('/guru/kbm/rekap'); }
-      else if (subTab === 'master_siswa') { setKbmSubTab('master_siswa'); navigate('/guru/kbm/master'); }
-      else if (subTab === 'modul_ajar') { setKbmSubTab('modul_ajar'); navigate('/guru/kbm/modul-ajar'); }
-      else { setKbmSubTab('menu'); navigate('/guru/kbm'); }
+      if (isOpUser) {
+        setKbmSubTab('master_siswa')
+        navigate(`${base}/kbm`)
+        return
+      }
+      if (subTab === 'presensi_siswa') { setKbmSubTab('presensi_siswa'); navigate(`${base}/kbm/presensi`); }
+      else if (subTab === 'jurnal') { setKbmSubTab('jurnal'); navigate(`${base}/kbm/jurnal`); }
+      else if (subTab === 'nilai') { setKbmSubTab('nilai'); navigate(`${base}/kbm/nilai`); }
+      else if (subTab === 'rekap') { setKbmSubTab('rekap'); navigate(`${base}/kbm/rekap`); }
+      else if (subTab === 'master_siswa') { setKbmSubTab('master_siswa'); navigate(`${base}/kbm/master`); }
+      else if (subTab === 'modul_ajar') { setKbmSubTab('modul_ajar'); navigate(`${base}/kbm/modul-ajar`); }
+      else { setKbmSubTab('menu'); navigate(`${base}/kbm`); }
     }
   }
 
   // Helper untuk mengecek apakah penugasan guru sudah lengkap
   const checkAssignmentConfigured = () => {
     if (!user) return true
-    const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
-    
-    // Akun Tendik (Operator & Non-Operator) tidak memiliki kelas binaan sehingga selalu configured
-    const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
     if (isTendikUser) return true
+    const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+    if (tipe === 'tendik') return true
 
     const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user.id}`) || ''
     let assigned = assignedClasses
@@ -546,9 +591,11 @@ export default function DashboardGuru() {
     const reminderTimer = setInterval(() => {
       const stored = localStorage.getItem('lastActive_guru')
       if (stored && user?.id) {
+        if (window.location.pathname.startsWith('/operator') || window.location.pathname.startsWith('/nonoperator')) return
+        const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
+        if (tipe === 'tendik' || profile?.role === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)) return
         // Evaluasi apakah penugasan sudah diset
         const savedClasses = JSON.parse(localStorage.getItem(`guru_assigned_classes_${user?.id}`) || '[]')
-        const tipe = localStorage.getItem(`guru_tipe_${user.id}`) || profile?.penugasan_tipe || (profile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')
         const mapel = profile?.mata_pelajaran || localStorage.getItem(`guru_mapel_${user?.id}`) || ''
         const configured = tipe === 'guru_mapel' 
           ? (Boolean(mapel) && savedClasses.length > 0)
@@ -653,19 +700,22 @@ export default function DashboardGuru() {
             }
 
             if (!currentUser) {
+              const isRouteOp = window.location.pathname.startsWith('/operator') || roleOverride === 'operator'
+              const isRouteNonOp = window.location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator'
               currentUser = {
                 id: parsed.user.id || 'developer-master-uid',
                 email: parsed.user.email || 'developer@panrita.edu',
                 full_name: parsed.user.full_name || 'Pengembang Sistem (Super Admin)',
-                role: 'guru',
+                role: isRouteNonOp ? 'nonoperator' : isRouteOp ? 'operator' : 'guru',
                 isDeveloperPreview: true
               }
               currentProfile = {
                 id: currentUser.id,
                 full_name: currentUser.full_name,
                 email: currentUser.email,
-                role: 'guru',
-                penugasan_tipe: 'guru_kelas'
+                role: currentUser.role,
+                jabatan: isRouteNonOp ? 'Pustakawan' : isRouteOp ? 'Operator Sekolah' : undefined,
+                penugasan_tipe: (isRouteOp || isRouteNonOp) ? 'tendik' : 'guru_kelas'
               }
             }
           }
@@ -714,8 +764,9 @@ export default function DashboardGuru() {
       const cloudAssignments = await syncCloudTeacherAssignments(supabase)
       const myCloudAssignment = cloudAssignments?.[currentUser.id]
 
-      // Cek apakah akun ini dikonfigurasi sebagai Tendik di cloud atau profil
-      const isTendikFromCloud = myCloudAssignment?.tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(myCloudAssignment?.jabatan)
+      // Cek apakah akun ini dikonfigurasi sebagai Tendik di cloud, route, atau profil
+      const isRouteTendik = !activeTargetId && (window.location.pathname.startsWith('/operator') || window.location.pathname.startsWith('/nonoperator') || roleOverride === 'operator' || roleOverride === 'nonoperator')
+      const isTendikFromCloud = isRouteTendik || myCloudAssignment?.tipe === 'tendik' || currentProfile?.role === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(myCloudAssignment?.jabatan || currentProfile?.jabatan)
 
       // Cari apakah guru ini sudah memiliki kelas di tabel classes Supabase (sumber utama)
       const dbMyClass = isTendikFromCloud ? null : cls?.find(c => c.teacher_id === currentUser.id)
@@ -741,13 +792,14 @@ export default function DashboardGuru() {
       setAssignedClasses(storedAssigned)
 
       // Cek apakah tipe dan mapel penugasan sudah diatur di cloud atau local
-      const userTipe = myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${currentUser.id}`, currentProfile?.penugasan_tipe || (currentProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas')))
+      const userTipe = isTendikFromCloud ? 'tendik' : (myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${currentUser.id}`, currentProfile?.penugasan_tipe || (currentProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))))
       setGuruTipeState(userTipe)
 
       const userMapel = myCloudAssignment?.mapel || currentProfile?.mata_pelajaran || await getLocalPref(`guru_mapel_${currentUser.id}`, '')
       setGuruMapelState(userMapel)
 
-      const userJabatan = myCloudAssignment?.jabatan || currentProfile?.jabatan || (userTipe === 'tendik' ? 'Tenaga Kependidikan' : currentProfile?.jabatan)
+      const defaultTendikJabatan = (window.location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator') ? 'Pustakawan' : 'Operator Sekolah'
+      const userJabatan = myCloudAssignment?.jabatan || currentProfile?.jabatan || (userTipe === 'tendik' ? defaultTendikJabatan : currentProfile?.jabatan)
 
       // Merge data penugasan ke profile state
       const mergedProfile = {
@@ -773,8 +825,8 @@ export default function DashboardGuru() {
       }
 
       // Hanya tampilkan reminder penugasan jika akun guru belum pernah disetting (Tendik tidak butuh rombel kelas)
-      const isTendikUser = mergedProfile?.role === 'tendik' || mergedProfile?.penugasan_tipe === 'tendik' || userTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(mergedProfile?.jabatan)
-      const isConfigured = isTendikUser
+      const isTendikCheck = isTendikFromCloud || mergedProfile?.role === 'tendik' || mergedProfile?.penugasan_tipe === 'tendik' || userTipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(mergedProfile?.jabatan)
+      const isConfigured = isTendikCheck
         ? true
         : (userTipe === 'guru_mapel' 
             ? (Boolean(userMapel) && storedAssigned.length > 0)
@@ -1587,6 +1639,10 @@ export default function DashboardGuru() {
         loadHistory={loadHistory}
         profile={profile}
         user={user}
+        isTendikUser={isTendikUser}
+        isOpUser={isOpUser}
+        isNonOpUser={isNonOpUser}
+        guruTipeState={guruTipeState}
         allProfiles={allProfiles}
         selectedViewTeacherId={selectedViewTeacherId}
         onSelectTeacher={(tId) => {
@@ -2208,12 +2264,19 @@ export default function DashboardGuru() {
                   await setLocalPref(`guru_tipe_${user.id}`, guruTipe);
                   await setLocalPref(`guru_mapel_${user.id}`, mataPelajaran);
                   await setLocalPref(`guru_assigned_classes_${user.id}`, selectedClasses);
+                  if (guruTipe === 'tendik') {
+                    const isNonOpJabatan = ['Pustakawan', 'Bujang', 'Satpam'].includes(formattedJabatan);
+                    localStorage.setItem(`tendik_kategori_${user.id}`, isNonOpJabatan ? 'non_operator' : 'operator');
+                    localStorage.setItem(`tendik_penugasan_${user.id}`, formattedJabatan);
+                    localStorage.setItem(`panrita_role_${user.id}`, isNonOpJabatan ? 'nonoperator' : 'operator');
+                  }
                   
                   // Simpan ke Cloud Supabase & update tabel classes.teacher_id
                   await saveTeacherAssignmentToCloud({
                     teacherId: user.id,
                     tipe: guruTipe,
                     mapel: mataPelajaran,
+                    jabatan: formattedJabatan,
                     assignedClasses: selectedClasses,
                     supabase
                   });
@@ -2241,7 +2304,7 @@ export default function DashboardGuru() {
                     mata_pelajaran: mataPelajaran, 
                     jabatan: formattedJabatan 
                   });
-                  showPopup("Tersimpan & Terkunci!", "Profil dan penugasan kelas Anda berhasil disimpan dan dikunci untuk akun Anda.", "success");
+                  showPopup("Tersimpan & Terkunci!", "Profil dan penugasan Anda berhasil disimpan.", "success");
                 } else {
                   showPopup("Gagal", error.message, "error");
                 }
@@ -2255,15 +2318,15 @@ export default function DashboardGuru() {
                   <label className="input-label">NIP / ID Pegawai</label>
                   <input type="text" name="nip" className="input" defaultValue={profile?.nip || ''} placeholder="Contoh: 198012312005011002" />
                 </div>
-                <div className="input-group">
-                  <label className="input-label">Jabatan Struktural / Keterangan</label>
-                  <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Kelas V / Pembina OSIS" />
-                </div>
+                {!isTendikUser && (
+                  <div className="input-group">
+                    <label className="input-label">Jabatan Struktural / Keterangan</label>
+                    <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Kelas V / Pembina OSIS" />
+                  </div>
+                )}
 
                 {/* Deteksi Akun Tendik vs Guru */}
                 {(() => {
-                  const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-                  
                   if (isTendikUser) {
                     return (
                       <div className="input-group" style={{ background: '#F0F9FF', border: '1.5px solid #BAE6FD', padding: '1rem', borderRadius: '16px', marginTop: '0.75rem' }}>
@@ -2273,14 +2336,14 @@ export default function DashboardGuru() {
                         <select 
                           name="jabatan" 
                           className="input" 
-                          defaultValue={profile?.jabatan || 'Operator Dapodik'}
+                          defaultValue={profile?.jabatan || (isNonOpUser ? 'Pustakawan' : 'Operator Dapodik')}
                           style={{ fontWeight: 700, borderColor: '#7DD3FC' }}
                         >
-                          <optgroup label="Akun Operator (Presensi & Master KBM)">
+                          <optgroup label="Akun Operator (Presensi & KBM Siswa/Kelas)">
                             <option value="Operator Dapodik">💻 Operator Dapodik</option>
                             <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
                           </optgroup>
-                          <optgroup label="Akun Non-Operator (Presensi & Data Siswa/Kelas)">
+                          <optgroup label="Akun Non-Operator (Presensi & Kehadiran)">
                             <option value="Pustakawan">📚 Pustakawan</option>
                             <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
                             <option value="Satpam">🛡️ Satpam (Keamanan)</option>
@@ -2759,13 +2822,11 @@ export default function DashboardGuru() {
           </div>
         )}
         {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap, Master KBM) */}
-        {activeTab === 'kbm' && (() => {
-          const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-          const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
-          const isOp = isTendikUser && !isNonOp
+        {activeTab === 'kbm' && !isNonOpUser && (() => {
+          const isOp = isOpUser
 
-          // Jika Non Operator: langsung tampilkan Master Siswa & Kelas (menambah siswa, menghapus siswa & kelas)
-          if (isNonOp) {
+          // Jika Operator: langsung tampilkan Master Siswa & Kelas (dibatasi khusus menambah, mengedit & menghapus nama siswa dan kelas)
+          if (isOp) {
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <MasterSiswaDanKelas
@@ -2773,6 +2834,7 @@ export default function DashboardGuru() {
                   profile={profile}
                   schoolInfo={schoolInfoData}
                   onRefresh={fetchUser}
+                  isOperatorMode={true}
                 />
               </div>
             )
@@ -3246,33 +3308,28 @@ export default function DashboardGuru() {
             <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
           </button>
 
-          {/* 2. Pembelajaran (KBM) - Berada di posisi kedua setelah Presensi */}
-          <button
-            className={`nav-item ${activeTab === 'kbm' || activeTab === 'modul_ajar' ? 'active' : ''}`}
-            style={{ flex: 1 }}
-            onClick={() => {
-              const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-              if (isTendikUser) {
-                handleTabChangeWithUrl('kbm')
-                return
-              }
-              if (!checkAssignmentConfigured()) {
-                setShowAssignmentReminder(true);
-                showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
-                return;
-              }
-              handleTabChangeWithUrl('kbm');
-            }}
-          >
-            <BookOpen size={20} strokeWidth={activeTab === 'kbm' || activeTab === 'modul_ajar' ? 2.5 : 1.5} /> 
-            {(() => {
-              const isTendikUser = profile?.role === 'tendik' || profile?.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
-              const isNonOp = isTendikUser && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
-              if (isNonOp) return 'Siswa/Kelas'
-              if (isTendikUser) return 'Master KBM'
-              return 'Pembelajaran'
-            })()}
-          </button>
+          {/* 2. Pembelajaran (KBM) - Disembunyikan untuk Non-Operator */}
+          {!isNonOpUser && (
+            <button
+              className={`nav-item ${activeTab === 'kbm' || activeTab === 'modul_ajar' ? 'active' : ''}`}
+              style={{ flex: 1 }}
+              onClick={() => {
+                if (isTendikUser || isOpUser) {
+                  handleTabChangeWithUrl('kbm')
+                  return
+                }
+                if (!checkAssignmentConfigured()) {
+                  setShowAssignmentReminder(true);
+                  showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
+                  return;
+                }
+                handleTabChangeWithUrl('kbm');
+              }}
+            >
+              <BookOpen size={20} strokeWidth={activeTab === 'kbm' || activeTab === 'modul_ajar' ? 2.5 : 1.5} /> 
+              {isOpUser ? 'KBM' : 'Pembelajaran'}
+            </button>
+          )}
 
           {/* 3. GTag (Kamera Ber-watermark GPS) - Posisi Center / Tengah */}
           <button

@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
 
-export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh }) {
+export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh, isOperatorMode = false }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
 
   // Peran Guru, Tendik & Hak Akses
@@ -16,19 +16,22 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                   user?.role === 'admin' || 
                   window.location.pathname.startsWith('/admin')
   const guruTipe = localStorage.getItem(`guru_tipe_${activeProfile.id || user?.id}`) || activeProfile.penugasan_tipe || activeProfile.role
-  const isGuruMapel = !isAdmin && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
+  const isGuruMapel = !isAdmin && !isOperatorMode && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
   
   // Deteksi akun Tendik (Operator maupun Non-Operator)
-  const isTendik = activeProfile.role === 'tendik' || 
+  const isTendik = isOperatorMode ||
+                   window.location.pathname.startsWith('/operator') ||
+                   activeProfile.role === 'tendik' || 
+                   activeProfile.role === 'operator' ||
                    activeProfile.penugasan_tipe === 'tendik' || 
                    guruTipe === 'tendik' ||
                    Boolean(localStorage.getItem(`tendik_kategori_${activeProfile.id || user?.id}`)) ||
                    Boolean(localStorage.getItem(`tendik_penugasan_${activeProfile.id || user?.id}`)) ||
                    ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(activeProfile.jabatan)
 
-  // Hak Akses Manajemen Kelas (Tambah, Edit & Hapus Rombel): Admin dan Tendik
+  // Hak Akses Manajemen Kelas (Tambah, Edit & Hapus Rombel): Admin dan Tendik/Operator
   const canManageClasses = isAdmin || isTendik
-  // Admin, Wali Kelas, dan Tendik berhak mengelola siswa (tambah & hapus siswa); Guru Mapel dibatasi (Read Only)
+  // Admin, Wali Kelas, dan Tendik/Operator berhak mengelola siswa (tambah, edit & hapus siswa); Guru Mapel dibatasi (Read Only)
   const canManageStudents = isAdmin || isTendik || !isGuruMapel
   // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
   const canManageSubjects = isAdmin
@@ -42,6 +45,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const [message, setMessage] = useState(null)
 
   const [studentForm, setStudentForm] = useState({ name: '', nisn: '', gender: 'L' })
+  const [editingStudent, setEditingStudent] = useState(null) // { id, name, nisn, gender }
   const [showAddStudent, setShowAddStudent] = useState(false)
   const [showAddClass, setShowAddClass] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -96,8 +100,8 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
       if (error) throw error
       
       let filtered = data || []
-      // Jika bukan Admin, saring sesuai penugasan guru
-      if (!isAdmin) {
+      // Jika bukan Admin dan bukan Tendik/Operator, saring sesuai penugasan guru
+      if (!isAdmin && !isTendik) {
         const uId = activeProfile.id || user?.id
         const assigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${uId}`) || '[]')
         if (assigned.length > 0) {
@@ -224,6 +228,31 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
       setMessage({ type: 'success', text: `Siswa ${data[0].name} berhasil didaftarkan!` })
     } catch (err) {
       setMessage({ type: 'error', text: 'Gagal menambah siswa: ' + err.message })
+    }
+  }
+
+  const handleEditStudent = async (e) => {
+    e.preventDefault()
+    if (!editingStudent || !editingStudent.name?.trim()) return
+    try {
+      const updatedName = editingStudent.name.trim()
+      const updatedNisn = editingStudent.nisn ? editingStudent.nisn.trim() : null
+      const updatedGender = editingStudent.gender || 'L'
+      const { error } = await supabase
+        .from('students')
+        .update({
+          name: updatedName,
+          nisn: updatedNisn,
+          gender: updatedGender
+        })
+        .eq('id', editingStudent.id)
+
+      if (error) throw error
+      setStudents(students.map(s => s.id === editingStudent.id ? { ...s, name: updatedName, nisn: updatedNisn, gender: updatedGender } : s))
+      setMessage({ type: 'success', text: `Data siswa "${updatedName}" berhasil diperbarui!` })
+      setEditingStudent(null)
+    } catch (err) {
+      alert('Gagal mengubah data siswa: ' + err.message)
     }
   }
 
@@ -471,7 +500,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
               Basis Data KBM
             </span>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>
-              Master KBM (Siswa, Rombel & Mata Pelajaran)
+              {isTendik && !isAdmin ? 'Manajemen Data Siswa & Kelas' : 'Master KBM (Siswa, Rombel & Mata Pelajaran)'}
             </h3>
           </div>
 
@@ -596,53 +625,55 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
           )}
         </div>
 
-        {/* Tab Switcher: Siswa & Rombel vs Mata Pelajaran */}
-        <div style={{ display: 'flex', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '14px', marginBottom: '1rem' }}>
-          <button
-            onClick={() => setActiveTab('siswa_kelas')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: '10px',
-              border: 'none',
-              fontSize: '0.82rem',
-              fontWeight: '700',
-              cursor: 'pointer',
-              background: activeTab === 'siswa_kelas' ? 'white' : 'transparent',
-              color: activeTab === 'siswa_kelas' ? '#4F46E5' : '#64748B',
-              boxShadow: activeTab === 'siswa_kelas' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px'
-            }}
-          >
-            <Users size={16} />
-            <span>Siswa & Rombongan Belajar</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('mapel')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: '10px',
-              border: 'none',
-              fontSize: '0.82rem',
-              fontWeight: '700',
-              cursor: 'pointer',
-              background: activeTab === 'mapel' ? 'white' : 'transparent',
-              color: activeTab === 'mapel' ? '#4F46E5' : '#64748B',
-              boxShadow: activeTab === 'mapel' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px'
-            }}
-          >
-            <BookOpen size={16} />
-            <span>Pengaturan Mata Pelajaran ({subjectsList.length})</span>
-          </button>
-        </div>
+        {/* Tab Switcher: Siswa & Rombel vs Mata Pelajaran (Disembunyikan untuk Operator karena dibatasi khusus Siswa & Kelas) */}
+        {!(isTendik && !isAdmin) && (
+          <div style={{ display: 'flex', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '14px', marginBottom: '1rem' }}>
+            <button
+              onClick={() => setActiveTab('siswa_kelas')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                background: activeTab === 'siswa_kelas' ? 'white' : 'transparent',
+                color: activeTab === 'siswa_kelas' ? '#4F46E5' : '#64748B',
+                boxShadow: activeTab === 'siswa_kelas' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}
+            >
+              <Users size={16} />
+              <span>Siswa & Rombongan Belajar</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('mapel')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                background: activeTab === 'mapel' ? 'white' : 'transparent',
+                color: activeTab === 'mapel' ? '#4F46E5' : '#64748B',
+                boxShadow: activeTab === 'mapel' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}
+            >
+              <BookOpen size={16} />
+              <span>Pengaturan Mata Pelajaran ({subjectsList.length})</span>
+            </button>
+          </div>
+        )}
 
         {/* Notifikasi Alert */}
         {message && (
@@ -1066,45 +1097,144 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '0.75rem',
-                    background: idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)'
+                    background: editingStudent?.id === student.id ? '#EFF6FF' : (idx % 2 === 0 ? 'transparent' : 'rgba(248, 250, 252, 0.4)')
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', width: '22px', textAlign: 'center', flexShrink: 0 }}>
-                      {idx + 1}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {student.name}
+                  {editingStudent?.id === student.id ? (
+                    <form onSubmit={handleEditStudent} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', width: '100%' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#2563EB', width: '22px', textAlign: 'center', flexShrink: 0 }}>
+                        {idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={editingStudent.name}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                        placeholder="Nama Lengkap Siswa *"
+                        required
+                        className="input"
+                        style={{ flex: '2 1 160px', padding: '0.45rem 0.7rem', fontSize: '0.82rem', borderRadius: '8px' }}
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        value={editingStudent.nisn || ''}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, nisn: e.target.value })}
+                        placeholder="NISN (Opsional)"
+                        className="input"
+                        style={{ flex: '1 1 110px', padding: '0.45rem 0.7rem', fontSize: '0.82rem', borderRadius: '8px' }}
+                      />
+                      <select
+                        value={editingStudent.gender || 'L'}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, gender: e.target.value })}
+                        className="input"
+                        style={{ flex: '0 0 110px', padding: '0.45rem 0.5rem', fontSize: '0.82rem', borderRadius: '8px' }}
+                      >
+                        <option value="L">Laki-laki (L)</option>
+                        <option value="P">Perempuan (P)</option>
+                      </select>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="submit"
+                          style={{
+                            background: '#2563EB',
+                            border: 'none',
+                            color: 'white',
+                            cursor: 'pointer',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Save size={13} />
+                          <span>Simpan</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingStudent(null)}
+                          style={{
+                            background: '#F1F5F9',
+                            border: '1px solid #CBD5E1',
+                            color: '#475569',
+                            cursor: 'pointer',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          Batal
+                        </button>
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                        {student.nisn ? `NISN: ${student.nisn} • ` : ''}
-                        <span style={{ fontWeight: 'bold', color: student.gender === 'P' ? '#BE185D' : '#2563EB' }}>
-                          {student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}
+                    </form>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', width: '22px', textAlign: 'center', flexShrink: 0 }}>
+                          {idx + 1}
                         </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {student.name}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                            {student.nisn ? `NISN: ${student.nisn} • ` : ''}
+                            <span style={{ fontWeight: 'bold', color: student.gender === 'P' ? '#BE185D' : '#2563EB' }}>
+                              {student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {canManageStudents && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteStudent(student.id, student.name)}
-                      style={{
-                        background: '#FEF2F2',
-                        border: '1px solid #FECACA',
-                        color: '#EF4444',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        transition: 'all 0.15s'
-                      }}
-                      title="Hapus Siswa"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                      {canManageStudents && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => setEditingStudent({
+                              id: student.id,
+                              name: student.name || '',
+                              nisn: student.nisn || '',
+                              gender: student.gender || 'L'
+                            })}
+                            style={{
+                              background: '#EFF6FF',
+                              border: '1px solid #BFDBFE',
+                              color: '#2563EB',
+                              cursor: 'pointer',
+                              padding: '6px',
+                              borderRadius: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                            title="Edit Nama / Data Siswa"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStudent(student.id, student.name)}
+                            style={{
+                              background: '#FEF2F2',
+                              border: '1px solid #FECACA',
+                              color: '#EF4444',
+                              cursor: 'pointer',
+                              padding: '6px',
+                              borderRadius: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                            title="Hapus Siswa"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
