@@ -222,11 +222,10 @@ export async function getSecureLocation(options = { timeout: 8000, enableHighAcc
 /**
  * Verifikasi apakah lingkungan perangkat saat ini diizinkan untuk melakukan presensi.
  * Aturan Baru:
- * 1. Di Smartphone / Tablet (Android & iPhone/iOS): Diizinkan melalui Aplikasi Native (APK) maupun semua Browser HP (Chrome, Safari, dll).
- * 2. Di Komputer / Laptop / Desktop: DIBLOKIR demi mencegah kecurangan Fake GPS / manipulasi lokasi devtools.
+ * 1. Di Aplikasi Native Resmi (APK Android / iOS Native App): Diizinkan untuk presensi mandiri.
+ * 2. Di SEMUA Browser Web (Chrome, Opera, Safari, dll baik di HP maupun Laptop/PC): DIBLOKIR.
  */
 export function verifyAttendancePlatform() {
-  // 1. Jika dibuka melalui Aplikasi Native (APK Android resmi atau iOS Native App)
   if (Capacitor.isNativePlatform()) {
     return {
       allowed: true,
@@ -235,28 +234,10 @@ export function verifyAttendancePlatform() {
     }
   }
 
-  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : ''
-  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (
-    typeof navigator !== 'undefined' && 
-    navigator.platform === 'MacIntel' && 
-    navigator.maxTouchPoints > 1 // iPadOS
-  )
-  const isAndroid = /Android/i.test(ua)
-  const isMobileOrTablet = isAndroid || isIOS || /Mobile|Tablet|Silk|BlackBerry|Opera Mini|IEMobile/i.test(ua)
-
-  // 2. Di Smartphone / Tablet (Android & iPhone/iPad): Izinkan semua browser mobile
-  if (isMobileOrTablet) {
-    return {
-      allowed: true,
-      platform: isIOS ? 'ios_browser' : 'android_browser',
-      message: 'Perangkat Seluler Terverifikasi'
-    }
-  }
-
-  // 3. Perangkat Desktop / Laptop / Komputer PC: Blokir presensi mandiri
+  // Semua browser (mobile browser maupun desktop) diblokir untuk presensi mandiri
   return {
     allowed: false,
-    platform: 'desktop_computer',
-    message: 'Presensi mandiri hanya dapat dilakukan melalui smartphone / HP (Aplikasi GammaraApp atau Browser HP). Browser komputer/laptop tidak diizinkan demi validitas lokasi GPS.'
+    platform: 'web_browser',
+    message: '🔒 Presensi Mandiri Hanya Tersedia di Aplikasi Resmi (APK)'
   }
 }

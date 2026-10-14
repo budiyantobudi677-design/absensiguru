@@ -19,6 +19,7 @@ import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTa
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
+import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -1616,7 +1617,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   }
 
   return (
-    <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: isDesktop ? '2rem' : '90px' }}>
+    <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: (Capacitor.isNativePlatform() && !isDesktop) ? '90px' : '2rem' }}>
       {/* Custom Popup Modal */}
       {popup.show && (
         <div className="popup-overlay">
@@ -1929,38 +1930,12 @@ export default function DashboardGuru({ roleOverride = null }) {
 
         {activeTab === 'absensi' && (
           <div className="text-center">
-            {!isHoliday && (() => {
-              const platformStatus = verifyAttendancePlatform()
-              if (!platformStatus.allowed) {
-                return (
-                  <div style={{
-                    background: '#FEF2F2',
-                    border: '1px solid #FECACA',
-                    color: '#991B1B',
-                    borderRadius: '14px',
-                    padding: '0.85rem 1rem',
-                    fontSize: '0.8rem',
-                    marginBottom: '1.25rem',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '10px',
-                    lineHeight: 1.45,
-                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.08)'
-                  }}>
-                    <ShieldAlert size={20} style={{ flexShrink: 0, marginTop: '2px', color: '#DC2626' }} />
-                    <div>
-                      <strong style={{ display: 'block', marginBottom: '2px', fontSize: '0.85rem', color: '#B91C1C' }}>
-                        Presensi Wajib via Smartphone / HP
-                      </strong>
-                      <span>{platformStatus.message}</span>
-                    </div>
-                  </div>
-                )
-              }
-              return null
-            })()}
-            {!isHoliday && <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>}
+            {!isHoliday && !Capacitor.isNativePlatform() && (
+              <PresensiOnlyApkNotice />
+            )}
+            {!isHoliday && Capacitor.isNativePlatform() && (
+              <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+            )}
 
             {isHoliday ? (
               <div className="card" style={{ padding: '2rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', marginTop: '1rem' }}>
@@ -1970,19 +1945,21 @@ export default function DashboardGuru({ roleOverride = null }) {
                 <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
               </div>
             ) : !hasCheckedIn ? (
-              <>
-                <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
-                  <Fingerprint size={48} strokeWidth={1.5} />
-                  <span>Clock In</span>
-                </button>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
-                  <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
-                  <button onClick={() => { setIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
-                  <button onClick={() => { setShowTugasLuarModal(true); setIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
-                    <Briefcase size={15} /> Tugas Luar
+              Capacitor.isNativePlatform() ? (
+                <>
+                  <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
+                    <Fingerprint size={48} strokeWidth={1.5} />
+                    <span>Clock In</span>
                   </button>
-                </div>
-              </>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
+                    <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
+                    <button onClick={() => { setIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
+                    <button onClick={() => { setShowTugasLuarModal(true); setIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                      <Briefcase size={15} /> Tugas Luar
+                    </button>
+                  </div>
+                </>
+              ) : null
             ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
               <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
                 <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
@@ -2026,12 +2003,12 @@ export default function DashboardGuru({ roleOverride = null }) {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : Capacitor.isNativePlatform() ? (
               <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
                 <Fingerprint size={48} strokeWidth={1.5} />
                 <span>Clock Out</span>
               </button>
-            )}
+            ) : null}
 
             {izinMode && (
               <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
@@ -3413,24 +3390,20 @@ export default function DashboardGuru({ roleOverride = null }) {
       </div>
       </GuruDesktopWrapper>
 
-      {/* Corporate Style Bottom Navigation (Mobile App Shell) */}
-      {!isDesktop && (
+      {/* Corporate Style Bottom Navigation (Mobile App Shell - HANYA MUNCUL DI APK NATIVE) */}
+      {Capacitor.isNativePlatform() && !isDesktop && (
         <nav className="bottom-nav">
           {/* 1. Presensi */}
           <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('absensi')}>
             <Clock size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.5} /> Presensi
           </button>
 
-          {/* 2. Pembelajaran (KBM) - Disembunyikan untuk Non-Operator */}
-          {!isNonOpUser && (
+          {/* 2. Pembelajaran (KBM) - Hanya untuk GURU, disembunyikan untuk SEMUA TENDIK (Operator & Non-Operator) */}
+          {(!isTendikUser && !isOpUser && !isNonOpUser) && (
             <button
               className={`nav-item ${activeTab === 'kbm' || activeTab === 'modul_ajar' ? 'active' : ''}`}
               style={{ flex: 1 }}
               onClick={() => {
-                if (isTendikUser || isOpUser) {
-                  handleTabChangeWithUrl('kbm')
-                  return
-                }
                 if (!checkAssignmentConfigured()) {
                   setShowAssignmentReminder(true);
                   showPopup("Penugasan Belum Diatur", "Silakan lengkapi penugasan kelas atau mata pelajaran di menu Profil terlebih dahulu sebelum membuka Pembelajaran.", "error");
@@ -3440,7 +3413,7 @@ export default function DashboardGuru({ roleOverride = null }) {
               }}
             >
               <BookOpen size={20} strokeWidth={activeTab === 'kbm' || activeTab === 'modul_ajar' ? 2.5 : 1.5} /> 
-              {isOpUser ? 'KBM' : 'Pembelajaran'}
+              Pembelajaran
             </button>
           )}
 

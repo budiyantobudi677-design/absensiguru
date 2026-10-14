@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -20,10 +20,62 @@ import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
+import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 
 export default function DashboardKepsek() {
+  const isNative = Capacitor.isNativePlatform()
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
   const [admin, setAdmin] = useState({ role: 'kepsek' })
-  const [activeTab, setActiveTab] = useState('overview') 
+  const [activeTab, setActiveTab] = useState(Capacitor.isNativePlatform() && window.innerWidth < 1024 ? 'absensi' : 'overview') 
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const getGreeting = () => {
+    const hour = currentTime.getHours()
+    if (hour < 11) return 'Selamat Pagi'
+    if (hour < 15) return 'Selamat Siang'
+    if (hour < 18) return 'Selamat Sore'
+    return 'Selamat Malam'
+  }
+
+  // Riwayat Kehadiran Pribadi Kepala Sekolah
+  const [historyList, setHistoryList] = useState([])
+  const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const loadHistory = async (targetMonth = historyMonth) => {
+    if (!admin?.id) return
+    setHistoryLoading(true)
+    try {
+      const [year, month] = targetMonth.split('-')
+      const firstDay = `${targetMonth}-01`
+      const lastDay = new Date(year, month, 0).toLocaleDateString('en-CA')
+      const { data, error } = await supabase
+        .from('absensi')
+        .select('*')
+        .eq('user_id', admin.id)
+        .gte('tanggal', firstDay)
+        .lte('tanggal', lastDay)
+        .order('tanggal', { ascending: false })
+      if (!error && data) {
+        setHistoryList(data)
+      }
+    } catch (err) {
+      console.error("Gagal load history:", err)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'riwayat' && admin?.id) {
+      loadHistory(historyMonth)
+    }
+  }, [activeTab, admin?.id, historyMonth]) 
 
   // State Gemini AI Key untuk Admin / Kepsek
   const [geminiApiKey, setGeminiApiKey] = useState('')
@@ -1107,85 +1159,267 @@ export default function DashboardKepsek() {
       )}
 
       {/* 🖥️ Main Desktop Content */}
-      <div className="admin-main">
-        {/* Topbar Header Desktop */}
-        <header className="admin-topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="mobile-toggle-btn" style={{ background: 'transparent', border: '1px solid var(--border)', padding: '0.45rem', borderRadius: '8px', cursor: 'pointer', display: 'none' }}>
-              <Menu size={20} />
-            </button>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
-                {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
-                {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
-                {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
-                {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
-                {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
-                {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Sistem Presensi Guru & Tenaga Kependidikan {namaSekolah} • GammaraApp
-              </p>
+      <div className="admin-main" style={{ paddingBottom: (isNative && !isDesktop) ? '90px' : '2rem' }}>
+        {/* Header ID Card khusus APK Native (Sama persis seperti di APK Guru) */}
+        {isNative && !isDesktop && (
+          <div className="card-gradient no-print" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.65rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
+              <img src={logoSekolah || "/panrita_logo.webp"} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+              <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', letterSpacing: '-0.02em' }}>{logoSekolah ? namaSekolah : 'GammaraApp'}</span>
+            </div>
+            <div className="flex justify-between items-center mb-2.5">
+              <div className="flex items-center gap-3">
+                {admin?.foto_profil ? (
+                  <img src={admin.foto_profil} alt="Profil" style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)', background: 'white', flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <UserCircle size={28} color="var(--primary)" />
+                  </div>
+                )}
+                <div>
+                  <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.75rem', marginBottom: '0px', lineHeight: 1.2 }}>{getGreeting()},</p>
+                  <h2 style={{ fontSize: '1.05rem', margin: '2px 0 0 0', fontWeight: '700', letterSpacing: '0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '170px', lineHeight: 1.2 }}>
+                    {admin?.full_name || 'Kepala Sekolah'}
+                  </h2>
+                  <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '6px', fontWeight: 'bold', textTransform: 'uppercase', color: '#E0E7FF' }}>
+                    Kepala Sekolah
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleTheme}
+                  title={darkMode ? "Mode Terang" : "Mode Gelap"}
+                  style={{
+                    background: 'rgba(255,255,255,0.15)',
+                    border: 'none',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {darkMode ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#E0E7FF" />}
+                </button>
+                <button
+                  onClick={() => setActiveTab('pengumuman')}
+                  title="Pengumuman"
+                  style={{
+                    background: activeTab === 'pengumuman' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                    border: 'none',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer',
+                    position: 'relative'
+                  }}
+                >
+                  <Bell size={17} />
+                </button>
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  title="Menu Navigasi"
+                  style={{
+                    background: 'rgba(255,255,255,0.15)',
+                    border: 'none',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Menu size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.15)', padding: '0.45rem 0.85rem', borderRadius: '12px', backdropFilter: 'blur(10px)' }}>
+              <div className="flex items-center gap-2">
+                <Clock size={16} />
+                <span style={{ fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.5px' }}>
+                  {currentTime.toLocaleTimeString('id-ID')}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: '500', opacity: 0.9 }}>
+                {currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </span>
             </div>
           </div>
+        )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {admin?.isDeveloperPreview && (
+        {/* Topbar Header Desktop / Web (Hanya muncul jika di Web Browser atau Desktop) */}
+        {(!isNative || isDesktop) && (
+          <header className="admin-topbar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="mobile-toggle-btn" style={{ background: 'transparent', border: '1px solid var(--border)', padding: '0.45rem', borderRadius: '8px', cursor: 'pointer', display: 'none' }}>
+                <Menu size={20} />
+              </button>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
+                  {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
+                  {activeTab === 'absensi' && 'Presensi Mandiri Kepala Sekolah'}
+                  {activeTab === 'riwayat' && 'Riwayat Kehadiran Kepala Sekolah'}
+                  {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
+                  {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
+                  {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
+                  {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
+                  {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Sistem Presensi Guru & Tenaga Kependidikan {namaSekolah} • GammaraApp
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {admin?.isDeveloperPreview && (
+                <button
+                  onClick={() => navigate('/pengembang')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#071C35',
+                    color: '#00B4D8',
+                    border: '1.5px solid #00B4D8',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
+                  }}
+                >
+                  <span>⚙️ Mode Super Admin (Kembali)</span>
+                </button>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.45rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                <Clock size={16} color="var(--primary)" />
+                <span style={{ fontWeight: '600' }}>{currentTime.toLocaleTimeString('id-ID')}</span>
+                <span style={{ color: 'var(--text-muted)' }}>•</span>
+                <span style={{ color: 'var(--text-muted)' }}>{currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </div>
+
               <button
-                onClick={() => navigate('/pengembang')}
+                onClick={toggleTheme}
+                title={darkMode ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"}
                 style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '12px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  background: '#071C35',
-                  color: '#00B4D8',
-                  border: '1.5px solid #00B4D8',
-                  padding: '0.45rem 0.85rem',
-                  borderRadius: '12px',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
+                  justifyContent: 'center',
                   cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(0, 180, 216, 0.3)'
+                  transition: 'all 0.2s'
                 }}
               >
-                <span>⚙️ Mode Super Admin (Kembali)</span>
+                {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#4F46E5" />}
               </button>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface)', border: '1px solid var(--border)', padding: '0.45rem 0.85rem', borderRadius: '12px', fontSize: '0.85rem' }}>
-              <Clock size={16} color="var(--primary)" />
-              <span style={{ fontWeight: '600' }}>{currentTime.toLocaleTimeString('id-ID')}</span>
-              <span style={{ color: 'var(--text-muted)' }}>•</span>
-              <span style={{ color: 'var(--text-muted)' }}>{currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
             </div>
-
-            <button
-              onClick={toggleTheme}
-              title={darkMode ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"}
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              {darkMode ? <Sun size={20} color="#FBBF24" /> : <Moon size={20} color="#4F46E5" />}
-            </button>
-          </div>
-        </header>
+          </header>
+        )}
 
         {/* Content Canvas */}
         <main className="admin-content">
+          {/* Tab Presensi Mandiri (Khusus di Tab Absensi) */}
+          {activeTab === 'absensi' && (
+            <div className="fade-in">
+              <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck size={28} color="#A5B4FC" />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#C7D2FE', fontWeight: 'bold' }}>Presensi Mandiri Pimpinan</span>
+                    <h3 style={{ margin: '2px 0 0 0', fontSize: '1.15rem', color: 'white' }}>{admin?.full_name || 'Kepala Sekolah'}</h3>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#E0E7FF' }}>
+                      Status Hari Ini: {kepsekTodayAbsensi ? `Tercatat Hadir (Masuk: ${kepsekTodayAbsensi.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'})` : 'Belum Melakukan Presensi'}
+                    </p>
+                  </div>
+                </div>
+
+                {!isNative ? (
+                  <PresensiOnlyApkNotice style={{ margin: '1rem 0' }} />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      {!kepsekHasCheckedIn ? (
+                        <button
+                          onClick={() => handleKepsekAbsen('masuk')}
+                          disabled={kepsekAbsenLoading}
+                          className="btn"
+                          style={{ flex: 1, minWidth: '160px', background: '#10B981', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
+                        >
+                          <Fingerprint size={20} />
+                          <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock In Sekarang'}</span>
+                        </button>
+                      ) : !kepsekTodayAbsensi?.waktu_pulang ? (
+                        <button
+                          onClick={() => handleKepsekAbsen('pulang')}
+                          disabled={kepsekAbsenLoading}
+                          className="btn"
+                          style={{ flex: 1, minWidth: '160px', background: '#F59E0B', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
+                        >
+                          <Fingerprint size={20} />
+                          <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock Out Sekarang'}</span>
+                        </button>
+                      ) : (
+                        <div style={{ flex: 1, background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.85rem 1rem', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          <CheckCircle2 size={20} />
+                          <span>Presensi Hari Ini Sudah Selesai</span>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => setShowCameraModal(true)}
+                        className="btn"
+                        style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                      >
+                        <Camera size={20} />
+                        <span>Kamera GTag</span>
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'rgba(255,255,255,0.1)', padding: '0.85rem', borderRadius: '14px' }}>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Masuk</div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
+                          {kepsekTodayAbsensi?.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Pulang</div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
+                          {kepsekTodayAbsensi?.waktu_pulang ? new Date(kepsekTodayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {activeTab === 'overview' && (
             <div className="fade-in">
-              {/* Kartu Presensi Mandiri Khusus Kepala Sekolah */}
-              {(admin?.role === 'kepsek' || admin?.role === 'admin') && (
+              {/* Kartu Presensi Mandiri Khusus Kepala Sekolah / Admin (Muncul di Web Browser) */}
+              {(admin?.role === 'kepsek' || admin?.role === 'admin') && (!isNative || isDesktop) && (
                 <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1202,40 +1436,46 @@ export default function DashboardKepsek() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      {!kepsekHasCheckedIn ? (
-                        <button
-                          onClick={() => handleKepsekAbsen('masuk')}
-                          disabled={kepsekAbsenLoading}
-                          className="btn"
-                          style={{ background: '#10B981', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
-                        >
-                          <Fingerprint size={18} />
-                          <span>Clock In Saya</span>
-                        </button>
-                      ) : !kepsekTodayAbsensi?.waktu_pulang ? (
-                        <button
-                          onClick={() => handleKepsekAbsen('pulang')}
-                          disabled={kepsekAbsenLoading}
-                          className="btn"
-                          style={{ background: '#F59E0B', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
-                        >
-                          <Fingerprint size={18} />
-                          <span>Clock Out Saya</span>
-                        </button>
+                      {!isNative ? (
+                        <PresensiOnlyApkNotice style={{ margin: 0, padding: '0.85rem 1.25rem', width: '100%', maxWidth: '340px' }} />
                       ) : (
-                        <div style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.6rem 1rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <CheckCircle2 size={18} />
-                          <span>Presensi Hari Ini Lengkap</span>
-                        </div>
-                      )}
+                        <>
+                          {!kepsekHasCheckedIn ? (
+                            <button
+                              onClick={() => handleKepsekAbsen('masuk')}
+                              disabled={kepsekAbsenLoading}
+                              className="btn"
+                              style={{ background: '#10B981', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
+                            >
+                              <Fingerprint size={18} />
+                              <span>Clock In Saya</span>
+                            </button>
+                          ) : !kepsekTodayAbsensi?.waktu_pulang ? (
+                            <button
+                              onClick={() => handleKepsekAbsen('pulang')}
+                              disabled={kepsekAbsenLoading}
+                              className="btn"
+                              style={{ background: '#F59E0B', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
+                            >
+                              <Fingerprint size={18} />
+                              <span>Clock Out Saya</span>
+                            </button>
+                          ) : (
+                            <div style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.6rem 1rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <CheckCircle2 size={18} />
+                              <span>Presensi Hari Ini Lengkap</span>
+                            </div>
+                          )}
 
-                      <button
-                        onClick={() => setShowCameraModal(true)}
-                        title="Kamera Timemark"
-                        style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Camera size={18} />
-                      </button>
+                          <button
+                            onClick={() => setShowCameraModal(true)}
+                            title="Kamera Timemark"
+                            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Camera size={18} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2519,6 +2759,99 @@ export default function DashboardKepsek() {
              </div>
           </div>
         )}
+
+        {/* Tab Riwayat Kehadiran Kepala Sekolah */}
+        {activeTab === 'riwayat' && (
+          <div className="fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', margin: 0, fontWeight: '700' }}>Riwayat Kehadiran Saya</h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Log presensi mandiri Anda sebagai Kepala Sekolah
+                </p>
+              </div>
+              <input
+                type="month"
+                value={historyMonth}
+                onChange={(e) => {
+                  setHistoryMonth(e.target.value)
+                  loadHistory(e.target.value)
+                }}
+                className="input"
+                style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem', borderRadius: '10px', width: 'auto', border: '1px solid var(--border)' }}
+              />
+            </div>
+
+            {historyLoading ? (
+              <div className="card text-center text-muted" style={{ padding: '2.5rem' }}>
+                <Loader2 size={26} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
+                <span>Memuat data riwayat kehadiran...</span>
+              </div>
+            ) : historyList.length === 0 ? (
+              <div className="card text-center text-muted" style={{ padding: '2.5rem' }}>
+                <Fingerprint size={32} style={{ margin: '0 auto 0.5rem auto', opacity: 0.4 }} />
+                <span>Tidak ada catatan presensi mandiri pada bulan {historyMonth}.</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {historyList.map((item) => {
+                  const isHadir = !item.status || item.status === 'hadir'
+                  const statusColor = isHadir ? '#10B981' : item.status === 'izin' ? '#F59E0B' : '#EF4444'
+                  const statusBg = isHadir ? '#ECFDF5' : item.status === 'izin' ? '#FFFBEB' : '#FEF2F2'
+                  const photo = extractPhoto(item)
+                  return (
+                    <div
+                      key={item.id}
+                      className="card"
+                      style={{
+                        padding: '1rem 1.15rem',
+                        borderRadius: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: statusBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: statusColor, flexShrink: 0 }}>
+                          <Fingerprint size={22} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '0.92rem' }}>
+                            {new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', marginTop: '3px' }}>
+                            <span>Masuk: <strong style={{ color: '#10B981' }}>{item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</strong></span>
+                            <span>•</span>
+                            <span>Pulang: <strong style={{ color: '#F59E0B' }}>{item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 'bold', textTransform: 'capitalize', color: statusColor, background: statusBg, padding: '4px 10px', borderRadius: '8px' }}>
+                          {item.status || 'Hadir'}
+                        </span>
+                        {photo && (
+                          <button
+                            onClick={() => setSelectedDetailPhoto({ photo, absensi: { profiles: admin, tanggal: item.tanggal, waktu_masuk: item.waktu_masuk, waktu_pulang: item.waktu_pulang, keterangan: item.keterangan } })}
+                            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            title="Lihat Foto Bukti"
+                          >
+                            <ImageIcon size={16} color="var(--primary)" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
         </main>
       {showExportModal && (
         <div className="popup-overlay" style={{ zIndex: 1000, padding: '1rem' }}>
@@ -2781,54 +3114,141 @@ export default function DashboardKepsek() {
         </div>
       )}
 
-        {/* Mobile Bottom Navigation Bar (Muncul di Layar HP) */}
-        <div className="mobile-admin-bottom-nav" style={{
-          display: 'none',
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: 'var(--surface)',
-          borderTop: '1px solid var(--border)',
-          zIndex: 40,
-          padding: '0.4rem 0.5rem 0.6rem 0.5rem',
-          justifyContent: 'space-around',
-          alignItems: 'center',
-          boxShadow: '0 -4px 12px rgba(0,0,0,0.06)'
-        }}>
-          {[
-            { id: 'overview', label: 'Ringkasan', icon: Activity },
-            { id: 'pegawai', label: 'Guru & Tendik', icon: Users },
-            { id: 'kbm', label: 'KBM', icon: BookOpen },
-            { id: 'laporan', label: 'Laporan', icon: FileText },
-            { id: 'pengaturan', label: 'Profil', icon: Settings },
-          ].map(m => {
-            const Icon = m.icon
-            const isActive = activeTab === m.id
-            return (
-              <button
-                key={m.id}
-                onClick={() => handleMenuClick(m.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '3px',
-                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                  fontSize: '0.68rem',
-                  fontWeight: isActive ? 700 : 500,
-                  cursor: 'pointer',
-                  padding: '4px 6px'
-                }}
-              >
-                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                <span>{m.label}</span>
-              </button>
-            )
-          })}
-        </div>
+        {/* Mobile APK Bottom Navigation Bar (HANYA Muncul di Aplikasi Resmi Native APK, Browser TIDAK ADA Bottom Nav) */}
+        {isNative && !isDesktop && (
+          <nav
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'var(--surface)',
+              borderTop: '1px solid var(--border)',
+              zIndex: 50,
+              padding: '0.4rem 0.5rem 0.6rem 0.5rem',
+              display: 'flex',
+              justifyContent: 'space-around',
+              alignItems: 'center',
+              boxShadow: '0 -4px 14px rgba(0,0,0,0.08)'
+            }}
+          >
+            {/* 1. Presensi */}
+            <button
+              onClick={() => setActiveTab('absensi')}
+              style={{
+                background: 'none',
+                border: 'none',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '3px',
+                color: activeTab === 'absensi' ? 'var(--primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px 2px'
+              }}
+            >
+              <MapPin size={20} strokeWidth={activeTab === 'absensi' ? 2.5 : 1.8} />
+              <span style={{ fontSize: '0.68rem', fontWeight: activeTab === 'absensi' ? 700 : 500 }}>Presensi</span>
+            </button>
+
+            {/* 2. Overview (Ringkasan Kehadiran Guru Hari Ini) */}
+            <button
+              onClick={() => setActiveTab('overview')}
+              style={{
+                background: 'none',
+                border: 'none',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '3px',
+                color: activeTab === 'overview' ? 'var(--primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px 2px'
+              }}
+            >
+              <Activity size={20} strokeWidth={activeTab === 'overview' ? 2.5 : 1.8} />
+              <span style={{ fontSize: '0.68rem', fontWeight: activeTab === 'overview' ? 700 : 500 }}>Overview</span>
+            </button>
+
+            {/* 3. GTag (Kamera Ber-watermark GPS) - Posisi Center / Tengah */}
+            <button
+              onClick={() => setShowCameraModal(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '2px',
+                color: '#0284C7',
+                cursor: 'pointer',
+                padding: '0 2px'
+              }}
+            >
+              <div style={{
+                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '38px',
+                height: '38px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: '-14px',
+                boxShadow: '0 4px 10px rgba(2, 132, 199, 0.4)'
+              }}>
+                <Camera size={19} />
+              </div>
+              <span style={{ fontSize: '0.68rem', fontWeight: '700' }}>GTag</span>
+            </button>
+
+            {/* 4. Riwayat */}
+            <button
+              onClick={() => {
+                setActiveTab('riwayat')
+                loadHistory()
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '3px',
+                color: activeTab === 'riwayat' ? 'var(--primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px 2px'
+              }}
+            >
+              <History size={20} strokeWidth={activeTab === 'riwayat' ? 2.5 : 1.8} />
+              <span style={{ fontSize: '0.68rem', fontWeight: activeTab === 'riwayat' ? 700 : 500 }}>Riwayat</span>
+            </button>
+
+            {/* 5. Profil */}
+            <button
+              onClick={() => setActiveTab('pengaturan')}
+              style={{
+                background: 'none',
+                border: 'none',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '3px',
+                color: activeTab === 'pengaturan' ? 'var(--primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px 2px'
+              }}
+            >
+              <UserCircle size={20} strokeWidth={activeTab === 'pengaturan' ? 2.5 : 1.8} />
+              <span style={{ fontSize: '0.68rem', fontWeight: activeTab === 'pengaturan' ? 700 : 500 }}>Profil</span>
+            </button>
+          </nav>
+        )}
 
         {/* Footer Admin GammaraApp */}
         <footer style={{ marginTop: '3rem', padding: '1.75rem 1rem 5rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
