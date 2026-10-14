@@ -220,13 +220,136 @@ export async function getSecureLocation(options = { timeout: 8000, enableHighAcc
 }
 
 /**
- * Verifikasi apakah lingkungan perangkat saat ini diizinkan untuk melakukan presensi.
- * Aturan Baru:
- * 1. Di Aplikasi Native Resmi (APK Android / iOS Native App): Diizinkan untuk presensi mandiri.
- * 2. Di SEMUA Browser Web (Chrome, Opera, Safari, dll baik di HP maupun Laptop/PC): DIBLOKIR.
+ * Deteksi apakah perangkat saat ini adalah iOS (iPhone / iPad / iPod)
  */
-export function verifyAttendancePlatform() {
+export function isIOSDevice() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  return /iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
+/**
+ * Deteksi apakah perangkat saat ini adalah Android
+ */
+export function isAndroidDevice() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') return true
+  const ua = navigator.userAgent || ''
+  return /Android/i.test(ua)
+}
+
+/**
+ * Deteksi apakah pengguna sedang membuka di Tab Samaran (Incognito / Private Browsing) pada iOS
+ */
+export async function isIncognitoMode() {
+  if (typeof window === 'undefined') return false
+  try {
+    // 1. Deteksi Quota Storage (iOS Safari & Chrome membatasi kuota sangat rendah di private mode, < 500MB)
+    if (navigator.storage && navigator.storage.estimate) {
+      const { quota } = await navigator.storage.estimate()
+      if (quota && quota < 500 * 1024 * 1024) {
+        return true
+      }
+    }
+
+    // 2. Deteksi FileSystem API
+    if ('webkitRequestFileSystem' in window) {
+      const isPrivateFS = await new Promise((resolve) => {
+        window.webkitRequestFileSystem(
+          window.TEMPORARY,
+          100,
+          () => resolve(false),
+          () => resolve(true)
+        )
+      })
+      if (isPrivateFS) return true
+    }
+
+    // 3. Fallback IndexedDB check
+    const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome|CriOS/i.test(navigator.userAgent)
+    if (isSafari && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      try {
+        const testDb = window.indexedDB.open('__test_incognito__')
+        await new Promise((resolve, reject) => {
+          testDb.onsuccess = () => resolve(true)
+          testDb.onerror = () => reject(false)
+        })
+      } catch {
+        return true
+      }
+    }
+  } catch (err) {
+    console.warn('Gagal uji incognito:', err)
+  }
+  return false
+}
+
+/**
+ * Cek pembatasan silang perangkat (Cross-Device Lock)
+ * - Akun Android dilarang login/akses di iPhone
+ * - Akun iPhone dilarang login/akses di Android
+ */
+export function checkCrossDeviceAccess(profile) {
+  if (!profile) return { allowed: true }
+
+  const tipe = profile.tipe_perangkat || (profile.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null) || 'android'
+  const isIOS = isIOSDevice()
+  const isAndroid = isAndroidDevice()
+
+  // Jika akun terdaftar Android tapi dibuka di iPhone/iPad
+  if (tipe === 'android' && isIOS) {
+    return {
+      allowed: false,
+      reason: 'wrong_device',
+      message: 'Akses Ditolak: Akun Anda terdaftar sebagai pengguna Android. Anda tidak dapat menggunakan perangkat iPhone/iOS untuk mengakses aplikasi.'
+    }
+  }
+
+  // Jika akun terdaftar iPhone tapi dibuka di Android
+  if (tipe === 'iphone' && isAndroid) {
+    return {
+      allowed: false,
+      reason: 'wrong_device',
+      message: 'Akses Ditolak: Akun Anda terdaftar sebagai pengguna iPhone. Anda tidak dapat menggunakan perangkat Android untuk mengakses aplikasi.'
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Verifikasi apakah lingkungan perangkat saat ini diizinkan untuk melakukan presensi.
+ * Aturan:
+ * 1. Di Aplikasi Native Resmi (APK Android): Diizinkan untuk presensi mandiri akun Android.
+ * 2. Akun iPhone: Diizinkan presensi di browser Safari atau Chrome iOS pada tab reguler.
+ * 3. Tab Samaran (Incognito/Private) di iPhone: DIBLOKIR.
+ * 4. Akun Android di browser web: DIBLOKIR (Wajib APK).
+ * 5. Penggunaan silang (Android di iPhone / iPhone di Android): DIBLOKIR.
+ */
+export function verifyAttendancePlatform(profile, isIncognito = false) {
+  // 1. Cek silang perangkat
+  const crossCheck = checkCrossDeviceAccess(profile)
+  if (!crossCheck.allowed) {
+    return {
+      allowed: false,
+      platform: 'cross_device_blocked',
+      message: crossCheck.message
+    }
+  }
+
+  const tipe = profile?.tipe_perangkat || (profile?.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null) || 'android'
+  const isIOS = isIOSDevice()
+
+  // Skenario A: Aplikasi Native Resmi (APK Android)
   if (Capacitor.isNativePlatform()) {
+    if (tipe === 'iphone') {
+      return {
+        allowed: false,
+        platform: 'cross_device_blocked',
+        message: 'Akses Ditolak: Akun Anda terdaftar sebagai pengguna iPhone. Silakan gunakan perangkat iPhone Anda.'
+      }
+    }
     return {
       allowed: true,
       platform: 'native_app',
@@ -234,7 +357,36 @@ export function verifyAttendancePlatform() {
     }
   }
 
-  // Semua browser (mobile browser maupun desktop) diblokir untuk presensi mandiri
+  // Skenario B: Akun iPhone di Browser (Safari atau Chrome iOS)
+  if (tipe === 'iphone' && isIOS) {
+    if (isIncognito) {
+      return {
+        allowed: false,
+        platform: 'incognito_blocked',
+        message: 'Presensi Ditolak: Mode Tab Samaran (Incognito / Private) terdeteksi. Silakan gunakan tab reguler untuk presensi.'
+      }
+    }
+
+    const ua = navigator.userAgent || ''
+    const isSafari = /Safari/i.test(ua)
+    const isChromeIOS = /CriOS/i.test(ua)
+
+    if (isSafari || isChromeIOS) {
+      return {
+        allowed: true,
+        platform: isChromeIOS ? 'ios_chrome' : 'ios_safari',
+        message: `Browser ${isChromeIOS ? 'Chrome' : 'Safari'} iPhone Terverifikasi`
+      }
+    } else {
+      return {
+        allowed: false,
+        platform: 'unsupported_browser',
+        message: 'Pengguna iPhone hanya dapat presensi menggunakan browser Safari atau Chrome resmi di iPhone.'
+      }
+    }
+  }
+
+  // Skenario C: Akun Android di Browser
   return {
     allowed: false,
     platform: 'web_browser',

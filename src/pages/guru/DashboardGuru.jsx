@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Save, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -18,7 +18,7 @@ import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiCo
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
-import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 
 const getLocalPref = async (key, fallback = null) => {
@@ -363,14 +363,25 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   // Responsive Layout (Otomatis deteksi layar Laptop/PC vs HP)
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 992 : false)
+  const [isIncognito, setIsIncognito] = useState(false)
+  const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
 
   useEffect(() => {
     const handleResize = () => {
       setIsDesktop(window.innerWidth >= 992)
     }
     window.addEventListener('resize', handleResize)
+    isIncognitoMode().then(val => setIsIncognito(val))
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    const activeUser = profile || user
+    if (activeUser?.id) {
+      const cross = checkCrossDeviceAccess(activeUser)
+      setCrossDeviceStatus(cross)
+    }
+  }, [profile, user])
 
   const navigate = useNavigate()
   const location = useLocation()
@@ -1276,12 +1287,17 @@ export default function DashboardGuru({ roleOverride = null }) {
   }
 
   const handleAbsen = async (jenis) => {
-    // Kebijakan Keamanan: Presensi HANYA diizinkan melalui APK resmi (Android) atau Safari asli (iPhone/iOS)
-    const platformCheck = verifyAttendancePlatform()
+    // Kebijakan Keamanan: Presensi HANYA diizinkan melalui APK resmi (Android) atau Safari/Chrome asli (iPhone/iOS)
+    const platformCheck = verifyAttendancePlatform(profile || user, isIncognito)
 
     if (!platformCheck.allowed && (jenis === 'masuk' || jenis === 'pulang' || jenis === 'sakit' || jenis === 'izin' || jenis === 'tugas_luar')) {
+      const title = platformCheck.platform === 'incognito_blocked' 
+        ? "Tab Samaran Terdeteksi" 
+        : platformCheck.platform === 'cross_device_blocked' 
+          ? "Akses Perangkat Ditolak" 
+          : "Presensi Ditolak (Gunakan Aplikasi)"
       showPopup(
-        "Presensi Ditolak (Gunakan Aplikasi)",
+        title,
         platformCheck.message,
         "error"
       )
@@ -1617,7 +1633,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   }
 
   return (
-    <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: (Capacitor.isNativePlatform() && !isDesktop) ? '90px' : '2rem' }}>
+    <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: !isDesktop ? '90px' : '2rem' }}>
       {/* Custom Popup Modal */}
       {popup.show && (
         <div className="popup-overlay">
@@ -1838,6 +1854,17 @@ export default function DashboardGuru({ roleOverride = null }) {
       </div>
       )}
       <div style={{ padding: isDesktop ? '0' : '0 1.5rem', width: '100%' }}>
+        {/* Peringatan Akses Lintas Perangkat (Android di iPhone / iPhone di Android) */}
+        {!crossDeviceStatus.allowed && (
+          <div style={{ marginBottom: '1rem', padding: '1rem 1.25rem', background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '1rem', color: '#991B1B' }}>
+            <AlertCircle size={28} color="#DC2626" style={{ flexShrink: 0 }} />
+            <div>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Peringatan Akses Perangkat</h4>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{crossDeviceStatus.message}</p>
+            </div>
+          </div>
+        )}
+
         {/* Banner Mode Pengembang (Mode Lihat Guru) untuk Mobile / HP */}
         {user?.isDeveloperPreview && (
           <div style={{
@@ -1928,87 +1955,104 @@ export default function DashboardGuru({ roleOverride = null }) {
           </div>
         )}
 
-        {activeTab === 'absensi' && (
-          <div className="text-center">
-            {!isHoliday && !Capacitor.isNativePlatform() && (
-              <PresensiOnlyApkNotice />
-            )}
-            {!isHoliday && Capacitor.isNativePlatform() && (
-              <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
-            )}
+        {activeTab === 'absensi' && (() => {
+          const platformCheck = verifyAttendancePlatform(profile || user, isIncognito)
 
-            {isHoliday ? (
-              <div className="card" style={{ padding: '2rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', marginTop: '1rem' }}>
-                <Calendar size={48} style={{ margin: '0 auto 1rem auto' }} />
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Hari Libur</h3>
-                <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>{holidayReason}</p>
-                <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
-              </div>
-            ) : !hasCheckedIn ? (
-              Capacitor.isNativePlatform() ? (
-                <>
-                  <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
-                    <Fingerprint size={48} strokeWidth={1.5} />
-                    <span>Clock In</span>
-                  </button>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
-                    <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
-                    <button onClick={() => { setIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
-                    <button onClick={() => { setShowTugasLuarModal(true); setIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
-                      <Briefcase size={15} /> Tugas Luar
-                    </button>
+          return (
+            <div className="text-center">
+              {!isHoliday && !platformCheck.allowed && (
+                platformCheck.platform === 'incognito_blocked' ? (
+                  <div style={{ margin: '1rem auto', maxWidth: '420px', background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '16px', padding: '1.25rem', color: '#92400E', textAlign: 'center' }}>
+                    <AlertTriangle size={36} color="#D97706" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Mode Tab Samaran Terdeteksi</h4>
+                    <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{platformCheck.message}</p>
                   </div>
-                </>
-              ) : null
-            ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
-              <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
-                <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
-                <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
-              </div>
-            ) : todayAbsensi?.waktu_pulang ? (
-              <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
-                <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: '#16A34A' }} />
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>
-                  {todayAbsensi.keterangan?.includes('Tugas Luar') ? 'Presensi Tugas Luar Selesai' : 'Presensi Hari Ini Selesai'}
-                </h3>
-                <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803D' }}>
-                  Anda terdaftar <strong>HADIR</strong> untuk hari ini.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
-                  <div>
-                    <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM MASUK</div>
-                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#059669' }}>
-                      {todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
-                    </div>
+                ) : platformCheck.platform === 'cross_device_blocked' ? (
+                  <div style={{ margin: '1rem auto', maxWidth: '420px', background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '16px', padding: '1.25rem', color: '#991B1B', textAlign: 'center' }}>
+                    <AlertCircle size={36} color="#DC2626" style={{ margin: '0 auto 0.5rem auto' }} />
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Akses Perangkat Ditolak</h4>
+                    <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{platformCheck.message}</p>
                   </div>
-                  <div style={{ borderLeft: '1px solid #E5E7EB' }}></div>
-                  <div>
-                    <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM PULANG</div>
-                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#D97706' }}>
-                      {todayAbsensi.waktu_pulang ? new Date(todayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00'}
-                    </div>
-                  </div>
+                ) : (
+                  <PresensiOnlyApkNotice />
+                )
+              )}
+              {!isHoliday && platformCheck.allowed && (
+                <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+              )}
+
+              {isHoliday ? (
+                <div className="card" style={{ padding: '2rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', marginTop: '1rem' }}>
+                  <Calendar size={48} style={{ margin: '0 auto 1rem auto' }} />
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Hari Libur</h3>
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>{holidayReason}</p>
+                  <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
                 </div>
-                {todayAbsensi.keterangan && (
-                  <div style={{ textAlign: 'left', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #DCFCE7', fontSize: '0.85rem', color: '#374151', margin: '0 auto 1rem auto', maxWidth: '380px' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4B5563', marginBottom: '0.2rem' }}>Catatan Tugas / Keterangan:</div>
-                    <div>{todayAbsensi.keterangan}</div>
+              ) : !hasCheckedIn ? (
+                platformCheck.allowed ? (
+                  <>
+                    <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
+                      <Fingerprint size={48} strokeWidth={1.5} />
+                      <span>Clock In</span>
+                    </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
+                      <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
+                      <button onClick={() => { setIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
+                      <button onClick={() => { setShowTugasLuarModal(true); setIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                        <Briefcase size={15} /> Tugas Luar
+                      </button>
+                    </div>
+                  </>
+                ) : null
+              ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
+                <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
+                  <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
+                  <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                </div>
+              ) : todayAbsensi?.waktu_pulang ? (
+                <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
+                  <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: '#16A34A' }} />
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                    {todayAbsensi.keterangan?.includes('Tugas Luar') ? 'Presensi Tugas Luar Selesai' : 'Presensi Hari Ini Selesai'}
+                  </h3>
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803D' }}>
+                    Anda terdaftar <strong>HADIR</strong> untuk hari ini.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM MASUK</div>
+                      <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#059669' }}>
+                        {todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
+                      </div>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #E5E7EB' }}></div>
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM PULANG</div>
+                      <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#D97706' }}>
+                        {todayAbsensi.waktu_pulang ? new Date(todayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00'}
+                      </div>
+                    </div>
                   </div>
-                )}
-                {getStoredPhotoForToday() && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#4B5563', marginBottom: '0.4rem' }}>Dokumentasi Timemark Tugas Luar:</div>
-                    <img src={getStoredPhotoForToday()} alt="Bukti Tugas Luar" style={{ maxHeight: '180px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }} />
-                  </div>
-                )}
-              </div>
-            ) : Capacitor.isNativePlatform() ? (
-              <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
-                <Fingerprint size={48} strokeWidth={1.5} />
-                <span>Clock Out</span>
-              </button>
-            ) : null}
+                  {todayAbsensi.keterangan && (
+                    <div style={{ textAlign: 'left', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #DCFCE7', fontSize: '0.85rem', color: '#374151', margin: '0 auto 1rem auto', maxWidth: '380px' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4B5563', marginBottom: '0.2rem' }}>Catatan Tugas / Keterangan:</div>
+                      <div>{todayAbsensi.keterangan}</div>
+                    </div>
+                  )}
+                  {getStoredPhotoForToday() && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#4B5563', marginBottom: '0.4rem' }}>Dokumentasi Timemark Tugas Luar:</div>
+                      <img src={getStoredPhotoForToday()} alt="Bukti Tugas Luar" style={{ maxHeight: '180px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }} />
+                    </div>
+                  )}
+                </div>
+              ) : platformCheck.allowed ? (
+                <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
+                  <Fingerprint size={48} strokeWidth={1.5} />
+                  <span>Clock Out</span>
+                </button>
+              ) : null}
 
             {izinMode && (
               <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
@@ -2237,7 +2281,8 @@ export default function DashboardGuru({ roleOverride = null }) {
               </div>
             )}
           </div>
-        )}
+        )
+      })()}
 
         {activeTab === 'pengaturan' && (
           <div className="fade-in">
@@ -3390,8 +3435,8 @@ export default function DashboardGuru({ roleOverride = null }) {
       </div>
       </GuruDesktopWrapper>
 
-      {/* Corporate Style Bottom Navigation (Mobile App Shell - HANYA MUNCUL DI APK NATIVE) */}
-      {Capacitor.isNativePlatform() && !isDesktop && (
+      {/* Corporate Style Bottom Navigation (Mobile App Shell: APK & Mobile Browser) */}
+      {!isDesktop && (
         <nav className="bottom-nav">
           {/* 1. Presensi */}
           <button className={`nav-item ${activeTab === 'absensi' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => handleTabChangeWithUrl('absensi')}>

@@ -17,7 +17,7 @@ import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
-import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
@@ -26,13 +26,23 @@ export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
   const [admin, setAdmin] = useState({ role: 'kepsek' })
-  const [activeTab, setActiveTab] = useState(Capacitor.isNativePlatform() && window.innerWidth < 1024 ? 'absensi' : 'overview') 
+  const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview') 
+  const [isIncognito, setIsIncognito] = useState(false)
+  const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
     window.addEventListener('resize', handleResize)
+    isIncognitoMode().then(val => setIsIncognito(val))
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    if (admin?.id) {
+      const cross = checkCrossDeviceAccess(admin)
+      setCrossDeviceStatus(cross)
+    }
+  }, [admin])
 
   const getGreeting = () => {
     const hour = currentTime.getHours()
@@ -336,11 +346,16 @@ export default function DashboardKepsek() {
   }
 
   const handleKepsekAbsen = async (jenis) => {
-    const platformCheck = verifyAttendancePlatform()
+    const platformCheck = verifyAttendancePlatform(admin, isIncognito)
     if (!platformCheck.allowed && (jenis === 'masuk' || jenis === 'pulang')) {
+      const title = platformCheck.platform === 'incognito_blocked' 
+        ? "Tab Samaran Terdeteksi" 
+        : platformCheck.platform === 'cross_device_blocked' 
+          ? "Akses Perangkat Ditolak" 
+          : "Presensi Ditolak (Gunakan Aplikasi)"
       setKepsekPopup({
         show: true,
-        title: "Presensi Ditolak (Gunakan Aplikasi)",
+        title: title,
         message: platformCheck.message,
         type: "error"
       })
@@ -1159,9 +1174,9 @@ export default function DashboardKepsek() {
       )}
 
       {/* 🖥️ Main Desktop Content */}
-      <div className="admin-main" style={{ paddingBottom: (isNative && !isDesktop) ? '90px' : '2rem' }}>
-        {/* Header ID Card khusus APK Native (Sama persis seperti di APK Guru) */}
-        {isNative && !isDesktop && (
+      <div className="admin-main" style={{ paddingBottom: !isDesktop ? '90px' : '2rem' }}>
+        {/* Header ID Card khusus Mobile (APK & Mobile Browser) */}
+        {!isDesktop && (
           <div className="card-gradient no-print" style={{ padding: '1.15rem 1.25rem 0.85rem 1.25rem', borderRadius: '0 0 20px 20px', marginBottom: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.65rem', borderRadius: '9999px', backdropFilter: 'blur(8px)' }}>
               <img src={logoSekolah || "/panrita_logo.webp"} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
@@ -1259,8 +1274,19 @@ export default function DashboardKepsek() {
           </div>
         )}
 
-        {/* Topbar Header Desktop / Web (Hanya muncul jika di Web Browser atau Desktop) */}
-        {(!isNative || isDesktop) && (
+        {/* Peringatan Akses Lintas Perangkat (Android di iPhone / iPhone di Android) */}
+        {!crossDeviceStatus.allowed && (
+          <div style={{ margin: '1rem', padding: '1rem 1.25rem', background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '1rem', color: '#991B1B' }}>
+            <AlertCircle size={28} color="#DC2626" style={{ flexShrink: 0 }} />
+            <div>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Peringatan Akses Perangkat</h4>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{crossDeviceStatus.message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Topbar Header Desktop (Hanya muncul jika Desktop) */}
+        {isDesktop && (
           <header className="admin-topbar">
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="mobile-toggle-btn" style={{ background: 'transparent', border: '1px solid var(--border)', padding: '0.45rem', borderRadius: '8px', cursor: 'pointer', display: 'none' }}>
@@ -1354,72 +1380,99 @@ export default function DashboardKepsek() {
                   </div>
                 </div>
 
-                {!isNative ? (
-                  <PresensiOnlyApkNotice style={{ margin: '1rem 0' }} />
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      {!kepsekHasCheckedIn ? (
-                        <button
-                          onClick={() => handleKepsekAbsen('masuk')}
-                          disabled={kepsekAbsenLoading}
-                          className="btn"
-                          style={{ flex: 1, minWidth: '160px', background: '#10B981', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
-                        >
-                          <Fingerprint size={20} />
-                          <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock In Sekarang'}</span>
-                        </button>
-                      ) : !kepsekTodayAbsensi?.waktu_pulang ? (
-                        <button
-                          onClick={() => handleKepsekAbsen('pulang')}
-                          disabled={kepsekAbsenLoading}
-                          className="btn"
-                          style={{ flex: 1, minWidth: '160px', background: '#F59E0B', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
-                        >
-                          <Fingerprint size={20} />
-                          <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock Out Sekarang'}</span>
-                        </button>
-                      ) : (
-                        <div style={{ flex: 1, background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.85rem 1rem', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                          <CheckCircle2 size={20} />
-                          <span>Presensi Hari Ini Sudah Selesai</span>
+                {(() => {
+                  const platformCheck = verifyAttendancePlatform(admin, isIncognito)
+                  if (!platformCheck.allowed) {
+                    if (platformCheck.platform === 'incognito_blocked') {
+                      return (
+                        <div style={{ margin: '1rem 0', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #F59E0B', borderRadius: '14px', padding: '1rem', color: '#FEF3C7', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <AlertTriangle size={24} color="#FBBF24" style={{ flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FBBF24' }}>Mode Tab Samaran Terdeteksi</div>
+                            <div style={{ fontSize: '0.78rem', marginTop: '2px' }}>{platformCheck.message}</div>
+                          </div>
                         </div>
-                      )}
+                      )
+                    }
+                    if (platformCheck.platform === 'cross_device_blocked') {
+                      return (
+                        <div style={{ margin: '1rem 0', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', borderRadius: '14px', padding: '1rem', color: '#FEE2E2', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <AlertCircle size={24} color="#F87171" style={{ flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#F87171' }}>Akses Perangkat Ditolak</div>
+                            <div style={{ fontSize: '0.78rem', marginTop: '2px' }}>{platformCheck.message}</div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return <PresensiOnlyApkNotice style={{ margin: '1rem 0' }} />
+                  }
 
-                      <button
-                        onClick={() => setShowCameraModal(true)}
-                        className="btn"
-                        style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                      >
-                        <Camera size={20} />
-                        <span>Kamera GTag</span>
-                      </button>
-                    </div>
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        {!kepsekHasCheckedIn ? (
+                          <button
+                            onClick={() => handleKepsekAbsen('masuk')}
+                            disabled={kepsekAbsenLoading}
+                            className="btn"
+                            style={{ flex: 1, minWidth: '160px', background: '#10B981', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
+                          >
+                            <Fingerprint size={20} />
+                            <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock In Sekarang'}</span>
+                          </button>
+                        ) : !kepsekTodayAbsensi?.waktu_pulang ? (
+                          <button
+                            onClick={() => handleKepsekAbsen('pulang')}
+                            disabled={kepsekAbsenLoading}
+                            className="btn"
+                            style={{ flex: 1, minWidth: '160px', background: '#F59E0B', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
+                          >
+                            <Fingerprint size={20} />
+                            <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock Out Sekarang'}</span>
+                          </button>
+                        ) : (
+                          <div style={{ flex: 1, background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.85rem 1rem', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                            <CheckCircle2 size={20} />
+                            <span>Presensi Hari Ini Sudah Selesai</span>
+                          </div>
+                        )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'rgba(255,255,255,0.1)', padding: '0.85rem', borderRadius: '14px' }}>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Masuk</div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                          {kepsekTodayAbsensi?.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        <button
+                          onClick={() => setShowCameraModal(true)}
+                          className="btn"
+                          style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                        >
+                          <Camera size={20} />
+                          <span>Kamera GTag</span>
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'rgba(255,255,255,0.1)', padding: '0.85rem', borderRadius: '14px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Masuk</div>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
+                            {kepsekTodayAbsensi?.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Pulang</div>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
+                            {kepsekTodayAbsensi?.waktu_pulang ? new Date(kepsekTodayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Pulang</div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                          {kepsekTodayAbsensi?.waktu_pulang ? new Date(kepsekTodayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                        </div>
-                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             </div>
           )}
 
           {activeTab === 'overview' && (
             <div className="fade-in">
-              {/* Kartu Presensi Mandiri Khusus Kepala Sekolah / Admin (Muncul di Web Browser) */}
-              {(admin?.role === 'kepsek' || admin?.role === 'admin') && (!isNative || isDesktop) && (
+              {/* Kartu Presensi Mandiri Khusus Kepala Sekolah / Admin (Muncul di Desktop) */}
+              {(admin?.role === 'kepsek' || admin?.role === 'admin') && isDesktop && (
                 <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1436,46 +1489,67 @@ export default function DashboardKepsek() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      {!isNative ? (
-                        <PresensiOnlyApkNotice style={{ margin: 0, padding: '0.85rem 1.25rem', width: '100%', maxWidth: '340px' }} />
-                      ) : (
-                        <>
-                          {!kepsekHasCheckedIn ? (
-                            <button
-                              onClick={() => handleKepsekAbsen('masuk')}
-                              disabled={kepsekAbsenLoading}
-                              className="btn"
-                              style={{ background: '#10B981', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
-                            >
-                              <Fingerprint size={18} />
-                              <span>Clock In Saya</span>
-                            </button>
-                          ) : !kepsekTodayAbsensi?.waktu_pulang ? (
-                            <button
-                              onClick={() => handleKepsekAbsen('pulang')}
-                              disabled={kepsekAbsenLoading}
-                              className="btn"
-                              style={{ background: '#F59E0B', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
-                            >
-                              <Fingerprint size={18} />
-                              <span>Clock Out Saya</span>
-                            </button>
-                          ) : (
-                            <div style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.6rem 1rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <CheckCircle2 size={18} />
-                              <span>Presensi Hari Ini Lengkap</span>
-                            </div>
-                          )}
+                      {(() => {
+                        const platformCheck = verifyAttendancePlatform(admin, isIncognito)
+                        if (!platformCheck.allowed) {
+                          if (platformCheck.platform === 'incognito_blocked') {
+                            return (
+                              <div style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #F59E0B', borderRadius: '12px', padding: '0.65rem 1rem', color: '#FEF3C7', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
+                                <AlertTriangle size={18} color="#FBBF24" />
+                                <span>Tab Samaran: Tidak bisa presensi</span>
+                              </div>
+                            )
+                          }
+                          if (platformCheck.platform === 'cross_device_blocked') {
+                            return (
+                              <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', borderRadius: '12px', padding: '0.65rem 1rem', color: '#FEE2E2', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem' }}>
+                                <AlertCircle size={18} color="#F87171" />
+                                <span>Akses Perangkat Ditolak</span>
+                              </div>
+                            )
+                          }
+                          return <PresensiOnlyApkNotice style={{ margin: 0, padding: '0.85rem 1.25rem', width: '100%', maxWidth: '340px' }} />
+                        }
 
-                          <button
-                            onClick={() => setShowCameraModal(true)}
-                            title="Kamera Timemark"
-                            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Camera size={18} />
-                          </button>
-                        </>
-                      )}
+                        return (
+                          <>
+                            {!kepsekHasCheckedIn ? (
+                              <button
+                                onClick={() => handleKepsekAbsen('masuk')}
+                                disabled={kepsekAbsenLoading}
+                                className="btn"
+                                style={{ background: '#10B981', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
+                              >
+                                <Fingerprint size={18} />
+                                <span>Clock In Saya</span>
+                              </button>
+                            ) : !kepsekTodayAbsensi?.waktu_pulang ? (
+                              <button
+                                onClick={() => handleKepsekAbsen('pulang')}
+                                disabled={kepsekAbsenLoading}
+                                className="btn"
+                                style={{ background: '#F59E0B', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
+                              >
+                                <Fingerprint size={18} />
+                                <span>Clock Out Saya</span>
+                              </button>
+                            ) : (
+                              <div style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.6rem 1rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <CheckCircle2 size={18} />
+                                <span>Presensi Hari Ini Lengkap</span>
+                              </div>
+                            )}
+
+                            <button
+                              onClick={() => setShowCameraModal(true)}
+                              title="Kamera Timemark"
+                              style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Camera size={18} />
+                            </button>
+                          </>
+                        )
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -3114,8 +3188,8 @@ export default function DashboardKepsek() {
         </div>
       )}
 
-        {/* Mobile APK Bottom Navigation Bar (HANYA Muncul di Aplikasi Resmi Native APK, Browser TIDAK ADA Bottom Nav) */}
-        {isNative && !isDesktop && (
+        {/* Mobile Bottom Navigation Bar (Muncul di Layar Mobile: APK & Mobile Browser) */}
+        {!isDesktop && (
           <nav
             style={{
               position: 'fixed',

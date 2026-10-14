@@ -449,6 +449,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   }
 
   const videoRef = useRef(null)
+  const streamRef = useRef(null)
   const viewfinderRef = useRef(null)
   const [vfSize, setVfSize] = useState({ width: 0, height: 0 })
 
@@ -826,14 +827,95 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }
 
+  const stopCamera = () => {
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((track) => {
+          track.stop()
+          track.enabled = false
+        })
+      } catch (e) {
+        console.warn('Error stopping streamRef tracks:', e)
+      }
+      streamRef.current = null
+    }
+    if (stream) {
+      try {
+        stream.getTracks().forEach((track) => {
+          track.stop()
+          track.enabled = false
+        })
+      } catch (e) {}
+      setStream(null)
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+  }
+
   const startCamera = async (mode) => {
     setCameraError('')
     stopCamera()
+
+    // Beri jeda mikro (~150ms) agar driver kamera fisik Android/iOS benar-benar merilis sensor lama
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    let mediaStream = null
+
+    // 1. Percobaan Pertama: Menggunakan facingMode ideal dengan resolusi standar
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: mode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       })
+    } catch (err1) {
+      console.warn('Percobaan 1 kamera gagal, mencoba constraint fleksibel:', err1)
+      // 2. Percobaan Kedua: Fallback tanpa batasan resolusi (sangat krusial untuk kamera depan)
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: mode },
+          audio: false
+        })
+      } catch (err2) {
+        console.warn('Percobaan 2 kamera gagal, mencoba enumerasi perangkat:', err2)
+        // 3. Percobaan Ketiga: Enumerasi perangkat videoinput fisik
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices()
+          const videoDevices = devices.filter((d) => d.kind === 'videoinput')
+          
+          let targetDevice = null
+          if (mode === 'user') {
+            targetDevice = videoDevices.find((d) => /front|user|depan|selfie/i.test(d.label)) || videoDevices[1] || videoDevices[0]
+          } else {
+            targetDevice = videoDevices.find((d) => /back|rear|environment|belakang/i.test(d.label)) || videoDevices[0]
+          }
+
+          if (targetDevice && targetDevice.deviceId) {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: targetDevice.deviceId } },
+              audio: false
+            })
+          } else {
+            // 4. Percobaan Terakhir: Request kamera default umum
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            })
+          }
+        } catch (err3) {
+          console.error('Semua percobaan inisialisasi kamera gagal:', err3)
+          setCameraError('Gagal mengakses kamera perangkat. Pastikan izin kamera telah diberikan di browser/aplikasi Anda.')
+          return
+        }
+      }
+    }
+
+    if (mediaStream) {
+      streamRef.current = mediaStream
       setStream(mediaStream)
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
@@ -842,16 +924,6 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         }
         videoRef.current.play().catch(console.warn)
       }
-    } catch (err) {
-      console.error(err)
-      setCameraError('Gagal mengakses kamera. Mohon izinkan akses kamera di browser Anda.')
-    }
-  }
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
-      setStream(null)
     }
   }
 
