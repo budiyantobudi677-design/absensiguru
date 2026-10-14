@@ -20,6 +20,7 @@ import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
+import PersuratanSekolah from '../../components/admin/PersuratanSekolah'
 
 export default function DashboardAdmin() {
   const [admin, setAdmin] = useState({ role: 'admin' })
@@ -625,6 +626,9 @@ export default function DashboardAdmin() {
       setActiveTab('pengumuman')
       loadPengumuman()
       loadPegawai()
+    } else if (path === '/admin/persuratan') {
+      setActiveTab('persuratan')
+      loadPegawai()
     } else if (path === '/admin/pengaturan') {
       setActiveTab('pengaturan')
       fetchSettings()
@@ -639,6 +643,10 @@ export default function DashboardAdmin() {
     setActiveTab(menu)
     if (menu === 'pegawai') {
        navigate('/admin/pegawai')
+       loadPegawai()
+    }
+    if (menu === 'persuratan') {
+       navigate('/admin/persuratan')
        loadPegawai()
     }
     if (menu === 'kbm') {
@@ -1079,8 +1087,12 @@ export default function DashboardAdmin() {
               <span>Sistem Pembelajaran (KBM)</span>
             </button>
             <button className={`admin-nav-item ${activeTab === 'laporan' ? 'active' : ''}`} onClick={() => { handleMenuClick('laporan'); setIsSidebarOpen(false); }}>
-              <FileText size={18} />
+              <FileSpreadsheet size={18} />
               <span>Rekap Presensi & Ekspor</span>
+            </button>
+            <button className={`admin-nav-item ${activeTab === 'persuratan' ? 'active' : ''}`} onClick={() => { handleMenuClick('persuratan'); setIsSidebarOpen(false); }}>
+              <FileText size={18} />
+              <span>Administrasi Persuratan</span>
             </button>
             <button className={`admin-nav-item ${activeTab === 'pengumuman' ? 'active' : ''}`} onClick={() => { handleMenuClick('pengumuman'); setIsSidebarOpen(false); }}>
               <Bell size={18} />
@@ -1131,6 +1143,7 @@ export default function DashboardAdmin() {
                 {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
                 {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                 {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
+                {activeTab === 'persuratan' && 'Administrasi & Pembuatan Persuratan Resmi'}
                 {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
                 {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
               </h3>
@@ -1288,10 +1301,17 @@ export default function DashboardAdmin() {
                 </div>
                 <div onClick={() => handleMenuClick('laporan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                    <FileText size={32} color="white" />
+                    <FileSpreadsheet size={32} color="white" />
                   </div>
                   <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Laporan & Rekap</h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Unduh berkas Excel, PDF, Word</p>
+                </div>
+                <div onClick={() => handleMenuClick('persuratan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #6366F1 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <FileText size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Administrasi Persuratan</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Surat Tugas, SPPD, Pindah & Rekomendasi</p>
                 </div>
                 <div onClick={() => handleMenuClick('pengumuman')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
@@ -2532,6 +2552,13 @@ export default function DashboardAdmin() {
              </div>
           </div>
         )}
+        
+        {activeTab === 'persuratan' && (
+          <div className="fade-in">
+            <PersuratanSekolah pegawaiData={pegawaiData} darkMode={darkMode} />
+          </div>
+        )}
+
         </main>
       {showExportModal && (
         <div className="popup-overlay" style={{ zIndex: 1000, padding: '1rem' }}>
