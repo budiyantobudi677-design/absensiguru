@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -119,6 +119,16 @@ export default function DashboardKepsek() {
   const [kepsekTodayStatus, setKepsekTodayStatus] = useState(null)
   const [kepsekAbsenLoading, setKepsekAbsenLoading] = useState(false)
   const [kepsekPopup, setKepsekPopup] = useState({ show: false, title: '', message: '', type: 'success' })
+  const [kepsekIzinMode, setKepsekIzinMode] = useState(null) // 'sakit' | 'izin' | null
+  const [kepsekKeterangan, setKepsekKeterangan] = useState('')
+  const [showTugasLuarModal, setShowTugasLuarModal] = useState(false)
+  const [tugasLuarCatatan, setTugasLuarCatatan] = useState('')
+  const [tugasLuarFoto, setTugasLuarFoto] = useState(null)
+  const [cameraModeForTugasLuar, setCameraModeForTugasLuar] = useState(false)
+  const [isHoliday, setIsHoliday] = useState(false)
+  const [holidayReason, setHolidayReason] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [uploadingAdminPhoto, setUploadingAdminPhoto] = useState(false)
   
   const [pegawaiData, setPegawaiData] = useState([])
   const [deviceBindings, setDeviceBindings] = useState({})
@@ -243,16 +253,42 @@ export default function DashboardKepsek() {
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+    let currentHariKerja = 5
     if (data) {
       if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
-      if (data.hari_kerja) setHariKerja(data.hari_kerja)
+      if (data.hari_kerja) {
+        setHariKerja(data.hari_kerja)
+        currentHariKerja = data.hari_kerja
+      }
       if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
       if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
       if (data.school_lat) setSchoolLat(data.school_lat)
       if (data.school_lng) setSchoolLng(data.school_lng)
       if (data.school_radius) setSchoolRadius(data.school_radius)
     }
+
+    const dayOfWeek = new Date().getDay()
+    let holiday = false
+    let reason = ''
+    if (currentHariKerja === 5 && (dayOfWeek === 0 || dayOfWeek === 6)) {
+      holiday = true
+      reason = 'Libur Akhir Pekan (Sabtu / Minggu)'
+    } else if (currentHariKerja === 6 && dayOfWeek === 0) {
+      holiday = true
+      reason = 'Libur Akhir Pekan (Minggu)'
+    }
+
+    const today = getSecureLocalDateString()
+    if (!holiday) {
+      const { data: libur } = await supabase.from('hari_libur').select('*').eq('tanggal', today).maybeSingle()
+      if (libur) {
+        holiday = true
+        reason = libur.keterangan
+      }
+    }
+    setIsHoliday(holiday)
+    setHolidayReason(reason)
   }
 
   const loadHariLibur = async () => {
@@ -345,6 +381,158 @@ export default function DashboardKepsek() {
     }
   }
 
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3 // metres
+    const φ1 = (lat1 * Math.PI) / 180
+    const φ2 = (lat2 * Math.PI) / 180
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return Math.round(R * c) // distance in meters
+  }
+
+  const convertToWebP = (imageSrc, quality = 0.75, maxWidth = 1024) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        let width = img.width
+        let height = img.height
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width)
+          width = maxWidth
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        try {
+          resolve(canvas.toDataURL('image/webp', quality))
+        } catch {
+          resolve(canvas.toDataURL('image/jpeg', quality))
+        }
+      }
+      img.onerror = () => resolve(imageSrc)
+      img.src = imageSrc
+    })
+  }
+
+  const getStoredPhotoForToday = () => {
+    if (tugasLuarFoto) return tugasLuarFoto
+    const today = getSecureLocalDateString()
+    return localStorage.getItem(`tugas_luar_foto_${today}_${admin?.id}`) || null
+  }
+
+  const handleTugasLuarSubmit = async (e) => {
+    if (e) e.preventDefault()
+    if (!tugasLuarCatatan.trim()) {
+      setKepsekPopup({ show: true, title: "Catatan Wajib Diisi", message: "Mohon isi nama pelatihan atau rincian tugas luar.", type: "error" })
+      return
+    }
+
+    setKepsekAbsenLoading(true)
+    const today = getSecureLocalDateString()
+    const [year, month, day] = today.split('-').map(Number)
+
+    // Jam masuk otomatis 07.00, jam pulang otomatis 14.00 waktu lokal
+    const jamMasukDate = new Date(year, month - 1, day, 7, 0, 0)
+    const jamPulangDate = new Date(year, month - 1, day, 14, 0, 0)
+    const waktuMasuk = jamMasukDate.toISOString()
+    const waktuPulang = jamPulangDate.toISOString()
+
+    // Ambil koordinat GPS perangkat saat ini jika tersedia (tanpa geofence constraint)
+    let loc = 'Lokasi Tugas Luar'
+    try {
+      const pos = await getSecureLocation({ timeout: 7000, enableHighAccuracy: true })
+      if (!pos.isMock) {
+        loc = `${pos.latitude}, ${pos.longitude}`
+      }
+    } catch {}
+
+    const finalCatatan = `[Tugas Luar/Pelatihan] ${tugasLuarCatatan.trim()}`
+
+    let webpPhoto = tugasLuarFoto
+    if (tugasLuarFoto) {
+      try {
+        webpPhoto = await convertToWebP(tugasLuarFoto, 0.75, 1024)
+      } catch (err) {
+        console.warn("Convert webp error:", err)
+      }
+    }
+
+    if (webpPhoto && admin?.id) {
+      try {
+        localStorage.setItem(`tugas_luar_foto_${today}_${admin.id}`, webpPhoto)
+      } catch (err) {
+        console.warn("Storage quota exceeded for local preview photo:", err)
+      }
+    }
+
+    let uploadedPhotoUrl = null
+    if (webpPhoto) {
+      try {
+        const res = await fetch(webpPhoto)
+        const blob = await res.blob()
+        const fileName = `tugas_luar-${admin.id}-${Date.now()}.webp`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/webp' })
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+          uploadedPhotoUrl = publicUrl
+        }
+      } catch (e) {
+        console.warn("Upload storage tugas luar:", e)
+      }
+    }
+
+    const keteranganLengkap = uploadedPhotoUrl 
+      ? `${finalCatatan} | Foto: ${uploadedPhotoUrl}` 
+      : (webpPhoto ? `${finalCatatan} [FOTO_WEBP:${webpPhoto}]` : finalCatatan)
+
+    try {
+      const { data, error } = await supabase.from('absensi').insert({
+        user_id: admin.id,
+        waktu_masuk: waktuMasuk,
+        waktu_pulang: waktuPulang,
+        tanggal: today,
+        lokasi_masuk: loc,
+        lokasi_pulang: loc,
+        status: 'hadir',
+        keterangan: keteranganLengkap
+      }).select().maybeSingle()
+
+      if (error) throw error
+
+      setKepsekHasCheckedIn(true)
+      setKepsekTodayStatus('hadir')
+      setKepsekTodayAbsensi(data || {
+        user_id: admin.id,
+        waktu_masuk: waktuMasuk,
+        waktu_pulang: waktuPulang,
+        tanggal: today,
+        lokasi_masuk: loc,
+        lokasi_pulang: loc,
+        status: 'hadir',
+        keterangan: keteranganLengkap
+      })
+      setShowTugasLuarModal(false)
+      setTugasLuarCatatan('')
+      setKepsekPopup({
+        show: true,
+        title: "Tugas Luar Berhasil!",
+        message: "Presensi tugas luar tercatat: Hadir otomatis Jam 07.00 - 14.00.",
+        type: "success"
+      })
+    } catch (err) {
+      setKepsekPopup({ show: true, title: "Gagal Menyimpan", message: err.message, type: "error" })
+    } finally {
+      setKepsekAbsenLoading(false)
+    }
+  }
+
   const handleKepsekAbsen = async (jenis) => {
     const platformCheck = verifyAttendancePlatform(admin, isIncognito)
     if (!platformCheck.allowed && (jenis === 'masuk' || jenis === 'pulang')) {
@@ -376,6 +564,27 @@ export default function DashboardKepsek() {
         return
       }
 
+      // Geofencing Validation (khusus absen masuk & pulang)
+      if (geofenceEnabled && (jenis === 'masuk' || jenis === 'pulang')) {
+        const distance = calculateDistance(
+          pos.latitude,
+          pos.longitude,
+          schoolLat,
+          schoolLng
+        )
+
+        if (distance > schoolRadius) {
+          setKepsekPopup({
+            show: true,
+            title: "Di Luar Radius Sekolah",
+            message: `Anda berada ${distance}m dari sekolah (maksimal ${schoolRadius}m). Mohon mendekat ke area sekolah.`,
+            type: "error"
+          })
+          setKepsekAbsenLoading(false)
+          return
+        }
+      }
+
       const loc = `${pos.latitude}, ${pos.longitude}`
       const today = getSecureLocalDateString()
       const now = getSecureServerIsoString()
@@ -401,6 +610,30 @@ export default function DashboardKepsek() {
         if (error) throw error
         setKepsekTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
+      } else if (jenis === 'sakit' || jenis === 'izin') {
+        const note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
+        const { data, error } = await supabase.from('absensi').insert({
+          user_id: admin.id,
+          waktu_masuk: now,
+          waktu_pulang: now,
+          tanggal: today,
+          lokasi_masuk: loc,
+          lokasi_pulang: loc,
+          status: jenis,
+          keterangan: note
+        }).select().maybeSingle()
+        if (error) throw error
+        setKepsekHasCheckedIn(true)
+        setKepsekTodayStatus(jenis)
+        setKepsekTodayAbsensi(data || { user_id: admin.id, waktu_masuk: now, waktu_pulang: now, tanggal: today, status: jenis, keterangan: note })
+        setKepsekIzinMode(null)
+        setKepsekKeterangan('')
+        setKepsekPopup({
+          show: true,
+          title: "Pengajuan Terkirim",
+          message: `Status kehadiran Anda hari ini terdaftar ${jenis.toUpperCase()}.`,
+          type: "success"
+        })
       }
     } catch (err) {
       setKepsekPopup({ show: true, title: "Gagal Mengambil Lokasi", message: err.message || "Pastikan GPS aktif dan izin diberikan.", type: "error" })
@@ -1363,108 +1596,330 @@ export default function DashboardKepsek() {
 
         {/* Content Canvas */}
         <main className="admin-content">
-          {/* Tab Presensi Mandiri (Khusus di Tab Absensi) */}
-          {activeTab === 'absensi' && (
-            <div className="fade-in">
-              <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ShieldCheck size={28} color="#A5B4FC" />
+          {/* Tab Presensi Mandiri Pimpinan */}
+          {activeTab === 'absensi' && (() => {
+            const platformCheck = verifyAttendancePlatform(admin, isIncognito)
+
+            return (
+              <div className="fade-in text-center" style={{ maxWidth: '480px', margin: '0 auto', padding: '1rem 0' }}>
+                {!isHoliday && !platformCheck.allowed && (
+                  platformCheck.platform === 'incognito_blocked' ? (
+                    <div style={{ margin: '1rem auto', background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '16px', padding: '1.25rem', color: '#92400E', textAlign: 'center' }}>
+                      <AlertTriangle size={36} color="#D97706" style={{ margin: '0 auto 0.5rem auto' }} />
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Mode Tab Samaran Terdeteksi</h4>
+                      <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{platformCheck.message}</p>
+                    </div>
+                  ) : platformCheck.platform === 'cross_device_blocked' ? (
+                    <div style={{ margin: '1rem auto', background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '16px', padding: '1.25rem', color: '#991B1B', textAlign: 'center' }}>
+                      <AlertCircle size={36} color="#DC2626" style={{ margin: '0 auto 0.5rem auto' }} />
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Akses Perangkat Ditolak</h4>
+                      <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.82rem', lineHeight: 1.4 }}>{platformCheck.message}</p>
+                    </div>
+                  ) : (
+                    <PresensiOnlyApkNotice />
+                  )
+                )}
+
+                {!isHoliday && platformCheck.allowed && (
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+                )}
+
+                {isHoliday ? (
+                  <div className="card" style={{ padding: '2rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', marginTop: '1rem' }}>
+                    <Calendar size={48} style={{ margin: '0 auto 1rem auto' }} />
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Hari Libur</h3>
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>{holidayReason}</p>
+                    <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
                   </div>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#C7D2FE', fontWeight: 'bold' }}>Presensi Mandiri Pimpinan</span>
-                    <h3 style={{ margin: '2px 0 0 0', fontSize: '1.15rem', color: 'white' }}>{admin?.full_name || 'Kepala Sekolah'}</h3>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#E0E7FF' }}>
-                      Status Hari Ini: {kepsekTodayAbsensi ? `Tercatat Hadir (Masuk: ${kepsekTodayAbsensi.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'})` : 'Belum Melakukan Presensi'}
-                    </p>
-                  </div>
-                </div>
-
-                {(() => {
-                  const platformCheck = verifyAttendancePlatform(admin, isIncognito)
-                  if (!platformCheck.allowed) {
-                    if (platformCheck.platform === 'incognito_blocked') {
-                      return (
-                        <div style={{ margin: '1rem 0', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #F59E0B', borderRadius: '14px', padding: '1rem', color: '#FEF3C7', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <AlertTriangle size={24} color="#FBBF24" style={{ flexShrink: 0 }} />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FBBF24' }}>Mode Tab Samaran Terdeteksi</div>
-                            <div style={{ fontSize: '0.78rem', marginTop: '2px' }}>{platformCheck.message}</div>
-                          </div>
-                        </div>
-                      )
-                    }
-                    if (platformCheck.platform === 'cross_device_blocked') {
-                      return (
-                        <div style={{ margin: '1rem 0', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', borderRadius: '14px', padding: '1rem', color: '#FEE2E2', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <AlertCircle size={24} color="#F87171" style={{ flexShrink: 0 }} />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#F87171' }}>Akses Perangkat Ditolak</div>
-                            <div style={{ fontSize: '0.78rem', marginTop: '2px' }}>{platformCheck.message}</div>
-                          </div>
-                        </div>
-                      )
-                    }
-                    return <PresensiOnlyApkNotice style={{ margin: '1rem 0' }} />
-                  }
-
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        {!kepsekHasCheckedIn ? (
-                          <button
-                            onClick={() => handleKepsekAbsen('masuk')}
-                            disabled={kepsekAbsenLoading}
-                            className="btn"
-                            style={{ flex: 1, minWidth: '160px', background: '#10B981', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)' }}
-                          >
-                            <Fingerprint size={20} />
-                            <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock In Sekarang'}</span>
-                          </button>
-                        ) : !kepsekTodayAbsensi?.waktu_pulang ? (
-                          <button
-                            onClick={() => handleKepsekAbsen('pulang')}
-                            disabled={kepsekAbsenLoading}
-                            className="btn"
-                            style={{ flex: 1, minWidth: '160px', background: '#F59E0B', color: 'white', border: 'none', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)' }}
-                          >
-                            <Fingerprint size={20} />
-                            <span>{kepsekAbsenLoading ? 'Memproses...' : 'Clock Out Sekarang'}</span>
-                          </button>
-                        ) : (
-                          <div style={{ flex: 1, background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.85rem 1rem', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                            <CheckCircle2 size={20} />
-                            <span>Presensi Hari Ini Sudah Selesai</span>
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => setShowCameraModal(true)}
-                          className="btn"
-                          style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', padding: '0.85rem 1.25rem', borderRadius: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                        >
-                          <Camera size={20} />
-                          <span>Kamera GTag</span>
+                ) : !kepsekHasCheckedIn ? (
+                  platformCheck.allowed ? (
+                    <>
+                      <button className="btn-clock" onClick={() => handleKepsekAbsen('masuk')} disabled={kepsekAbsenLoading} style={{ marginBottom: '1.5rem' }}>
+                        <Fingerprint size={48} strokeWidth={1.5} />
+                        <span>Clock In</span>
+                      </button>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
+                        <button onClick={() => { setKepsekIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
+                        <button onClick={() => { setKepsekIzinMode('izin'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FFFBEB', color: '#D97706', border: '1px solid #FCD34D', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Izin</button>
+                        <button onClick={() => { setShowTugasLuarModal(true); setKepsekIzinMode(null); }} className="btn" style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                          <Briefcase size={15} /> Tugas Luar
                         </button>
                       </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'rgba(255,255,255,0.1)', padding: '0.85rem', borderRadius: '14px' }}>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Masuk</div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                            {kepsekTodayAbsensi?.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                          </div>
+                    </>
+                  ) : null
+                ) : (kepsekTodayStatus === 'sakit' || kepsekTodayStatus === 'izin') ? (
+                  <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
+                    <CheckCircle2 size={48} style={{ margin: '0 auto 1rem auto' }} />
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {kepsekTodayStatus.toUpperCase()}</h3>
+                    <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                  </div>
+                ) : kepsekTodayAbsensi?.waktu_pulang ? (
+                  <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
+                    <CheckCircle2 size={44} style={{ margin: '0 auto 0.75rem auto', color: '#16A34A' }} />
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                      {kepsekTodayAbsensi.keterangan?.includes('Tugas Luar') ? 'Presensi Tugas Luar Selesai' : 'Presensi Hari Ini Selesai'}
+                    </h3>
+                    <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803D' }}>
+                      Anda terdaftar <strong>HADIR</strong> untuk hari ini.
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM MASUK</div>
+                        <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#059669' }}>
+                          {kepsekTodayAbsensi.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
                         </div>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', color: '#C7D2FE' }}>Jam Pulang</div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                            {kepsekTodayAbsensi?.waktu_pulang ? new Date(kepsekTodayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                          </div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid #E5E7EB' }}></div>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM PULANG</div>
+                        <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#D97706' }}>
+                          {kepsekTodayAbsensi.waktu_pulang ? new Date(kepsekTodayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00'}
                         </div>
                       </div>
                     </div>
-                  )
-                })()}
+                    {kepsekTodayAbsensi.keterangan && (
+                      <div style={{ textAlign: 'left', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #DCFCE7', fontSize: '0.85rem', color: '#374151', margin: '0 auto 1rem auto', maxWidth: '380px' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4B5563', marginBottom: '0.2rem' }}>Catatan Tugas / Keterangan:</div>
+                        <div>{kepsekTodayAbsensi.keterangan}</div>
+                      </div>
+                    )}
+                    {getStoredPhotoForToday() && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#4B5563', marginBottom: '0.4rem' }}>Dokumentasi Timemark Tugas Luar:</div>
+                        <img src={getStoredPhotoForToday()} alt="Bukti Tugas Luar" style={{ maxHeight: '180px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }} />
+                      </div>
+                    )}
+                  </div>
+                ) : platformCheck.allowed ? (
+                  <button className="btn-clock out" onClick={() => handleKepsekAbsen('pulang')} disabled={kepsekAbsenLoading}>
+                    <Fingerprint size={48} strokeWidth={1.5} />
+                    <span>Clock Out</span>
+                  </button>
+                ) : null}
+
+                {kepsekIzinMode && (
+                  <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
+                    <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>Form {kepsekIzinMode === 'sakit' ? 'Sakit' : 'Izin'}</h4>
+                    <textarea className="input" rows="3" placeholder="Masukkan keterangan..." value={kepsekKeterangan} onChange={e => setKepsekKeterangan(e.target.value)} style={{ marginBottom: '1rem' }} />
+                    <div className="flex gap-2">
+                      <button onClick={() => setKepsekIzinMode(null)} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
+                      <button onClick={() => handleKepsekAbsen(kepsekIzinMode)} disabled={kepsekAbsenLoading} className="btn btn-primary" style={{ flex: 1 }}>Kirim</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Modal Form Tugas Luar */}
+          {showTugasLuarModal && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0,0,0,0.65)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '1rem'
+              }}
+            >
+              <div
+                className="card"
+                style={{
+                  width: '100%',
+                  maxWidth: '460px',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  background: 'white',
+                  borderRadius: '20px',
+                  padding: '1.5rem',
+                  textAlign: 'left',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ background: '#EFF6FF', color: '#2563EB', padding: '0.45rem', borderRadius: '10px' }}>
+                      <Briefcase size={20} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 'bold', color: '#1E293B' }}>Presensi Tugas Luar</h4>
+                      <span style={{ fontSize: '0.75rem', color: '#64748B' }}>Masuk: 07.00 • Pulang: 14.00 (Otomatis Hadir)</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTugasLuarModal(false)}
+                    style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#1E40AF', lineHeight: '1.4' }}>
+                  💡 <strong>Ketentuan:</strong> Form khusus pimpinan bertugas di luar/kedinasan. Setelah dikirim, Anda langsung tercatat <strong>HADIR</strong> lengkap masuk (07:00) dan pulang (14:00) tanpa batas radius sekolah.
+                </div>
+
+                {/* Foto Timemark */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block', color: '#334155' }}>
+                    📸 Foto Dokumentasi Timemark / Surat Tugas:
+                  </label>
+
+                  {tugasLuarFoto ? (
+                    <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid #CBD5E1', background: '#F8FAFC', textAlign: 'center' }}>
+                      <img
+                        src={tugasLuarFoto}
+                        alt="Dokumentasi Tugas Luar"
+                        style={{ maxHeight: '200px', width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto', display: 'block' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTugasLuarFoto(null)}
+                        style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="Hapus / Ambil Ulang"
+                      >
+                        <X size={16} />
+                      </button>
+                      <div style={{ padding: '0.45rem', fontSize: '0.75rem', color: '#059669', background: '#ECFDF5', fontWeight: 'bold' }}>
+                        ✓ Foto Timemark Berhasil Terlampir
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowTugasLuarModal(false)
+                          setCameraModeForTugasLuar(true)
+                          setShowCameraModal(true)
+                        }}
+                        className="btn"
+                        style={{
+                          background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+                          color: 'white',
+                          fontSize: '0.8rem',
+                          padding: '0.75rem 0.5rem',
+                          borderRadius: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          fontWeight: '600',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Camera size={16} /> Kamera GTag
+                      </button>
+
+                      <label
+                        htmlFor="upload-tugas-luar-file-kepsek"
+                        className="btn"
+                        style={{
+                          background: '#F1F5F9',
+                          color: '#334155',
+                          fontSize: '0.8rem',
+                          padding: '0.75rem 0.5rem',
+                          borderRadius: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          border: '1px solid #E2E8F0',
+                          textAlign: 'center'
+                        }}
+                      >
+                        <Upload size={16} /> Pilih Galeri
+                      </label>
+                      <input
+                        type="file"
+                        id="upload-tugas-luar-file-kepsek"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            try {
+                              const reader = new FileReader()
+                              reader.onload = async (ev) => {
+                                const webp = await convertToWebP(ev.target.result, 0.75, 1024)
+                                setTugasLuarFoto(webp)
+                              }
+                              reader.readAsDataURL(file)
+                            } catch (err) {
+                              console.error(err)
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Catatan / Keterangan */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'block', color: '#334155' }}>
+                    Catatan / Rincian Pelatihan & Tugas: <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <textarea
+                    className="input"
+                    rows="3"
+                    placeholder="Contoh: Rapat Koordinasi MKKS di Balai Penjaminan Mutu Pendidikan..."
+                    value={tugasLuarCatatan}
+                    onChange={(e) => setTugasLuarCatatan(e.target.value)}
+                    style={{ width: '100%', borderRadius: '12px', border: '1px solid #CBD5E1', padding: '0.75rem', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowTugasLuarModal(false)}
+                    className="btn"
+                    style={{ flex: 1, background: '#F1F5F9', color: '#64748B', border: 'none', padding: '0.75rem', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTugasLuarSubmit}
+                    className="btn btn-primary"
+                    style={{
+                      background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                      color: 'white',
+                      flex: 1.5,
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                    disabled={kepsekAbsenLoading}
+                  >
+                    {kepsekAbsenLoading ? (
+                      <>
+                        <RefreshCw size={16} className="spin" /> Memproses...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} /> Kirim Presensi
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1649,8 +2104,11 @@ export default function DashboardKepsek() {
                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
                   {filteredPegawai.map(p => {
+                    const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek';
+                    const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin';
                     const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
-                    const isMapel = guruTipe === 'guru_mapel';
+                    const isTendik = !isKepsek && !isAdmin && (guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan));
+                    const isMapel = !isKepsek && !isAdmin && !isTendik && (guruTipe === 'guru_mapel' || p.role === 'guru_mapel');
                     return (
                       <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                         <div className="flex gap-3 items-center" style={{ minWidth: 0, flex: 1 }}>
@@ -1663,12 +2121,28 @@ export default function DashboardKepsek() {
                                 fontWeight: '700',
                                 padding: '2px 7px',
                                 borderRadius: '8px',
-                                background: isMapel ? '#EEF2FF' : '#ECFDF5',
-                                color: isMapel ? '#4F46E5' : '#059669',
-                                border: `1px solid ${isMapel ? '#C7D2FE' : '#A7F3D0'}`
+                                background: isKepsek ? '#FEF3C7' : (isAdmin ? '#EDE9FE' : (isTendik ? '#E0F2FE' : (isMapel ? '#EEF2FF' : '#ECFDF5'))),
+                                color: isKepsek ? '#B45309' : (isAdmin ? '#6D28D9' : (isTendik ? '#0369A1' : (isMapel ? '#4F46E5' : '#059669'))),
+                                border: `1px solid ${isKepsek ? '#FDE68A' : (isAdmin ? '#DDD6FE' : (isTendik ? '#BAE6FD' : (isMapel ? '#C7D2FE' : '#A7F3D0')))}`
                               }}>
-                                {isMapel ? 'Guru Mapel' : 'Guru Kelas'}
+                                {isKepsek ? 'Kepala Sekolah' : (isAdmin ? 'Administrator' : (isTendik ? (p.jabatan || 'Tendik') : (isMapel ? 'Guru Mapel' : 'Guru Kelas')))}
                               </span>
+                              {(() => {
+                                const tipePerangkat = p.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${p.id}`) || 'android'
+                                return (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: '700',
+                                    padding: '2px 7px',
+                                    borderRadius: '8px',
+                                    background: tipePerangkat === 'iphone' ? '#F3E8FF' : '#F1F5F9',
+                                    color: tipePerangkat === 'iphone' ? '#7E22CE' : '#475569',
+                                    border: `1px solid ${tipePerangkat === 'iphone' ? '#D8B4FE' : '#CBD5E1'}`
+                                  }}>
+                                    {tipePerangkat === 'iphone' ? '🍏 iPhone' : '📱 Android'}
+                                  </span>
+                                )
+                              })()}
                             </div>
                             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
                             {isMapel && (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) && (
@@ -2384,6 +2858,137 @@ export default function DashboardKepsek() {
                 <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Pengaturan</h3>
              </div>
              
+             {/* Profil Akun Pimpinan (Kepala Sekolah / Admin) */}
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                 <UserCircle size={20} color="var(--primary)" /> Profil Akun Pimpinan
+               </h4>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 setProfileSaving(true);
+                 const formData = new FormData(e.target);
+                 const newFullName = formData.get('full_name');
+                 const newNip = formData.get('nip');
+                 const newJabatan = formData.get('jabatan');
+                 const newRole = formData.get('role');
+                 const newTipePerangkat = formData.get('tipe_perangkat');
+
+                 const updates = {
+                   full_name: newFullName,
+                   nip: newNip,
+                   jabatan: newJabatan,
+                   role: newRole,
+                   tipe_perangkat: newTipePerangkat
+                 };
+
+                 try {
+                   const { error } = await supabase.from('profiles').update(updates).eq('id', admin.id);
+                   if (error) throw error;
+                   
+                   setAdmin(prev => ({ ...prev, ...updates }));
+                   localStorage.setItem(`guru_tipe_perangkat_${admin.id}`, newTipePerangkat);
+                   alert("Profil akun pimpinan berhasil diperbarui!");
+                 } catch (err) {
+                   alert("Gagal memperbarui profil: " + err.message);
+                 } finally {
+                   setProfileSaving(false);
+                 }
+               }}>
+                 {/* Foto Profil */}
+                 <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                   <label className="input-label">Foto Profil</label>
+                   <div className="flex gap-4 items-center">
+                     <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                       {admin?.foto_profil ? (
+                         <img src={admin.foto_profil} alt="Foto Profil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                       ) : (
+                         <UserCircle size={36} color="var(--text-muted)" />
+                       )}
+                     </div>
+                     <label className="btn" style={{ background: '#F1F5F9', color: '#1E293B', cursor: 'pointer', padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '12px' }}>
+                       {uploadingAdminPhoto ? 'Mengunggah...' : 'Ubah Foto'}
+                       <input
+                         type="file"
+                         accept="image/*"
+                         style={{ display: 'none' }}
+                         disabled={uploadingAdminPhoto}
+                         onChange={async (e) => {
+                           const file = e.target.files?.[0];
+                           if (!file || !admin?.id) return;
+                           setUploadingAdminPhoto(true);
+                           try {
+                             const reader = new FileReader();
+                             reader.onload = async (ev) => {
+                               try {
+                                 const webp = await convertToWebP(ev.target.result, 0.8, 600);
+                                 const res = await fetch(webp);
+                                 const blob = await res.blob();
+                                 const fileName = `avatar-${admin.id}-${Date.now()}.webp`;
+                                 const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/webp' });
+                                 if (upErr) throw upErr;
+                                 const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+                                 await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', admin.id);
+                                 setAdmin(prev => ({ ...prev, foto_profil: publicUrl }));
+                                 alert("Foto profil berhasil diperbarui!");
+                               } catch (uploadErr) {
+                                 alert("Gagal mengunggah foto: " + uploadErr.message);
+                               } finally {
+                                 setUploadingAdminPhoto(false);
+                               }
+                             };
+                             reader.readAsDataURL(file);
+                           } catch (err) {
+                             alert("Gagal membaca file: " + err.message);
+                             setUploadingAdminPhoto(false);
+                           }
+                         }}
+                       />
+                     </label>
+                   </div>
+                 </div>
+
+                 {/* Nama Lengkap */}
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label">Nama Lengkap & Gelar</label>
+                   <input type="text" name="full_name" className="input" defaultValue={admin?.full_name || ''} required />
+                 </div>
+
+                 {/* NIP / ID Pegawai */}
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label">NIP / ID Pegawai</label>
+                   <input type="text" name="nip" className="input" defaultValue={admin?.nip || ''} placeholder="Contoh: 19800101 200501 1 001" />
+                 </div>
+
+                 {/* Jabatan */}
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label">Jabatan</label>
+                   <input type="text" name="jabatan" className="input" defaultValue={admin?.jabatan || 'Kepala Sekolah'} required />
+                 </div>
+
+                 {/* Tipe Penugasan (Kepsek / Admin) */}
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label">Tipe Penugasan</label>
+                   <select name="role" className="input" defaultValue={admin?.role || 'kepsek'}>
+                     <option value="kepsek">Kepala Sekolah</option>
+                     <option value="admin">Administrator</option>
+                   </select>
+                 </div>
+
+                 {/* Tipe Perangkat (Android / iPhone) */}
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label">Tipe Perangkat Absensi</label>
+                   <select name="tipe_perangkat" className="input" defaultValue={admin?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${admin?.id}`) || 'android'}>
+                     <option value="android">📱 Android (APK Resmi)</option>
+                     <option value="iphone">🍏 iPhone (Safari / Chrome iOS)</option>
+                   </select>
+                 </div>
+
+                 <button type="submit" disabled={profileSaving} className="btn btn-primary" style={{ padding: '0.85rem 1.5rem', background: '#2563EB', color: 'white', fontWeight: 'bold', borderRadius: '12px', width: '100%' }}>
+                   {profileSaving ? 'Menyimpan Profil...' : 'Simpan Profil Pimpinan'}
+                 </button>
+               </form>
+             </div>
+
              <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Profil Sekolah</h4>
                <form onSubmit={async (e) => {
@@ -3343,11 +3948,24 @@ export default function DashboardKepsek() {
         {/* Camera Timemark Modal untuk Kepala Sekolah */}
         <CameraTimemarkModal
           isOpen={showCameraModal}
-          onClose={() => setShowCameraModal(false)}
+          onClose={() => {
+            setShowCameraModal(false)
+            if (cameraModeForTugasLuar) {
+              setShowTugasLuarModal(true)
+              setCameraModeForTugasLuar(false)
+            }
+          }}
           profile={admin}
           user={admin}
           schoolName={namaSekolah}
           schoolLogo={logoSekolah}
+          onSelectPhoto={cameraModeForTugasLuar ? async (photoUrl) => {
+            const webp = await convertToWebP(photoUrl, 0.75, 1024)
+            setTugasLuarFoto(webp)
+            setShowCameraModal(false)
+            setCameraModeForTugasLuar(false)
+            setShowTugasLuarModal(true)
+          } : null}
         />
       </div>
     </div>
