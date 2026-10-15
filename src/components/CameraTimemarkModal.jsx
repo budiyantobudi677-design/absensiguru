@@ -451,6 +451,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const viewfinderRef = useRef(null)
+  const cameraRequestIdRef = useRef(0)
+  const isSwitchingCameraRef = useRef(false)
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false)
   const [vfSize, setVfSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
@@ -556,20 +559,19 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     if (isOpen) {
       startCamera(facingMode)
     }
-  }, [isOpen, facingMode])
+  }, [isOpen])
 
   // Pastikan stream kamera tetap terhubung dan aktif saat kembali dari review mode
   useEffect(() => {
     if (isOpen && !isReviewMode) {
       if (videoRef.current) {
-        if (stream && stream.active && stream.getVideoTracks().some((t) => t.readyState === 'live')) {
-          if (videoRef.current.srcObject !== stream) {
-            videoRef.current.srcObject = stream
+        const activeStream = streamRef.current || stream
+        if (activeStream && activeStream.active && activeStream.getVideoTracks().some((t) => t.readyState === 'live')) {
+          if (videoRef.current.srcObject !== activeStream) {
+            videoRef.current.srcObject = activeStream
           }
-          videoRef.current.play().catch(() => {
-            startCamera(facingMode)
-          })
-        } else {
+          videoRef.current.play().catch(console.warn)
+        } else if (!activeStream && !cameraError) {
           startCamera(facingMode)
         }
       }
@@ -828,6 +830,25 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   }
 
   const stopCamera = () => {
+    // 1. Pause video element dan bersihkan srcObject jika masih ada
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause()
+      } catch (e) {}
+      if (videoRef.current.srcObject) {
+        try {
+          const tracks = videoRef.current.srcObject.getTracks()
+          if (tracks) {
+            tracks.forEach((track) => {
+              track.stop()
+              track.enabled = false
+            })
+          }
+        } catch (e) {}
+        videoRef.current.srcObject = null
+      }
+    }
+    // 2. Hentikan semua track di streamRef
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach((track) => {
@@ -839,6 +860,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }
       streamRef.current = null
     }
+    // 3. Hentikan semua track di state stream
     if (stream) {
       try {
         stream.getTracks().forEach((track) => {
@@ -848,70 +870,104 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       } catch (e) {}
       setStream(null)
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
   }
 
   const startCamera = async (mode) => {
+    const requestId = ++cameraRequestIdRef.current
     setCameraError('')
     stopCamera()
 
-    // Beri jeda mikro (~150ms) agar driver kamera fisik Android/iOS benar-benar merilis sensor lama
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    // Beri jeda 300ms agar hardware sensor Android/iOS dan Webview benar-benar bersih melepaskan lock
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    if (requestId !== cameraRequestIdRef.current) return
 
     let mediaStream = null
+    const targetFacing = mode || facingMode || 'environment'
 
-    // 1. Percobaan Pertama: Menggunakan facingMode ideal dengan resolusi standar
+    const tryGetUserMedia = async (constraints) => {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints)
+      } catch (err) {
+        if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          // Hardware masih transisi dari sensor sebelumnya, beri jeda 400ms dan coba lagi
+          await new Promise((res) => setTimeout(res, 400))
+          if (requestId !== cameraRequestIdRef.current) return null
+          return await navigator.mediaDevices.getUserMedia(constraints)
+        }
+        throw err
+      }
+    }
+
+    // 1. Percobaan Pertama: Menggunakan facingMode standar WebRTC (sangat kompatibel untuk kamera depan di Android/iOS)
     try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
+      mediaStream = await tryGetUserMedia({
+        video: { facingMode: targetFacing },
         audio: false
       })
     } catch (err1) {
       console.warn('Percobaan 1 kamera gagal, mencoba constraint fleksibel:', err1)
-      // 2. Percobaan Kedua: Fallback tanpa batasan resolusi (sangat krusial untuk kamera depan)
+      await new Promise((res) => setTimeout(res, 250))
+      if (requestId !== cameraRequestIdRef.current) return
+
+      // 2. Percobaan Kedua: Fallback dengan ideal constraint dan resolusi
       try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: mode },
+        mediaStream = await tryGetUserMedia({
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
           audio: false
         })
       } catch (err2) {
         console.warn('Percobaan 2 kamera gagal, mencoba enumerasi perangkat:', err2)
+        await new Promise((res) => setTimeout(res, 250))
+        if (requestId !== cameraRequestIdRef.current) return
+
         // 3. Percobaan Ketiga: Enumerasi perangkat videoinput fisik
         try {
           const devices = await navigator.mediaDevices.enumerateDevices()
           const videoDevices = devices.filter((d) => d.kind === 'videoinput')
-          
+
           let targetDevice = null
-          if (mode === 'user') {
-            targetDevice = videoDevices.find((d) => /front|user|depan|selfie/i.test(d.label)) || videoDevices[1] || videoDevices[0]
+          if (targetFacing === 'user') {
+            targetDevice =
+              videoDevices.find((d) => /front|user|depan|selfie|face|secondary/i.test(d.label)) ||
+              videoDevices.find((d) => !/back|rear|belakang|environment/i.test(d.label)) ||
+              (videoDevices.length > 1 ? videoDevices[1] : videoDevices[0])
           } else {
-            targetDevice = videoDevices.find((d) => /back|rear|environment|belakang/i.test(d.label)) || videoDevices[0]
+            targetDevice =
+              videoDevices.find((d) => /back|rear|environment|belakang|main/i.test(d.label)) ||
+              videoDevices[0]
           }
 
           if (targetDevice && targetDevice.deviceId) {
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: targetDevice.deviceId } },
+            mediaStream = await tryGetUserMedia({
+              video: { deviceId: { ideal: targetDevice.deviceId } },
               audio: false
             })
           } else {
             // 4. Percobaan Terakhir: Request kamera default umum
-            mediaStream = await navigator.mediaDevices.getUserMedia({
+            mediaStream = await tryGetUserMedia({
               video: true,
               audio: false
             })
           }
         } catch (err3) {
           console.error('Semua percobaan inisialisasi kamera gagal:', err3)
-          setCameraError('Gagal mengakses kamera perangkat. Pastikan izin kamera telah diberikan di browser/aplikasi Anda.')
+          if (requestId === cameraRequestIdRef.current) {
+            setCameraError('Gagal mengakses kamera perangkat. Pastikan izin kamera telah diberikan di browser/aplikasi Anda.')
+          }
           return
         }
       }
+    }
+
+    if (requestId !== cameraRequestIdRef.current) {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop())
+      }
+      return
     }
 
     if (mediaStream) {
@@ -930,9 +986,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
   // Helper Kembali ke Kamera tanpa Layar Hitam (Anti Blank Screen)
   const returnToCamera = () => {
     setIsReviewMode(false)
-    if (videoRef.current && stream && stream.active && stream.getVideoTracks().some((t) => t.readyState === 'live')) {
-      if (videoRef.current.srcObject !== stream) {
-        videoRef.current.srcObject = stream
+    const activeStream = streamRef.current || stream
+    if (videoRef.current && activeStream && activeStream.active && activeStream.getVideoTracks().some((t) => t.readyState === 'live')) {
+      if (videoRef.current.srcObject !== activeStream) {
+        videoRef.current.srcObject = activeStream
       }
       videoRef.current.play().catch(() => {
         startCamera(facingMode)
@@ -942,9 +999,20 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     }
   }
 
-  const toggleCamera = () => {
+  const toggleCamera = async () => {
+    if (isSwitchingCameraRef.current) return
+    isSwitchingCameraRef.current = true
+    setIsSwitchingCamera(true)
     const nextMode = facingMode === 'environment' ? 'user' : 'environment'
     setFacingMode(nextMode)
+    try {
+      await startCamera(nextMode)
+    } finally {
+      setTimeout(() => {
+        isSwitchingCameraRef.current = false
+        setIsSwitchingCamera(false)
+      }, 500)
+    }
   }
 
   const capturePhoto = async () => {
@@ -3424,6 +3492,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               {/* Tombol Flip Kamera (Di atas shutter saat landscape, di kiri saat portrait) */}
               <button
                 onClick={toggleCamera}
+                disabled={isSwitchingCamera}
                 title="Tukar Kamera"
                 style={{
                   background: 'rgba(255,255,255,0.18)',
@@ -3435,11 +3504,13 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(6px)'
+                  cursor: isSwitchingCamera ? 'not-allowed' : 'pointer',
+                  opacity: isSwitchingCamera ? 0.6 : 1,
+                  backdropFilter: 'blur(6px)',
+                  transition: 'all 0.2s'
                 }}
               >
-                <RefreshCw size={isLandscape ? 20 : 22} />
+                <RefreshCw size={isLandscape ? 20 : 22} style={{ animation: isSwitchingCamera ? 'spin 0.6s linear infinite' : 'none' }} />
               </button>
 
               {/* Tombol Shutter Jepret Berulang Kali (Hingga 10 Foto) */}

@@ -364,7 +364,12 @@ export default function DashboardKepsek() {
       return navigate('/guru')
     }
 
-    const fullUser = { ...currentUser, ...(profile || {}), role: userRole }
+    const fullUser = { 
+      ...currentUser, 
+      ...(profile || {}), 
+      role: userRole,
+      tipe_perangkat: localStorage.getItem(`guru_tipe_perangkat_${currentUser.id}`) || 'android'
+    }
     setAdmin(fullUser)
     const existingKey = await loadSavedGeminiKeyAsync(currentUser.id, fullUser, profile)
     setGeminiApiKey(existingKey)
@@ -2877,15 +2882,14 @@ export default function DashboardKepsek() {
                    full_name: newFullName,
                    nip: newNip,
                    jabatan: newJabatan,
-                   role: newRole,
-                   tipe_perangkat: newTipePerangkat
+                   role: newRole
                  };
 
                  try {
                    const { error } = await supabase.from('profiles').update(updates).eq('id', admin.id);
                    if (error) throw error;
                    
-                   setAdmin(prev => ({ ...prev, ...updates }));
+                   setAdmin(prev => ({ ...prev, ...updates, tipe_perangkat: newTipePerangkat }));
                    localStorage.setItem(`guru_tipe_perangkat_${admin.id}`, newTipePerangkat);
                    alert("Profil akun pimpinan berhasil diperbarui!");
                  } catch (err) {
