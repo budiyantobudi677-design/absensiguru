@@ -2354,6 +2354,7 @@ export default function DashboardAdmin() {
                         mapel: newMapel,
                         jabatan: formattedJabatan,
                         assignedClasses: assignedClasses,
+                        tipe_perangkat: newTipePerangkat,
                         supabase
                       })
 
@@ -2943,6 +2944,19 @@ export default function DashboardAdmin() {
                    
                    setAdmin(prev => ({ ...prev, ...updates, tipe_perangkat: newTipePerangkat }));
                    localStorage.setItem(`guru_tipe_perangkat_${admin.id}`, newTipePerangkat);
+                   try {
+                     await saveTeacherAssignmentToCloud({
+                       teacherId: admin.id,
+                       tipe: newRole || admin.role,
+                       mapel: '',
+                       jabatan: newJabatan,
+                       assignedClasses: [],
+                       tipe_perangkat: newTipePerangkat,
+                       supabase
+                     });
+                   } catch (e) {
+                     console.warn('Sync admin assignment warning:', e);
+                   }
                    alert("Profil akun pimpinan berhasil diperbarui!");
                  } catch (err) {
                    alert("Gagal memperbarui profil: " + err.message);

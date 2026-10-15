@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { registerPlugin, Capacitor } from '@capacitor/core'
+import { getCachedAssignmentsMap } from './assignmentManager'
 
 // Register native plugin jika ada di runtime Capacitor Android
 const SecurityLocation = registerPlugin('SecurityLocation')
@@ -286,6 +287,17 @@ export async function isIncognitoMode() {
 }
 
 /**
+ * Mengambil tipe perangkat yang ditetapkan untuk profil pengguna (cloud assignment > profile > localStorage > 'android')
+ */
+export function getTeacherDeviceType(profile) {
+  if (!profile) return 'android'
+  const cachedAssignments = getCachedAssignmentsMap()
+  const cloudTipe = profile.id ? cachedAssignments[profile.id]?.tipe_perangkat : null
+  const localTipe = profile.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null
+  return profile.tipe_perangkat || cloudTipe || localTipe || 'android'
+}
+
+/**
  * Cek pembatasan silang perangkat (Cross-Device Lock)
  * - Akun Android dilarang login/akses di iPhone
  * - Akun iPhone dilarang login/akses di Android
@@ -293,7 +305,7 @@ export async function isIncognitoMode() {
 export function checkCrossDeviceAccess(profile) {
   if (!profile) return { allowed: true }
 
-  const tipe = profile.tipe_perangkat || (profile.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null) || 'android'
+  const tipe = getTeacherDeviceType(profile)
   const isIOS = isIOSDevice()
   const isAndroid = isAndroidDevice()
 
@@ -338,7 +350,7 @@ export function verifyAttendancePlatform(profile, isIncognito = false) {
     }
   }
 
-  const tipe = profile?.tipe_perangkat || (profile?.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null) || 'android'
+  const tipe = getTeacherDeviceType(profile)
   const isIOS = isIOSDevice()
 
   // Skenario A: Aplikasi Native Resmi (APK Android)

@@ -314,6 +314,9 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [guruTipeState, setGuruTipeState] = useState('guru_kelas')
   const [guruMapelState, setGuruMapelState] = useState('')
   const [showAssignmentReminder, setShowAssignmentReminder] = useState(false)
+  const [onboardingTipe, setOnboardingTipe] = useState('guru_kelas')
+  const [onboardingMapel, setOnboardingMapel] = useState('')
+  const [onboardingSaving, setOnboardingSaving] = useState(false)
   const [schoolInfoData, setSchoolInfoData] = useState({
     schoolName: 'Presensia',
     principalName: '',
@@ -839,12 +842,17 @@ export default function DashboardGuru({ roleOverride = null }) {
       const defaultTendikJabatan = (window.location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator') ? 'Pustakawan' : 'Operator Sekolah'
       const userJabatan = myCloudAssignment?.jabatan || currentProfile?.jabatan || (userTipe === 'tendik' ? defaultTendikJabatan : currentProfile?.jabatan)
 
+      // Sinkronisasi tipe perangkat dari cloud / profil / lokal
+      const userTipePerangkat = myCloudAssignment?.tipe_perangkat || currentProfile?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${currentUser.id}`) || 'android';
+      localStorage.setItem(`guru_tipe_perangkat_${currentUser.id}`, userTipePerangkat);
+
       // Merge data penugasan ke profile state
       const mergedProfile = {
         ...(currentProfile || {}),
         penugasan_tipe: userTipe,
         jabatan: userJabatan,
-        mata_pelajaran: userMapel
+        mata_pelajaran: userMapel,
+        tipe_perangkat: userTipePerangkat
       }
       setProfile(mergedProfile)
 
@@ -1632,6 +1640,101 @@ export default function DashboardGuru({ roleOverride = null }) {
     }
   }
 
+  // Handler simpan profil & penugasan wajib untuk akun baru
+  const handleOnboardingSubmit = async (e) => {
+    e.preventDefault();
+    setOnboardingSaving(true);
+    const fd = new FormData(e.target);
+    const fullName = fd.get('onboarding_full_name');
+    const nip = fd.get('onboarding_nip');
+    const tipePerangkat = fd.get('onboarding_tipe_perangkat') || 'android';
+    const tipePenugasan = fd.get('onboarding_tipe') || 'guru_kelas';
+
+    let formattedJabatan = 'Guru Kelas';
+    let mapel = '';
+    let selectedClasses = [];
+
+    if (tipePenugasan === 'guru_kelas') {
+      const kelasWali = fd.get('onboarding_kelas_wali');
+      selectedClasses = kelasWali ? [kelasWali] : [];
+      const clsName = classesList.find(c => c.id === kelasWali)?.name || '';
+      formattedJabatan = clsName ? `Guru Kelas ${clsName}` : 'Guru Kelas';
+    } else if (tipePenugasan === 'guru_mapel') {
+      mapel = fd.get('onboarding_mata_pelajaran') || '';
+      selectedClasses = fd.getAll('onboarding_assigned_classes') || [];
+      formattedJabatan = mapel ? `Guru ${mapel} • Guru Mapel` : 'Guru Mapel';
+    } else if (tipePenugasan === 'tendik') {
+      formattedJabatan = fd.get('onboarding_tendik_jabatan') || 'Operator Dapodik';
+      selectedClasses = [];
+    }
+
+    try {
+      // 1. Update Supabase profiles
+      const profileUpdates = {
+        full_name: fullName,
+        nip: nip || '',
+        jabatan: formattedJabatan
+      };
+      if (mapel) profileUpdates.mata_pelajaran = mapel;
+
+      const { error } = await supabase.from('profiles').update(profileUpdates).eq('id', user.id);
+      if (error) console.warn('Profile DB update:', error);
+
+      // 2. Save to Cloud Assignments
+      await saveTeacherAssignmentToCloud({
+        teacherId: user.id,
+        tipe: tipePenugasan,
+        mapel: mapel,
+        jabatan: formattedJabatan,
+        assignedClasses: selectedClasses,
+        tipe_perangkat: tipePerangkat,
+        supabase
+      });
+
+      // 3. Update localStorage
+      localStorage.setItem(`guru_tipe_${user.id}`, tipePenugasan);
+      localStorage.setItem(`guru_mapel_${user.id}`, mapel);
+      localStorage.setItem(`guru_assigned_classes_${user.id}`, JSON.stringify(selectedClasses));
+      localStorage.setItem(`guru_tipe_perangkat_${user.id}`, tipePerangkat);
+      localStorage.setItem(`guru_penugasan_configured_${user.id}`, 'true');
+
+      if (tipePenugasan === 'tendik') {
+        const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(formattedJabatan);
+        localStorage.setItem(`tendik_kategori_${user.id}`, isNonOp ? 'non_operator' : 'operator');
+        localStorage.setItem(`tendik_penugasan_${user.id}`, formattedJabatan);
+        localStorage.setItem(`panrita_role_${user.id}`, isNonOp ? 'nonoperator' : 'operator');
+      }
+
+      // Update classes list jika guru kelas
+      if (tipePenugasan === 'guru_kelas' && selectedClasses.length > 0) {
+        const newlyPickedId = selectedClasses[0];
+        setClassesList(prev => prev.map(c => {
+          if (c.id === newlyPickedId) return { ...c, teacher_id: user.id };
+          if (c.teacher_id === user.id) return { ...c, teacher_id: null };
+          return c;
+        }));
+      }
+
+      // 4. Update component state
+      setProfile(prev => ({
+        ...prev,
+        ...profileUpdates,
+        penugasan_tipe: tipePenugasan,
+        tipe_perangkat: tipePerangkat
+      }));
+      setGuruTipeState(tipePenugasan);
+      setGuruMapelState(mapel);
+      setAssignedClasses(selectedClasses);
+      setShowAssignmentReminder(false);
+
+      showPopup("Berhasil!", "Profil dan penugasan Anda berhasil disimpan. Akses aplikasi kini aktif!", "success");
+    } catch (err) {
+      alert("Gagal menyimpan profil: " + err.message);
+    } finally {
+      setOnboardingSaving(false);
+    }
+  };
+
   return (
     <div className={`guru-container ${isDesktop ? 'desktop-mode' : ''}`} style={{ paddingBottom: !isDesktop ? '90px' : '2rem' }}>
       {/* Custom Popup Modal */}
@@ -1647,7 +1750,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         </div>
       )}
 
-      {/* Modal Pengingat Penugasan & Kelas (Muncul Setiap Login & Tiap 10 Menit Jika Belum Diatur) */}
+      {/* Modal Wajib Lengkapi Profil & Penugasan Akun Baru (Muncul dan Mengunci Hingga Pengguna Selesai Mengisi) */}
       {showAssignmentReminder && (
         <div
           style={{
@@ -1656,91 +1759,215 @@ export default function DashboardGuru({ roleOverride = null }) {
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(5px)',
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(8px)',
             zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1.25rem'
+            padding: '1rem'
           }}
         >
           <div
             className="card"
             style={{
-              maxWidth: '420px',
+              maxWidth: '480px',
               width: '100%',
+              maxHeight: '92vh',
+              overflowY: 'auto',
               background: 'white',
               borderRadius: '24px',
               padding: '1.75rem',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              textAlign: 'center',
-              border: '1px solid #E2E8F0'
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
+              border: '1.5px solid #E2E8F0',
+              textAlign: 'left'
             }}
           >
-            <div
-              style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: '#FEF3C7',
-                color: '#D97706',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1rem auto'
-              }}
-            >
-              <Briefcase size={32} />
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1E293B', margin: '0 0 0.5rem 0' }}>
-              Atur Penugasan & Kelas Anda
-            </h3>
-
-            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: '1.5', margin: '0 0 1.25rem 0' }}>
-              Anda belum mengatur <strong>penugasan kelas / mata pelajaran</strong> yang diampu. Menu Pembelajaran (KBM) tidak dapat diakses hingga penugasan selesai diatur di menu Profil.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAssignmentReminder(false);
-                  setActiveTab('pengaturan');
-                }}
-                className="btn btn-primary"
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <div
                 style={{
-                  width: '100%',
-                  padding: '0.85rem',
-                  borderRadius: '14px',
-                  fontWeight: 'bold',
-                  fontSize: '0.9rem',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: '#EEF2FF',
+                  color: '#4F46E5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px'
+                  margin: '0 auto 0.75rem auto',
+                  border: '1.5px solid #C7D2FE'
                 }}
               >
-                <span>Atur Penugasan Sekarang</span>
-                <ChevronRight size={18} />
-              </button>
+                <Briefcase size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1E293B', margin: '0 0 0.35rem 0' }}>
+                Lengkapi Profil & Penugasan Wajib
+              </h3>
+              <p style={{ fontSize: '0.825rem', color: '#64748B', lineHeight: '1.45', margin: 0 }}>
+                Selamat datang! Untuk mengaktifkan fitur presensi mandiri dan akses pembelajaran, silakan lengkapi profil dan penugasan Anda terlebih dahulu.
+              </p>
+              <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px', fontSize: '0.75rem', color: '#B45309', display: 'flex', alignItems: 'center', gap: '6px', textAlign: 'left' }}>
+                <span>⚠️</span>
+                <span><strong>Wajib Diisi:</strong> Pengaturan ini diperlukan agar jenis perangkat dan rombel penugasan Anda terdaftar di sistem.</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleOnboardingSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="input-group">
+                <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Nama Lengkap & Gelar</label>
+                <input 
+                  type="text" 
+                  name="onboarding_full_name" 
+                  className="input" 
+                  defaultValue={profile?.full_name || ''} 
+                  placeholder="Contoh: Ahmad Yani, S.Pd." 
+                  required 
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>NIP / ID Pegawai</label>
+                <input 
+                  type="text" 
+                  name="onboarding_nip" 
+                  className="input" 
+                  defaultValue={profile?.nip || ''} 
+                  placeholder="Contoh: 198012312005011002" 
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Tipe Perangkat Presensi</label>
+                <select 
+                  name="onboarding_tipe_perangkat" 
+                  className="input" 
+                  defaultValue={profile?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${user?.id}`) || 'android'}
+                  style={{ fontWeight: '600' }}
+                >
+                  <option value="android">📱 Android (Aplikasi Resmi APK)</option>
+                  <option value="iphone">🍏 iPhone (Browser Safari & Chrome)</option>
+                </select>
+                <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                  *Pengguna Android wajib presensi di APK resmi. Pengguna iPhone dapat presensi via Safari atau Chrome iOS.
+                </small>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Tipe Penugasan Guru / Pegawai</label>
+                <select 
+                  name="onboarding_tipe" 
+                  className="input" 
+                  value={onboardingTipe}
+                  onChange={(e) => setOnboardingTipe(e.target.value)}
+                  style={{ fontWeight: '600' }}
+                >
+                  <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
+                  <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
+                  <option value="tendik">Tenaga Kependidikan (Tendik)</option>
+                </select>
+              </div>
+
+              {onboardingTipe === 'guru_kelas' && (
+                <div className="input-group">
+                  <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Pilih Kelas / Rombel Binaan</label>
+                  {(() => {
+                    const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
+                    return (
+                      <select name="onboarding_kelas_wali" className="input" defaultValue={assignedClasses[0] || ''} required>
+                        <option value="">-- Pilih Kelas (Wali Kelas) --</option>
+                        {classesList.map(c => {
+                          const isTaken = Boolean(takenMap[c.id])
+                          const takenBy = takenMap[c.id]?.teacherName || 'Guru Lain'
+                          return (
+                            <option key={c.id} value={c.id} disabled={isTaken} style={{ color: isTaken ? '#94A3B8' : 'inherit' }}>
+                              {c.name} {isTaken ? `(🔒 Terkunci: ${takenBy})` : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    )
+                  })()}
+                </div>
+              )}
+
+              {onboardingTipe === 'guru_mapel' && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Mata Pelajaran Utama</label>
+                    <select 
+                      name="onboarding_mata_pelajaran" 
+                      className="input" 
+                      value={onboardingMapel}
+                      onChange={(e) => setOnboardingMapel(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Pilih Mata Pelajaran --</option>
+                      {getCustomSubjects().map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Centang Semua Kelas yang Diajar</label>
+                    <div style={{ maxHeight: '130px', overflowY: 'auto', background: '#F8FAFC', padding: '0.65rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {classesList.length === 0 ? (
+                        <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada daftar kelas dari Admin.</span>
+                      ) : (
+                        classesList.map(cls => (
+                          <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              name="onboarding_assigned_classes" 
+                              value={cls.id} 
+                              defaultChecked={assignedClasses.includes(cls.id)} 
+                            />
+                            <span style={{ fontWeight: 600, color: '#1E293B' }}>{cls.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {onboardingTipe === 'tendik' && (
+                <div className="input-group">
+                  <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Tugas & Jabatan Tendik</label>
+                  <select name="onboarding_tendik_jabatan" className="input" defaultValue="Operator Dapodik" style={{ fontWeight: '600' }}>
+                    <optgroup label="Akun Operator (Presensi & Master KBM)">
+                      <option value="Operator Dapodik">💻 Operator Dapodik</option>
+                      <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
+                    </optgroup>
+                    <optgroup label="Akun Non-Operator (Presensi & Kehadiran)">
+                      <option value="Pustakawan">📚 Pustakawan</option>
+                      <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
+                      <option value="Satpam">🛡️ Satpam (Keamanan)</option>
+                    </optgroup>
+                  </select>
+                </div>
+              )}
 
               <button
-                type="button"
-                onClick={() => setShowAssignmentReminder(false)}
+                type="submit"
+                disabled={onboardingSaving}
+                className="btn btn-primary"
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#94A3B8',
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  padding: '0.5rem'
+                  width: '100%',
+                  padding: '0.9rem',
+                  borderRadius: '14px',
+                  fontWeight: 'bold',
+                  fontSize: '0.95rem',
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
                 }}
               >
-                Ingatkan Saya 10 Menit Lagi
+                <CheckCircle2 size={18} />
+                <span>{onboardingSaving ? 'Menyimpan Profil...' : 'Simpan Profil & Buka Akses Aplikasi'}</span>
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
@@ -2377,6 +2604,10 @@ export default function DashboardGuru({ roleOverride = null }) {
                     localStorage.setItem(`panrita_role_${user.id}`, isNonOpJabatan ? 'nonoperator' : 'operator');
                   }
                   
+                  const newTipePerangkat = formData.get('tipe_perangkat') || 'android';
+                  localStorage.setItem(`guru_tipe_perangkat_${user.id}`, newTipePerangkat);
+                  localStorage.setItem(`guru_penugasan_configured_${user.id}`, 'true');
+
                   // Simpan ke Cloud Supabase & update tabel classes.teacher_id
                   await saveTeacherAssignmentToCloud({
                     teacherId: user.id,
@@ -2384,6 +2615,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                     mapel: mataPelajaran,
                     jabatan: formattedJabatan,
                     assignedClasses: selectedClasses,
+                    tipe_perangkat: newTipePerangkat,
                     supabase
                   });
 
@@ -2430,6 +2662,21 @@ export default function DashboardGuru({ roleOverride = null }) {
                     <input type="text" name="jabatan" className="input" defaultValue={profile?.jabatan || ''} placeholder="Contoh: Guru Kelas V / Pembina OSIS" />
                   </div>
                 )}
+
+                <div className="input-group">
+                  <label className="input-label">Tipe Perangkat Presensi Guru</label>
+                  <select 
+                    name="tipe_perangkat" 
+                    className="input" 
+                    defaultValue={profile?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${user?.id}`) || 'android'}
+                  >
+                    <option value="android">📱 Android (Aplikasi Resmi APK)</option>
+                    <option value="iphone">🍏 iPhone (Browser Safari & Chrome)</option>
+                  </select>
+                  <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                    *Pengguna Android wajib presensi di APK resmi. Pengguna iPhone diizinkan presensi lewat browser Safari atau Chrome iOS.
+                  </small>
+                </div>
 
                 {/* Deteksi Akun Tendik vs Guru */}
                 {(() => {

@@ -2313,12 +2313,17 @@ export default function DashboardKepsek() {
                         localStorage.setItem(`tendik_penugasan_${editingPegawai.id}`, formattedJabatan)
                       }
 
+                      const newTipePerangkat = formData.get('tipe_perangkat') || 'android'
+                      localStorage.setItem(`guru_tipe_perangkat_${editingPegawai.id}`, newTipePerangkat)
+
                       // Simpan ke Cloud Supabase agar otomatis tersinkron ke semua perangkat guru
                       await saveTeacherAssignmentToCloud({
                         teacherId: editingPegawai.id,
                         tipe: newRole,
                         mapel: newMapel,
+                        jabatan: formattedJabatan,
                         assignedClasses: assignedClasses,
+                        tipe_perangkat: newTipePerangkat,
                         supabase
                       })
 
@@ -2334,7 +2339,8 @@ export default function DashboardKepsek() {
                           ...item, 
                           penugasan_tipe: newRole, 
                           mata_pelajaran: newMapel, 
-                          jabatan: formattedJabatan 
+                          jabatan: formattedJabatan,
+                          tipe_perangkat: newTipePerangkat
                         } : item))
                         setEditingPegawai(null)
                         loadKbmClasses()
@@ -2466,6 +2472,21 @@ export default function DashboardKepsek() {
                           defaultValue={editingPegawai.jabatan || ''} 
                           placeholder="Contoh: Guru PJOK / Wali Kelas IV-A" 
                         />
+                      </div>
+
+                      <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                        <label className="input-label">Tipe Perangkat Presensi Guru</label>
+                        <select 
+                          name="tipe_perangkat" 
+                          className="input" 
+                          defaultValue={editingPegawai.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${editingPegawai.id}`) || 'android'}
+                        >
+                          <option value="android">📱 Android (Aplikasi Resmi APK)</option>
+                          <option value="iphone">🍏 iPhone (Browser Safari & Chrome)</option>
+                        </select>
+                        <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                          *Pengguna Android wajib presensi di APK resmi. Pengguna iPhone diizinkan presensi lewat browser Safari atau Chrome iOS.
+                        </small>
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -2891,6 +2912,19 @@ export default function DashboardKepsek() {
                    
                    setAdmin(prev => ({ ...prev, ...updates, tipe_perangkat: newTipePerangkat }));
                    localStorage.setItem(`guru_tipe_perangkat_${admin.id}`, newTipePerangkat);
+                   try {
+                     await saveTeacherAssignmentToCloud({
+                       teacherId: admin.id,
+                       tipe: newRole || admin.role,
+                       mapel: '',
+                       jabatan: newJabatan,
+                       assignedClasses: [],
+                       tipe_perangkat: newTipePerangkat,
+                       supabase
+                     });
+                   } catch (e) {
+                     console.warn('Sync kepsek assignment warning:', e);
+                   }
                    alert("Profil akun pimpinan berhasil diperbarui!");
                  } catch (err) {
                    alert("Gagal memperbarui profil: " + err.message);
