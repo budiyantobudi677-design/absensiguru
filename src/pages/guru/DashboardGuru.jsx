@@ -1662,6 +1662,11 @@ export default function DashboardGuru({ roleOverride = null }) {
     } else if (tipePenugasan === 'guru_mapel') {
       mapel = fd.get('onboarding_mata_pelajaran') || '';
       selectedClasses = fd.getAll('onboarding_assigned_classes') || [];
+      if (!selectedClasses || selectedClasses.length === 0) {
+        setOnboardingSaving(false);
+        alert('Mohon centang minimal 1 rombel kelas yang Anda ajar untuk mata pelajaran ini.');
+        return;
+      }
       formattedJabatan = mapel ? `Guru ${mapel} • Guru Mapel` : 'Guru Mapel';
     } else if (tipePenugasan === 'tendik') {
       formattedJabatan = fd.get('onboarding_tendik_jabatan') || 'Operator Dapodik';

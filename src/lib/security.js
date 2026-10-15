@@ -246,15 +246,19 @@ export function isAndroidDevice() {
 export async function isIncognitoMode() {
   if (typeof window === 'undefined') return false
   try {
-    // 1. Deteksi Quota Storage (iOS Safari & Chrome membatasi kuota sangat rendah di private mode, < 500MB)
-    if (navigator.storage && navigator.storage.estimate) {
-      const { quota } = await navigator.storage.estimate()
-      if (quota && quota < 500 * 1024 * 1024) {
-        return true
+    // 1. Deteksi OPFS (Origin Private File System) - Metode resmi & paling akurat untuk Safari iOS 15.2+
+    // Di mode Private Safari, navigator.storage.getDirectory() akan menolak dengan error 'unknown transient reason' atau 'SecurityError'
+    if (navigator.storage && navigator.storage.getDirectory) {
+      try {
+        await navigator.storage.getDirectory()
+      } catch (err) {
+        if (err && typeof err.message === 'string' && (err.message.includes('unknown transient reason') || err.name === 'SecurityError' || err.name === 'UnknownError')) {
+          return true
+        }
       }
     }
 
-    // 2. Deteksi FileSystem API
+    // 2. Deteksi FileSystem API (WebKit Legacy)
     if ('webkitRequestFileSystem' in window) {
       const isPrivateFS = await new Promise((resolve) => {
         window.webkitRequestFileSystem(
@@ -267,7 +271,7 @@ export async function isIncognitoMode() {
       if (isPrivateFS) return true
     }
 
-    // 3. Fallback IndexedDB check
+    // 3. Fallback IndexedDB check untuk Safari versi lawas
     const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome|CriOS/i.test(navigator.userAgent)
     if (isSafari && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
       try {

@@ -877,89 +877,100 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     setCameraError('')
     stopCamera()
 
-    // Beri jeda 300ms agar hardware sensor Android/iOS dan Webview benar-benar bersih melepaskan lock
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    // Beri jeda 350ms agar hardware sensor Android/iOS dan Webview benar-benar bersih melepaskan lock
+    await new Promise((resolve) => setTimeout(resolve, 350))
     if (requestId !== cameraRequestIdRef.current) return
 
     let mediaStream = null
     const targetFacing = mode || facingMode || 'environment'
 
-    const tryGetUserMedia = async (constraints) => {
-      try {
-        return await navigator.mediaDevices.getUserMedia(constraints)
-      } catch (err) {
-        if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-          // Hardware masih transisi dari sensor sebelumnya, beri jeda 400ms dan coba lagi
-          await new Promise((res) => setTimeout(res, 400))
-          if (requestId !== cameraRequestIdRef.current) return null
+    const tryGetUserMedia = async (constraints, maxRetries = 2) => {
+      let attempt = 0
+      while (attempt <= maxRetries) {
+        try {
           return await navigator.mediaDevices.getUserMedia(constraints)
+        } catch (err) {
+          attempt++
+          if (attempt <= maxRetries && (err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.name === 'AbortError')) {
+            // Hardware masih transisi dari sensor sebelumnya pada Android/iOS, beri jeda progresif
+            await new Promise((res) => setTimeout(res, attempt * 350))
+            if (requestId !== cameraRequestIdRef.current) return null
+            continue
+          }
+          throw err
         }
-        throw err
+      }
+      return null
+    }
+
+    // Daftar strategi constraint dari yang paling kompatibel hingga fallback fleksibel
+    // Khusus kamera depan ('user'), tidak memasang ukuran piksel tetap yang kaku agar tidak ditolak sensor selfie ponsel
+    const constraintAttempts = [
+      // 1. Constraint standar ideal facingMode (sangat kompatibel untuk kamera depan di Android WebView & iOS)
+      { video: { facingMode: { ideal: targetFacing } }, audio: false },
+      // 2. Constraint exact facingMode
+      { video: { facingMode: targetFacing }, audio: false },
+      // 3. Constraint resolusi proporsional
+      {
+        video: {
+          facingMode: { ideal: targetFacing },
+          width: { ideal: targetFacing === 'user' ? 720 : 1280 },
+          height: { ideal: targetFacing === 'user' ? 1280 : 720 }
+        },
+        audio: false
+      }
+    ]
+
+    for (const c of constraintAttempts) {
+      try {
+        mediaStream = await tryGetUserMedia(c)
+        if (mediaStream) break
+      } catch (e) {
+        console.warn('Percobaan constraint kamera gagal, mencoba alternatif berikutnya:', e)
+        await new Promise((res) => setTimeout(res, 200))
+        if (requestId !== cameraRequestIdRef.current) return
       }
     }
 
-    // 1. Percobaan Pertama: Menggunakan facingMode standar WebRTC (sangat kompatibel untuk kamera depan di Android/iOS)
-    try {
-      mediaStream = await tryGetUserMedia({
-        video: { facingMode: targetFacing },
-        audio: false
-      })
-    } catch (err1) {
-      console.warn('Percobaan 1 kamera gagal, mencoba constraint fleksibel:', err1)
-      await new Promise((res) => setTimeout(res, 250))
-      if (requestId !== cameraRequestIdRef.current) return
-
-      // 2. Percobaan Kedua: Fallback dengan ideal constraint dan resolusi
+    // 4. Jika masih belum berhasil, coba enumerasi perangkat fisik
+    if (!mediaStream) {
       try {
-        mediaStream = await tryGetUserMedia({
-          video: {
-            facingMode: { ideal: targetFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        })
-      } catch (err2) {
-        console.warn('Percobaan 2 kamera gagal, mencoba enumerasi perangkat:', err2)
-        await new Promise((res) => setTimeout(res, 250))
-        if (requestId !== cameraRequestIdRef.current) return
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter((d) => d.kind === 'videoinput')
 
-        // 3. Percobaan Ketiga: Enumerasi perangkat videoinput fisik
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices()
-          const videoDevices = devices.filter((d) => d.kind === 'videoinput')
-
-          let targetDevice = null
-          if (targetFacing === 'user') {
-            targetDevice =
-              videoDevices.find((d) => /front|user|depan|selfie|face|secondary/i.test(d.label)) ||
-              videoDevices.find((d) => !/back|rear|belakang|environment/i.test(d.label)) ||
-              (videoDevices.length > 1 ? videoDevices[1] : videoDevices[0])
-          } else {
-            targetDevice =
-              videoDevices.find((d) => /back|rear|environment|belakang|main/i.test(d.label)) ||
-              videoDevices[0]
-          }
-
-          if (targetDevice && targetDevice.deviceId) {
-            mediaStream = await tryGetUserMedia({
-              video: { deviceId: { ideal: targetDevice.deviceId } },
-              audio: false
-            })
-          } else {
-            // 4. Percobaan Terakhir: Request kamera default umum
-            mediaStream = await tryGetUserMedia({
-              video: true,
-              audio: false
-            })
-          }
-        } catch (err3) {
-          console.error('Semua percobaan inisialisasi kamera gagal:', err3)
-          if (requestId === cameraRequestIdRef.current) {
-            setCameraError('Gagal mengakses kamera perangkat. Pastikan izin kamera telah diberikan di browser/aplikasi Anda.')
-          }
-          return
+        let targetDevice = null
+        if (targetFacing === 'user') {
+          targetDevice =
+            videoDevices.find((d) => /front|user|depan|selfie|face|secondary/i.test(d.label)) ||
+            (videoDevices.length > 1 && videoDevices.find((d, idx) => idx > 0 && !/back|rear|belakang|main/i.test(d.label))) ||
+            (videoDevices.length > 1 ? videoDevices[videoDevices.length - 1] : videoDevices[0])
+        } else {
+          targetDevice =
+            videoDevices.find((d) => /back|rear|environment|belakang|main/i.test(d.label)) ||
+            videoDevices[0]
         }
+
+        if (targetDevice && targetDevice.deviceId) {
+          mediaStream = await tryGetUserMedia({
+            video: { deviceId: { ideal: targetDevice.deviceId } },
+            audio: false
+          })
+        }
+      } catch (errDev) {
+        console.warn('Percobaan enumerasi kamera fisik gagal:', errDev)
+      }
+    }
+
+    // 5. Fallback pamungkas: General video constraint agar kamera tetap menyala tanpa error
+    if (!mediaStream) {
+      try {
+        mediaStream = await tryGetUserMedia({ video: true, audio: false })
+      } catch (errFinal) {
+        console.error('Semua percobaan inisialisasi kamera gagal:', errFinal)
+        if (requestId === cameraRequestIdRef.current) {
+          setCameraError('Gagal mengakses kamera perangkat. Pastikan izin kamera telah diberikan di browser/aplikasi Anda.')
+        }
+        return
       }
     }
 
