@@ -148,7 +148,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
     try {
       const { data, error } = await supabase
         .from('classes')
-        .insert([{ name: newClassName.trim(), teacher_id: user?.id }])
+        .insert([{ name: newClassName.trim(), teacher_id: null }])
         .select()
       if (error) throw error
       setClasses([...classes, data[0]])

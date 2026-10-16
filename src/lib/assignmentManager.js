@@ -156,7 +156,7 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jab
       mapel: mapel !== undefined ? mapel : (currentMap[teacherId]?.mapel || ''),
       jabatan: jabatan !== undefined ? jabatan : (currentMap[teacherId]?.jabatan || ''),
       tipe_perangkat: tipe_perangkat || currentMap[teacherId]?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${teacherId}`) || 'android',
-      assignedClasses: tipe === 'tendik' ? [] : selectedClasses,
+      assignedClasses: (tipe === 'tendik' || tipe === 'admin' || tipe === 'kepsek') ? [] : selectedClasses,
       updatedAt: new Date().toISOString()
     }
 
@@ -174,7 +174,7 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jab
             await supabase.from('classes').update({ teacher_id: teacherId }).eq('id', selectedClasses[0])
           }
         } else {
-          // Guru Mapel bukan wali kelas, lepaskan dari kelas manapun
+          // Guru Mapel, Tendik, Admin, Kepsek bukan wali kelas, lepaskan dari kelas manapun
           await supabase.from('classes').update({ teacher_id: null }).eq('teacher_id', teacherId)
         }
       } catch (e) {
@@ -227,6 +227,10 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
     classesList.forEach(cls => {
       if (cls.teacher_id && cls.teacher_id !== currentTeacherId) {
         const prof = profiles.find(p => p.id === cls.teacher_id)
+        // Hanya Guru yang bisa mengunci kelas. Akun Admin, Kepsek, atau Tendik BUKAN wali kelas dan tidak boleh mengunci kelas!
+        if (prof?.role === 'admin' || prof?.role === 'kepsek' || prof?.role === 'tendik') {
+          return
+        }
         takenMap[cls.id] = {
           teacherId: cls.teacher_id,
           teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
@@ -239,9 +243,13 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
   // 2. Baca dari currentMap cloud
   Object.entries(currentMap).forEach(([tId, info]) => {
     if (tId !== currentTeacherId && info.tipe === 'guru_kelas' && Array.isArray(info.assignedClasses)) {
+      const prof = profiles.find(p => p.id === tId)
+      // Abaikan jika akun admin, kepsek, atau tendik
+      if (prof?.role === 'admin' || prof?.role === 'kepsek' || prof?.role === 'tendik' || info.tipe === 'admin' || info.tipe === 'kepsek' || info.tipe === 'tendik') {
+        return
+      }
       info.assignedClasses.forEach(clsId => {
         if (!takenMap[clsId]) {
-          const prof = profiles.find(p => p.id === tId)
           takenMap[clsId] = {
             teacherId: tId,
             teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
@@ -254,7 +262,7 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
 
   // 3. Baca juga dari profiles array (jika jabatan mengandung indikasi wali kelas)
   profiles.forEach(p => {
-    if (p.id !== currentTeacherId) {
+    if (p.id !== currentTeacherId && p.role !== 'admin' && p.role !== 'kepsek' && p.role !== 'tendik') {
       try {
         const rawAssigned = localStorage.getItem(`guru_assigned_classes_${p.id}`)
         const assigned = rawAssigned ? JSON.parse(rawAssigned) : []
