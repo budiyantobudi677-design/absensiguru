@@ -15,8 +15,9 @@ import {
   Activity, Shield, Smartphone, Key, Database, LogOut, 
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
-  UserCheck, Lock, Mail, Check, EyeOff
+  UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck
 } from 'lucide-react'
+import { getCloudOverrideToken, saveCloudOverrideToken } from '../../lib/attendanceOverrideManager'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
@@ -57,10 +58,61 @@ export default function DashboardPengembang() {
   const [keyStatus, setKeyStatus] = useState({ type: '', text: '' })
   const [savingKey, setSavingKey] = useState(false)
 
+  // Kode Token Presensi Khusus Admin
+  const [adminOverrideToken, setAdminOverrideToken] = useState('')
+  const [adminOverrideExists, setAdminOverrideExists] = useState(false)
+  const [adminOverrideUpdatedAt, setAdminOverrideUpdatedAt] = useState(null)
+  const [showAdminOverrideToken, setShowAdminOverrideToken] = useState(false)
+  const [newAdminOverrideToken, setNewAdminOverrideToken] = useState('')
+  const [savingAdminOverrideToken, setSavingAdminOverrideToken] = useState(false)
+  const [adminOverrideStatus, setAdminOverrideStatus] = useState({ type: '', text: '' })
+  const [copiedToken, setCopiedToken] = useState(false)
+
+  const loadAdminOverrideToken = async () => {
+    try {
+      const res = await getCloudOverrideToken(supabase)
+      setAdminOverrideToken(res.token || '')
+      setAdminOverrideExists(res.exists)
+      setAdminOverrideUpdatedAt(res.updatedAt)
+    } catch (e) {
+      console.warn('Gagal membaca token admin override:', e)
+    }
+  }
+
+  const handleUpdateAdminOverrideToken = async (e) => {
+    e.preventDefault()
+    setAdminOverrideStatus({ type: '', text: '' })
+    if (!newAdminOverrideToken.trim()) {
+      setAdminOverrideStatus({ type: 'error', text: 'Kode token baru tidak boleh kosong!' })
+      return
+    }
+    setSavingAdminOverrideToken(true)
+    try {
+      await saveCloudOverrideToken(supabase, newAdminOverrideToken.trim())
+      setAdminOverrideToken(newAdminOverrideToken.trim())
+      setAdminOverrideExists(true)
+      setAdminOverrideUpdatedAt(new Date().toISOString())
+      setAdminOverrideStatus({ type: 'success', text: 'Kode Token Admin berhasil diperbarui!' })
+      setNewAdminOverrideToken('')
+    } catch (err) {
+      setAdminOverrideStatus({ type: 'error', text: 'Gagal memperbarui token: ' + err.message })
+    } finally {
+      setSavingAdminOverrideToken(false)
+    }
+  }
+
+  const handleCopyToken = () => {
+    if (!adminOverrideToken) return
+    navigator.clipboard.writeText(adminOverrideToken)
+    setCopiedToken(true)
+    setTimeout(() => setCopiedToken(false), 2000)
+  }
+
   useEffect(() => {
     loadSystemMetrics()
     loadDeviceRegistry()
     loadAdminAccountInfo()
+    loadAdminOverrideToken()
   }, [])
 
   const handleChangeUserRole = async (targetUserId, targetUserName, newRole) => {
@@ -905,62 +957,157 @@ export default function DashboardPengembang() {
           </div>
         )}
 
-        {/* TAB 3: GANTI KODE KUNCI PENGEMBANG */}
+        {/* TAB 3: GANTI KODE KUNCI PENGEMBANG & TOKEN OVERRIDE ADMIN */}
         {activeTab === 'security' && (
-          <div style={{ maxWidth: '560px', margin: '0 auto', background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '2rem 1.75rem' }}>
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: 'rgba(0, 180, 216, 0.15)', border: '2px solid #00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: '#00B4D8' }}>
-                <Key size={28} />
+          <div style={{ maxWidth: '1050px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
+            {/* KARTU 1: Kunci Otoritas Pengembang */}
+            <div style={{ background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '2rem 1.75rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: 'rgba(0, 180, 216, 0.15)', border: '2px solid #00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: '#00B4D8' }}>
+                  <Key size={28} />
+                </div>
+                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>Perbarui Kunci Otoritas Pengembang</h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#94A3B8' }}>
+                  Kode ini digunakan untuk membuka akun Pengembang. Kode baru akan otomatis dienkripsi dengan SHA-256 + Salt di cloud.
+                </p>
               </div>
-              <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>Perbarui Kunci Otoritas Pengembang</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#94A3B8' }}>
-                Kode ini digunakan untuk membuka akun Pengembang. Kode baru akan otomatis dienkripsi dengan SHA-256 + Salt di cloud.
-              </p>
+
+              {keyStatus.text && (
+                <div style={{ padding: '0.75rem 1rem', borderRadius: '12px', marginBottom: '1.25rem', fontSize: '0.82rem', fontWeight: 700, textAlign: 'center', background: keyStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: keyStatus.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444', color: keyStatus.type === 'success' ? '#10B981' : '#EF4444' }}>
+                  {keyStatus.text}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateMasterKey}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
+                    Kode Kunci Pengembang Baru
+                  </label>
+                  <input
+                    type="password"
+                    value={newKey}
+                    onChange={(e) => setNewKey(e.target.value)}
+                    placeholder="Minimal 6 karakter rahasia"
+                    required
+                    style={{ width: '100%', padding: '0.85rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#FFFFFF', fontSize: '0.92rem', outline: 'none' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
+                    Konfirmasi Kode Kunci Baru
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmKey}
+                    onChange={(e) => setConfirmKey(e.target.value)}
+                    placeholder="Ulangi kode rahasia baru"
+                    required
+                    style={{ width: '100%', padding: '0.85rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#FFFFFF', fontSize: '0.92rem', outline: 'none' }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingKey}
+                  style={{ width: '100%', padding: '0.9rem', background: 'linear-gradient(135deg, #0077B6 0%, #00B4D8 100%)', color: '#071C35', border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 800, cursor: savingKey ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(0, 180, 216, 0.4)' }}
+                >
+                  {savingKey ? 'Menyimpan & Mengenkripsi...' : 'Simpan Kunci Pengembang'}
+                </button>
+              </form>
             </div>
 
-            {keyStatus.text && (
-              <div style={{ padding: '0.75rem 1rem', borderRadius: '12px', marginBottom: '1.25rem', fontSize: '0.82rem', fontWeight: 700, textAlign: 'center', background: keyStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: keyStatus.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444', color: keyStatus.type === 'success' ? '#10B981' : '#EF4444' }}>
-                {keyStatus.text}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateMasterKey}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
-                  Kode Kunci Pengembang Baru
-                </label>
-                <input
-                  type="password"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="Minimal 6 karakter rahasia"
-                  required
-                  style={{ width: '100%', padding: '0.85rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#FFFFFF', fontSize: '0.92rem', outline: 'none' }}
-                />
+            {/* KARTU 2: Token Keamanan Presensi Khusus Admin */}
+            <div style={{ background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '2rem 1.75rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: '#EF4444' }}>
+                  <ShieldCheck size={28} />
+                </div>
+                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>Token Presensi Khusus Admin</h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#94A3B8' }}>
+                  Token ini digunakan oleh Administrator untuk membuka fitur Presensi Khusus (Clock Out Pulang Cepat & Clock In Terlambat).
+                </p>
               </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
-                  Konfirmasi Kode Kunci Baru
-                </label>
-                <input
-                  type="password"
-                  value={confirmKey}
-                  onChange={(e) => setConfirmKey(e.target.value)}
-                  placeholder="Ulangi kode rahasia baru"
-                  required
-                  style={{ width: '100%', padding: '0.85rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#FFFFFF', fontSize: '0.92rem', outline: 'none' }}
-                />
+              {/* Tampilan Token Aktif Saat Ini */}
+              <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    KODE TOKEN AKTIF SAAT INI
+                  </span>
+                  {adminOverrideUpdatedAt && (
+                    <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                      Update: {new Date(adminOverrideUpdatedAt).toLocaleDateString('id-ID')}
+                    </span>
+                  )}
+                </div>
+
+                {adminOverrideExists && adminOverrideToken ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid rgba(0, 180, 216, 0.3)' }}>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: showAdminOverrideToken ? '2px' : '4px', color: '#00B4D8', fontFamily: 'monospace' }}>
+                      {showAdminOverrideToken ? adminOverrideToken : '••••••••'}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminOverrideToken(!showAdminOverrideToken)}
+                        title={showAdminOverrideToken ? "Sembunyikan Token" : "Lihat Token"}
+                        style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#FFFFFF', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      >
+                        {showAdminOverrideToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCopyToken}
+                        title="Salin Token"
+                        style={{ background: copiedToken ? '#10B981' : 'rgba(0, 180, 216, 0.2)', border: '1px solid rgba(0, 180, 216, 0.4)', color: copiedToken ? '#FFFFFF' : '#00B4D8', padding: '0.5rem 0.75rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700 }}
+                      >
+                        {copiedToken ? <Check size={14} /> : <Copy size={14} />}
+                        <span>{copiedToken ? 'Disalin!' : 'Salin'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px', color: '#FBBF24', fontSize: '0.8rem', textAlign: 'center' }}>
+                    ⚠️ Belum Dibuat oleh Admin (Admin akan diminta membuat token saat pertama kali membuka menu di halaman admin).
+                  </div>
+                )}
               </div>
 
-              <button
-                type="submit"
-                disabled={savingKey}
-                style={{ width: '100%', padding: '0.9rem', background: 'linear-gradient(135deg, #0077B6 0%, #00B4D8 100%)', color: '#071C35', border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 800, cursor: savingKey ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(0, 180, 216, 0.4)' }}
-              >
-                {savingKey ? 'Menyimpan & Mengenkripsi...' : 'Simpan Kunci Pengembang'}
-              </button>
-            </form>
+              {/* Status Update Token */}
+              {adminOverrideStatus.text && (
+                <div style={{ padding: '0.75rem 1rem', borderRadius: '12px', marginBottom: '1.25rem', fontSize: '0.82rem', fontWeight: 700, textAlign: 'center', background: adminOverrideStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: adminOverrideStatus.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444', color: adminOverrideStatus.type === 'success' ? '#10B981' : '#EF4444' }}>
+                  {adminOverrideStatus.text}
+                </div>
+              )}
+
+              {/* Form Reset / Ganti Token Langsung oleh Pengembang */}
+              <form onSubmit={handleUpdateAdminOverrideToken}>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
+                    Reset / Ganti Token Admin Baru (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newAdminOverrideToken}
+                    onChange={(e) => setNewAdminOverrideToken(e.target.value)}
+                    placeholder="Masukkan token baru untuk Admin"
+                    style={{ width: '100%', padding: '0.85rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#FFFFFF', fontSize: '0.92rem', outline: 'none' }}
+                  />
+                  <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.72rem', color: '#94A3B8' }}>
+                    Jika Admin lupa token, informasikan token aktif di atas atau buatkan token baru melalui form ini.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingAdminOverrideToken}
+                  style={{ width: '100%', padding: '0.9rem', background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)', color: '#FFFFFF', border: 'none', borderRadius: '14px', fontSize: '0.95rem', fontWeight: 800, cursor: savingAdminOverrideToken ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)' }}
+                >
+                  {savingAdminOverrideToken ? 'Menyimpan Token...' : 'Perbarui Token Admin'}
+                </button>
+              </form>
+            </div>
           </div>
         )}
 

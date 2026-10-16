@@ -22,6 +22,7 @@ import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 import PersuratanSekolah from '../../components/admin/PersuratanSekolah'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
+import AdminOverrideModal from '../../components/admin/AdminOverrideModal'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -30,6 +31,7 @@ export default function DashboardAdmin() {
   const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview') 
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
+  const [showOverrideModal, setShowOverrideModal] = useState(false)
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -1407,6 +1409,10 @@ export default function DashboardAdmin() {
               <Settings size={18} />
               <span>Pengaturan & Geofencing</span>
             </button>
+            <button className="admin-nav-item" onClick={() => { setShowOverrideModal(true); setIsSidebarOpen(false); }}>
+              <Clock size={18} color="#EF4444" />
+              <span style={{ color: '#EF4444', fontWeight: 'bold' }}>Presensi Khusus</span>
+            </button>
           </nav>
         </div>
 
@@ -1500,6 +1506,24 @@ export default function DashboardAdmin() {
                   }}
                 >
                   <Bell size={17} />
+                </button>
+                <button
+                  onClick={() => setShowOverrideModal(true)}
+                  title="Presensi Khusus / Darurat"
+                  style={{
+                    background: 'rgba(239,68,68,0.25)',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FCA5A5',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Clock size={17} />
                 </button>
                 <button
                   onClick={() => setIsSidebarOpen(true)}
@@ -2107,6 +2131,13 @@ export default function DashboardAdmin() {
                   </div>
                   <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Pengaturan & GPS</h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Lokasi peta radius & hari kerja</p>
+                </div>
+                <div onClick={() => setShowOverrideModal(true)} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.12)', transition: 'transform 0.2s', background: 'var(--surface)' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                    <Clock size={32} color="white" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Presensi Khusus</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Dispensasi Pulang & Terlambat</p>
                 </div>
               </div>
             </div>
@@ -4043,6 +4074,19 @@ export default function DashboardAdmin() {
             setCameraModeForTugasLuar(false)
             setShowTugasLuarModal(true)
           } : null}
+        />
+
+        {/* Modal Presensi Khusus / Darurat Administrator */}
+        <AdminOverrideModal
+          isOpen={showOverrideModal}
+          onClose={() => setShowOverrideModal(false)}
+          supabase={supabase}
+          currentAdmin={admin}
+          pegawaiList={pegawaiData}
+          onSuccess={() => {
+            loadAbsensi()
+            fetchOverviewStats()
+          }}
         />
       </div>
     </div>
