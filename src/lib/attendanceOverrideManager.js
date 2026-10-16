@@ -363,6 +363,13 @@ export async function executeAdminAttendanceOverride(supabase, {
     console.error('Error checking existing attendance:', fetchErr)
   }
 
+  const handleDbError = (err) => {
+    if (err?.message?.toLowerCase().includes('row-level security') || err?.code === '42501') {
+      throw new Error("Akses database ditolak oleh Row-Level Security (RLS) Supabase untuk tabel 'absensi'. Silakan jalankan script SQL 'fix_rls_absensi_admin.sql' di Supabase SQL Editor.")
+    }
+    throw err
+  }
+
   let finalResult = null
 
   if (actionType === 'clock_out') {
@@ -377,7 +384,7 @@ export async function executeAdminAttendanceOverride(supabase, {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) handleDbError(error)
       finalResult = { action: 'clock_out', data }
     } else {
       const { data, error } = await supabase
@@ -394,7 +401,7 @@ export async function executeAdminAttendanceOverride(supabase, {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) handleDbError(error)
       finalResult = { action: 'clock_out', data }
     }
   } else if (actionType === 'clock_in') {
@@ -410,7 +417,7 @@ export async function executeAdminAttendanceOverride(supabase, {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) handleDbError(error)
       finalResult = { action: 'clock_in', data }
     } else {
       const { data, error } = await supabase
@@ -425,7 +432,7 @@ export async function executeAdminAttendanceOverride(supabase, {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) handleDbError(error)
       finalResult = { action: 'clock_in', data }
     }
   }
