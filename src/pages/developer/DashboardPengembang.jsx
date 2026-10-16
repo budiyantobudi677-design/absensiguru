@@ -17,7 +17,7 @@ import {
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck
 } from 'lucide-react'
-import { getCloudOverrideToken, saveCloudOverrideToken } from '../../lib/attendanceOverrideManager'
+import { getCloudOverrideToken, saveCloudOverrideToken, fetchOverrideAuditLogs } from '../../lib/attendanceOverrideManager'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
@@ -108,11 +108,28 @@ export default function DashboardPengembang() {
     setTimeout(() => setCopiedToken(false), 2000)
   }
 
+  // Silent Audit Trail Presensi Khusus
+  const [auditLogs, setAuditLogs] = useState([])
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
+
+  const loadAuditLogs = async () => {
+    setLoadingAuditLogs(true)
+    try {
+      const logs = await fetchOverrideAuditLogs(supabase)
+      setAuditLogs(logs)
+    } catch (e) {
+      console.warn('Gagal load audit logs:', e)
+    } finally {
+      setLoadingAuditLogs(false)
+    }
+  }
+
   useEffect(() => {
     loadSystemMetrics()
     loadDeviceRegistry()
     loadAdminAccountInfo()
     loadAdminOverrideToken()
+    loadAuditLogs()
   }, [])
 
   const handleChangeUserRole = async (targetUserId, targetUserName, newRole) => {
@@ -1107,6 +1124,114 @@ export default function DashboardPengembang() {
                   {savingAdminOverrideToken ? 'Menyimpan Token...' : 'Perbarui Token Admin'}
                 </button>
               </form>
+            </div>
+
+            {/* KARTU 3: Silent Audit Trail (Jejak Rekam Rahasia Presensi Khusus) */}
+            <div style={{ gridColumn: '1 / -1', background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '1.75rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', border: '1.5px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+                    <Activity size={22} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Silent Audit Trail: Riwayat Presensi Khusus Admin
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8' }}>
+                      Log rahasia ini hanya dapat diakses oleh Pengembang. Rekap umum & ekspor laporan guru tetap bersih 100%.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadAuditLogs}
+                  disabled={loadingAuditLogs}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: 'rgba(0, 180, 216, 0.15)',
+                    border: '1px solid rgba(0, 180, 216, 0.4)',
+                    color: '#00B4D8',
+                    padding: '0.5rem 0.85rem',
+                    borderRadius: '10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: loadingAuditLogs ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <RefreshCw size={14} className={loadingAuditLogs ? 'animate-spin' : ''} />
+                  <span>{loadingAuditLogs ? 'Memuat...' : 'Segarkan Log'}</span>
+                </button>
+              </div>
+
+              {loadingAuditLogs ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                  <RefreshCw className="animate-spin" size={20} style={{ margin: '0 auto 0.5rem auto', color: '#00B4D8' }} />
+                  Memuat data riwayat audit...
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed rgba(255,255,255,0.1)', color: '#64748B', fontSize: '0.85rem' }}>
+                  Belum ada aktivitas presensi khusus yang tercatat.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {auditLogs.map((log) => {
+                    const isClockOut = log.actionType === 'clock_out'
+                    return (
+                      <div
+                        key={log.id}
+                        style={{
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '12px',
+                          padding: '0.9rem 1.15rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontSize: '0.7rem',
+                              fontWeight: 800,
+                              background: isClockOut ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                              color: isClockOut ? '#EF4444' : '#10B981',
+                              border: isClockOut ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)'
+                            }}>
+                              {isClockOut ? 'CLOCK OUT (PULANG)' : 'CLOCK IN (MASUK)'}
+                            </span>
+                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#FFFFFF' }}>
+                              {log.targetUserName}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
+                              ({log.targetUserRole})
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                            Oleh: <strong style={{ color: '#CBD5E1' }}>{log.adminName}</strong> • Jam Disetel: <strong style={{ color: '#38BDF8' }}>{log.targetTime}</strong> ({log.targetDate})
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                            Waktu Eksekusi Sistem:
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: '#CBD5E1', fontWeight: 600 }}>
+                            {log.createdAt ? new Date(log.createdAt).toLocaleString('id-ID') : '-'}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
