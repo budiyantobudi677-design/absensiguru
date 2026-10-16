@@ -2593,7 +2593,7 @@ export default function DashboardAdmin() {
                }}
                schoolName={namaSekolah}
                schoolLogo={logoSekolah}
-               hariKerja={settings?.hari_kerja || 5}
+               hariKerja={hariKerja || 5}
                onOpenExportModal={handleOpenExportModal}
              />
           </div>
@@ -3444,7 +3444,7 @@ export default function DashboardAdmin() {
               }}
               schoolName={namaSekolah}
               schoolLogo={logoSekolah}
-              hariKerja={settings?.hari_kerja || 5}
+              hariKerja={hariKerja || 5}
             />
           </div>
         )}
