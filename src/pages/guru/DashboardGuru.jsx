@@ -20,6 +20,7 @@ import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
+import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -349,6 +350,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [showCameraModal, setShowCameraModal] = useState(false)
   const [schoolName, setSchoolName] = useState('Presensia')
   const [schoolLogo, setSchoolLogo] = useState('')
+  const [hariKerja, setHariKerja] = useState(5)
   const [historyList, setHistoryList] = useState([])
   const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7))
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -892,7 +894,9 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
 
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-      const hariKerja = settings?.hari_kerja || 5
+      const hariKerjaVal = settings?.hari_kerja || 5
+      setHariKerja(hariKerjaVal)
+      const hariKerja = hariKerjaVal
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
         setSchoolInfoData(prev => ({ ...prev, schoolName: settings.nama_sekolah }))
@@ -3052,114 +3056,27 @@ export default function DashboardGuru({ roleOverride = null }) {
         {activeTab === 'riwayat' && (
           <div className="fade-in">
              <div className="flex justify-between items-center mb-4">
-                <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Riwayat Kehadiran</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={downloadHistoryExcel}
-                    disabled={historyLoading || historyList.length === 0}
-                    className="btn"
-                    title="Unduh Excel (.xlsx)"
-                    style={{
-                      background: '#10B981',
-                      color: 'white',
-                      padding: '0.45rem 0.75rem',
-                      borderRadius: '10px',
-                      fontSize: '0.75rem',
-                      width: 'auto',
-                      opacity: historyList.length === 0 ? 0.6 : 1
-                    }}
-                  >
-                    <FileSpreadsheet size={14} /> Excel
-                  </button>
-                  <button
-                    onClick={downloadHistoryPDF}
-                    disabled={historyLoading || historyList.length === 0}
-                    className="btn"
-                    title="Unduh PDF (.pdf)"
-                    style={{
-                      background: '#EF4444',
-                      color: 'white',
-                      padding: '0.45rem 0.75rem',
-                      borderRadius: '10px',
-                      fontSize: '0.75rem',
-                      width: 'auto',
-                      opacity: historyList.length === 0 ? 0.6 : 1
-                    }}
-                  >
-                    <FileText size={14} /> PDF
-                  </button>
-                </div>
+                <h3 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 800 }}>Riwayat Kehadiran</h3>
              </div>
 
-             {/* Filter Bulan */}
-             <div className="card" style={{ padding: '0.85rem 1rem', border: 'none', background: 'white', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <Calendar size={18} color="var(--primary)" />
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginBottom: '0.2rem' }}>Pilih Bulan</label>
-                  <input
-                    type="month"
-                    value={historyMonth}
-                    onChange={(e) => {
-                      setHistoryMonth(e.target.value)
-                      loadHistory(e.target.value)
-                    }}
-                    className="input"
-                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '8px' }}
-                  />
-                </div>
-             </div>
-
-             {historyLoading ? (
-                <div className="card text-center text-muted" style={{ padding: '2rem' }}>
-                   <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
-                   Memuat data riwayat...
-                </div>
-             ) : historyList.length === 0 ? (
-                <div className="card text-center text-muted" style={{ padding: '2rem' }}>
-                   Tidak ada data kehadiran di bulan {historyMonth}.
-                </div>
-             ) : (
-                <div className="flex flex-col gap-2">
-                   {historyList.map((item) => {
-                     const isHadir = !item.status || item.status === 'hadir'
-                     const statusColor = isHadir ? '#10B981' : item.status === 'izin' ? '#F59E0B' : '#EF4444'
-                     const statusBg = isHadir ? '#ECFDF5' : item.status === 'izin' ? '#FFFBEB' : '#FEF2F2'
-                     
-                     return (
-                       <div key={item.id} className="card flex items-center justify-between" style={{ padding: '0.85rem 1rem', border: 'none', borderRadius: '16px', background: 'white' }}>
-                         <div>
-                           <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#1E293B', marginBottom: '0.2rem' }}>
-                             {new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-                           </div>
-                           <span style={{ fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.5rem', borderRadius: '6px', background: statusBg, color: statusColor, textTransform: 'uppercase' }}>
-                             {item.status || 'HADIR'}
-                           </span>
-                           {item.keterangan && (
-                             <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
-                               Ket: {item.keterangan}
-                             </p>
-                           )}
-                         </div>
-
-                         <div className="flex gap-3 text-center">
-                           <div>
-                             <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>MASUK</div>
-                             <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#10B981' }}>
-                               {item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                             </div>
-                           </div>
-                           <div>
-                             <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>PULANG</div>
-                             <div style={{ fontWeight: '700', fontSize: '0.85rem', color: item.waktu_pulang ? '#F59E0B' : '#CBD5E1' }}>
-                               {item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                     )
-                   })}
-                </div>
-             )}
+             <RekapPresensiPegawai
+               role={isTendikUser ? 'tendik' : 'guru'}
+               mode="personal"
+               currentUser={{ id: user?.id, ...(profile || {}) }}
+               pegawaiList={profile ? [{ id: user?.id, ...profile }] : []}
+               absensiData={historyList}
+               loading={historyLoading}
+               selectedMonth={historyMonth}
+               onMonthChange={(m) => {
+                 setHistoryMonth(m)
+                 loadHistory(m, user)
+               }}
+               schoolName={schoolName}
+               schoolLogo={schoolLogo}
+               hariKerja={hariKerja}
+               onExportExcel={downloadHistoryExcel}
+               onExportPdf={downloadHistoryPDF}
+             />
           </div>
         )}
 

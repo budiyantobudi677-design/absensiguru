@@ -21,6 +21,7 @@ import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
+import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -219,6 +220,7 @@ export default function DashboardKepsek() {
   useEffect(() => {
     if (activeTab === 'laporan') {
        loadAbsensi()
+       if (pegawaiData.length === 0) loadPegawai()
     }
     if (activeTab === 'kbm') {
        loadKbmClasses()
@@ -2511,154 +2513,26 @@ export default function DashboardKepsek() {
                   <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
                     <ArrowLeft size={20} />
                   </button>
-                  <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Laporan</h3>
+                  <h3 style={{ fontSize: '1.125rem', margin: 0, fontWeight: 800 }}>Laporan & Rekapitulasi Presensi</h3>
                 </div>
-                <button onClick={handleOpenExportModal} className="btn" style={{ background: '#10B981', color: 'white', padding: '0.4rem 0.8rem', width: 'auto', fontSize: '0.8rem', borderRadius: '10px' }}>
-                  <Download size={14} /> Ekspor
-                </button>
-            </div>
+             </div>
 
-            <div className="flex flex-col gap-3 mb-4">
-               {/* Laporan Period Filter */}
-               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                 <select className="input" value={laporanTipe} onChange={(e) => setLaporanTipe(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem' }}>
-                    <option value="harian">Harian</option>
-                    <option value="bulanan">Bulanan</option>
-                    <option value="semester">Semester</option>
-                 </select>
-                 
-                 {laporanTipe === 'harian' && (
-                    <input type="date" className="input" value={laporanTanggal} onChange={(e) => setLaporanTanggal(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }} />
-                 )}
-                 
-                 {laporanTipe === 'bulanan' && (
-                    <input type="month" className="input" value={laporanBulan} onChange={(e) => setLaporanBulan(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }} />
-                 )}
-                 
-                 {laporanTipe === 'semester' && (
-                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
-                      <select className="input" value={laporanSemester} onChange={(e) => setLaporanSemester(e.target.value)} style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }}>
-                         <option value="ganjil">Ganjil (Jul - Des)</option>
-                         <option value="genap">Genap (Jan - Jun)</option>
-                      </select>
-                      <input type="number" className="input" value={laporanTahun} onChange={(e) => setLaporanTahun(e.target.value)} placeholder="Tahun" style={{ padding: '0.5rem', fontSize: '0.85rem', width: '80px' }} />
-                    </div>
-                 )}
-               </div>
-               
-               <div style={{ position: 'relative' }}>
-                  <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input type="text" className="input" placeholder="Cari nama pegawai..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }} />
-               </div>
-            </div>
-
-            {loadingData ? <p className="text-center text-muted mt-8">Memuat data...</p> : (
-              <div className="flex flex-col gap-2">
-                {filteredAbsensi.length === 0 && <p className="text-center text-muted">Data tidak ditemukan pada periode ini.</p>}
-                {filteredAbsensi.map(a => {
-                  const tugasLuar = isTugasLuar(a)
-                  const photoUrl = extractPhoto(a)
-                  const note = cleanKeterangan(a.keterangan)
-
-                  return (
-                    <div
-                      key={a.id}
-                      className="card flex items-center justify-between"
-                      style={{
-                        padding: '0.85rem 1rem',
-                        border: tugasLuar ? '1.5px solid #93C5FD' : 'none',
-                        background: tugasLuar ? '#F8FAFC' : 'white',
-                        borderRadius: '16px',
-                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)',
-                        gap: '0.75rem',
-                        flexWrap: 'wrap'
-                      }}
-                    >
-                      <div className="flex gap-3 items-center" style={{ flex: '1 1 240px', minWidth: '220px' }}>
-                        {a.profiles?.foto_profil ? (
-                          <img src={a.profiles.foto_profil} alt="Foto" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <Users size={20} color="var(--text-muted)" />
-                          </div>
-                        )}
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{a.profiles?.full_name || a.profiles?.email?.split('@')[0]}</h4>
-                            {tugasLuar && (
-                              <span
-                                style={{
-                                  background: '#EFF6FF',
-                                  color: '#1D4ED8',
-                                  border: '1px solid #93C5FD',
-                                  fontSize: '0.68rem',
-                                  padding: '0.15rem 0.5rem',
-                                  borderRadius: '6px',
-                                  fontWeight: '700',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}
-                              >
-                                <Briefcase size={11} /> Tugas Luar
-                              </span>
-                            )}
-                          </div>
-                          <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: a.status !== 'hadir' && a.status ? '#DC2626' : (tugasLuar ? '#1E40AF' : 'var(--text-muted)') }}>
-                            {new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                            {a.status && a.status !== 'hadir' ? ` • ${a.status.toUpperCase()}: ${note || '-'}` : (note ? ` • ${note}` : '')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-                        {/* Tombol Lampiran Foto Jika Ada */}
-                        {photoUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedDetailPhoto({ photo: photoUrl, absensi: a })}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
-                              background: '#EFF6FF',
-                              border: '1px solid #BFDBFE',
-                              color: '#1D4ED8',
-                              padding: '0.35rem 0.65rem',
-                              borderRadius: '10px',
-                              fontSize: '0.75rem',
-                              fontWeight: '700',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              boxShadow: '0 1px 3px rgba(37, 99, 235, 0.1)'
-                            }}
-                            title="Klik untuk melihat detail dan foto dokumentasi"
-                          >
-                            <img
-                              src={photoUrl}
-                              alt="Thumbnail"
-                              style={{ width: '22px', height: '22px', borderRadius: '4px', objectFit: 'cover' }}
-                            />
-                            <span>Lihat Foto</span>
-                          </button>
-                        )}
-
-                        <div className="flex gap-4">
-                          <div className="text-center">
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>IN</div>
-                            <div style={{ fontWeight: '700', color: '#059669', fontSize: '0.9rem' }}>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                          </div>
-                          <div className="text-center">
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>OUT</div>
-                            <div style={{ fontWeight: '700', color: a.waktu_pulang ? '#D97706' : '#CBD5E1', fontSize: '0.9rem' }}>{a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+             <RekapPresensiPegawai
+               role="kepsek"
+               mode="all"
+               currentUser={admin}
+               pegawaiList={pegawaiData}
+               absensiData={absensiData}
+               loading={loadingData}
+               selectedMonth={laporanBulan}
+               onMonthChange={(m) => {
+                 setLaporanBulan(m)
+               }}
+               schoolName={namaSekolah}
+               schoolLogo={logoSekolah}
+               hariKerja={settings?.hari_kerja || 5}
+               onOpenExportModal={handleOpenExportModal}
+             />
           </div>
         )}
 
@@ -3480,93 +3354,29 @@ export default function DashboardKepsek() {
         {/* Tab Riwayat Kehadiran Kepala Sekolah */}
         {activeTab === 'riwayat' && (
           <div className="fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', margin: 0, fontWeight: '700' }}>Riwayat Kehadiran Saya</h3>
-                <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Log presensi mandiri Anda sebagai Kepala Sekolah
-                </p>
-              </div>
-              <input
-                type="month"
-                value={historyMonth}
-                onChange={(e) => {
-                  setHistoryMonth(e.target.value)
-                  loadHistory(e.target.value)
-                }}
-                className="input"
-                style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem', borderRadius: '10px', width: 'auto', border: '1px solid var(--border)' }}
-              />
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '1.25rem', margin: 0, fontWeight: '700' }}>Riwayat Kehadiran Saya</h3>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Catatan presensi pribadi Anda sebagai Kepala Sekolah
+              </p>
             </div>
 
-            {historyLoading ? (
-              <div className="card text-center text-muted" style={{ padding: '2.5rem' }}>
-                <Loader2 size={26} className="spin" style={{ margin: '0 auto 0.5rem auto' }} />
-                <span>Memuat data riwayat kehadiran...</span>
-              </div>
-            ) : historyList.length === 0 ? (
-              <div className="card text-center text-muted" style={{ padding: '2.5rem' }}>
-                <Fingerprint size={32} style={{ margin: '0 auto 0.5rem auto', opacity: 0.4 }} />
-                <span>Tidak ada catatan presensi mandiri pada bulan {historyMonth}.</span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {historyList.map((item) => {
-                  const isHadir = !item.status || item.status === 'hadir'
-                  const statusColor = isHadir ? '#10B981' : item.status === 'izin' ? '#F59E0B' : '#EF4444'
-                  const statusBg = isHadir ? '#ECFDF5' : item.status === 'izin' ? '#FFFBEB' : '#FEF2F2'
-                  const photo = extractPhoto(item)
-                  return (
-                    <div
-                      key={item.id}
-                      className="card"
-                      style={{
-                        padding: '1rem 1.15rem',
-                        borderRadius: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.75rem',
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                        <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: statusBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: statusColor, flexShrink: 0 }}>
-                          <Fingerprint size={22} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: '700', fontSize: '0.92rem' }}>
-                            {new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', marginTop: '3px' }}>
-                            <span>Masuk: <strong style={{ color: '#10B981' }}>{item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</strong></span>
-                            <span>•</span>
-                            <span>Pulang: <strong style={{ color: '#F59E0B' }}>{item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 'bold', textTransform: 'capitalize', color: statusColor, background: statusBg, padding: '4px 10px', borderRadius: '8px' }}>
-                          {item.status || 'Hadir'}
-                        </span>
-                        {photo && (
-                          <button
-                            onClick={() => setSelectedDetailPhoto({ photo, absensi: { profiles: admin, tanggal: item.tanggal, waktu_masuk: item.waktu_masuk, waktu_pulang: item.waktu_pulang, keterangan: item.keterangan } })}
-                            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                            title="Lihat Foto Bukti"
-                          >
-                            <ImageIcon size={16} color="var(--primary)" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <RekapPresensiPegawai
+              role="kepsek"
+              mode="personal"
+              currentUser={admin}
+              pegawaiList={admin ? [admin] : []}
+              absensiData={historyList}
+              loading={historyLoading}
+              selectedMonth={historyMonth}
+              onMonthChange={(m) => {
+                setHistoryMonth(m)
+                loadHistory(m)
+              }}
+              schoolName={namaSekolah}
+              schoolLogo={logoSekolah}
+              hariKerja={settings?.hari_kerja || 5}
+            />
           </div>
         )}
         </main>
