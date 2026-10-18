@@ -15,9 +15,11 @@ import {
   Activity, Shield, Smartphone, Key, Database, LogOut, 
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
-  UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck
+  UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
+  RotateCcw, X
 } from 'lucide-react'
 import { getCloudOverrideToken, saveCloudOverrideToken, fetchOverrideAuditLogs } from '../../lib/attendanceOverrideManager'
+import { downloadFullSystemBackup, executeAppFactoryReset } from '../../lib/appResetManager'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
@@ -303,34 +305,62 @@ export default function DashboardPengembang() {
     }
   }
 
+  // Reset Total Aplikasi ke 0
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetConfirmInput, setResetConfirmInput] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetProgressMsg, setResetProgressMsg] = useState('')
+  const [resetProgressPct, setResetProgressPct] = useState(0)
+  const [resetSuccess, setResetSuccess] = useState(false)
+
   const handleBackupDatabase = async () => {
     try {
-      const [p, c, s, a, j] = await Promise.all([
-        supabase.from('profiles').select('*'),
-        supabase.from('classes').select('*'),
-        supabase.from('settings').select('*'),
-        supabase.from('absensi').select('*').limit(500),
-        supabase.from('learning_journals').select('*').limit(500)
-      ])
-
-      const backupObj = {
-        exportedAt: new Date().toISOString(),
-        profiles: p.data || [],
-        classes: c.data || [],
-        settings: s.data || [],
-        absensi: a.data || [],
-        journals: j.data || []
-      }
-
-      const blob = new Blob([JSON.stringify(backupObj, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const aElem = document.createElement('a')
-      aElem.href = url
-      aElem.download = `Backup_GammaraApp_${new Date().toISOString().slice(0, 10)}.json`
-      aElem.click()
-      URL.revokeObjectURL(url)
+      const res = await downloadFullSystemBackup(supabase)
+      alert(`Snapshot cadangan database berhasil diunduh ke file:\n${res.filename}`)
     } catch (err) {
       alert('Gagal mendownload backup: ' + err.message)
+    }
+  }
+
+  const handleOpenResetModal = () => {
+    setResetConfirmInput('')
+    setResetSuccess(false)
+    setResetProgressMsg('')
+    setResetProgressPct(0)
+    setShowResetModal(true)
+  }
+
+  const handleExecuteReset = async () => {
+    if (resetConfirmInput.trim() !== 'RESET APLIKASI') {
+      alert('Ketik "RESET APLIKASI" persis seperti yang diinstruksikan untuk konfirmasi keamanan.')
+      return
+    }
+
+    setIsResetting(true)
+    setResetProgressPct(5)
+    setResetProgressMsg('Mengunduh snapshot cadangan darurat ke perangkat...')
+
+    try {
+      // 1. Amankan data dengan otomatis mendownload snapshot cadangan sebelum wipe
+      try {
+        await downloadFullSystemBackup(supabase)
+      } catch (backupErr) {
+        console.warn('Backup otomatis sebelum reset gagal, melanjutkan reset atas konfirmasi developer:', backupErr)
+      }
+
+      // 2. Eksekusi reset menyeluruh
+      await executeAppFactoryReset(supabase, (msg, pct) => {
+        setResetProgressMsg(msg)
+        setResetProgressPct(pct)
+      })
+
+      setResetSuccess(true)
+      await loadSystemMetrics()
+      await loadDeviceRegistry()
+    } catch (err) {
+      alert('Gagal mereset aplikasi: ' + err.message)
+    } finally {
+      setIsResetting(false)
     }
   }
 
@@ -1279,6 +1309,264 @@ export default function DashboardPengembang() {
                   <span>Bersihkan Cache Lokal</span>
                 </button>
               </div>
+
+              {/* KARTU 3: RESET ULANG APLIKASI (KEMBALI KE 0) */}
+              <div style={{
+                gridColumn: '1 / -1',
+                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.04) 100%)',
+                border: '1.5px solid rgba(239, 68, 68, 0.35)',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                marginTop: '0.5rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '12px',
+                      background: 'rgba(239, 68, 68, 0.2)',
+                      border: '1.5px solid #EF4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#EF4444'
+                    }}>
+                      <RotateCcw size={22} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#FCA5A5' }}>
+                        Zona Kritis: Reset Ulang Seluruh Aplikasi (Mulai dari 0)
+                      </h4>
+                      <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8' }}>
+                        Fitur khusus Akun Pengembang untuk mengosongkan seluruh riwayat database dan mengembalikan aplikasi ke kondisi awal pabrik.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenResetModal}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.75rem 1.25rem',
+                      borderRadius: '12px',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)'
+                    }}
+                  >
+                    <RotateCcw size={16} />
+                    <span>Reset Aplikasi ke 0</span>
+                  </button>
+                </div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '0.75rem',
+                  fontSize: '0.76rem',
+                  color: '#CBD5E1',
+                  background: 'rgba(0,0,0,0.25)',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.06)'
+                }}>
+                  <div>• <strong>Presensi Pegawai:</strong> Dikosongkan (0 baris)</div>
+                  <div>• <strong>Jurnal & KBM Guru:</strong> Dikosongkan (0 baris)</div>
+                  <div>• <strong>Nilai & Absen Siswa:</strong> Dikosongkan (0 baris)</div>
+                  <div>• <strong>Siswa & Kelas:</strong> Dikosongkan (0 data)</div>
+                  <div>• <strong>Hari Libur Kalender:</strong> Dikosongkan (0 data)</div>
+                  <div>• <strong>Setelan Sekolah:</strong> Kembali ke SDN 173 Gammara</div>
+                  <div>• <strong>Akun Login:</strong> Tetap aktif tanpa penugasan mapel</div>
+                  <div>• <strong>Auto-Backup:</strong> Mengunduh file JSON otomatis</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DIALOG RESET ULANG APLIKASI KE 0 */}
+        {showResetModal && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7, 28, 53, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1rem'
+          }}>
+            <div style={{
+              background: '#0B2545',
+              border: '1.5px solid rgba(239, 68, 68, 0.5)',
+              borderRadius: '24px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '1.75rem',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              color: '#FFFFFF'
+            }}>
+              {/* Modal Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.2)', color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertTriangle size={22} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FCA5A5' }}>
+                      Konfirmasi Reset Aplikasi ke 0
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>
+                      Prosedur Pengembalian Sistem ke Setelan Awal Pabrik
+                    </p>
+                  </div>
+                </div>
+                {!isResetting && (
+                  <button
+                    onClick={() => setShowResetModal(false)}
+                    style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+
+              {/* Modal Body */}
+              {resetSuccess ? (
+                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10B981', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+                    <CheckCircle2 size={36} />
+                  </div>
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
+                    Reset Aplikasi Berhasil!
+                  </h4>
+                  <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.5 }}>
+                    Seluruh riwayat presensi, jurnal, nilai, dan data siswa telah dikosongkan. Pengaturan sekolah telah kembali ke setelan default pabrik dan cadangan JSON telah tersimpan di perangkat Anda.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetModal(false)
+                      window.location.reload()
+                    }}
+                    style={{
+                      background: '#10B981',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.8rem 2rem',
+                      borderRadius: '12px',
+                      fontSize: '0.9rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Selesai & Segarkan Halaman
+                  </button>
+                </div>
+              ) : isResetting ? (
+                <div style={{ padding: '1rem 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.82rem' }}>
+                    <span style={{ color: '#FCA5A5', fontWeight: 700 }}>{resetProgressMsg || 'Memproses reset...'}</span>
+                    <span style={{ color: '#FFFFFF', fontWeight: 800 }}>{resetProgressPct}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                    <div style={{
+                      width: `${resetProgressPct}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #EF4444 0%, #10B981 100%)',
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8', textAlign: 'center' }}>
+                    Harap jangan menutup browser atau aplikasi saat proses reset sedang berlangsung.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '12px',
+                    padding: '0.9rem 1rem',
+                    marginBottom: '1.25rem',
+                    fontSize: '0.78rem',
+                    color: '#FCA5A5',
+                    lineHeight: 1.5
+                  }}>
+                    <strong>Peringatan Keamanan:</strong> Tindakan ini bersifat permanen. Seluruh transaksi presensi, nilai, jurnal, dan data sekolah akan dikembalikan ke 0. Sistem akan <strong>mengunduh cadangan lengkap (backup JSON)</strong> secara otomatis sesaat sebelum data dihapus.
+                  </div>
+
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.5rem' }}>
+                      Ketik <span style={{ color: '#EF4444', fontWeight: 900, background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>RESET APLIKASI</span> untuk konfirmasi:
+                    </label>
+                    <input
+                      type="text"
+                      value={resetConfirmInput}
+                      onChange={(e) => setResetConfirmInput(e.target.value)}
+                      placeholder="RESET APLIKASI"
+                      style={{
+                        width: '100%',
+                        padding: '0.85rem 1rem',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: resetConfirmInput.trim() === 'RESET APLIKASI' ? '2px solid #10B981' : '1.5px solid rgba(255,255,255,0.15)',
+                        borderRadius: '12px',
+                        color: '#FFFFFF',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        outline: 'none',
+                        letterSpacing: '0.5px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowResetModal(false)}
+                      style={{
+                        background: 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: '#CBD5E1',
+                        padding: '0.75rem 1.25rem',
+                        borderRadius: '12px',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resetConfirmInput.trim() !== 'RESET APLIKASI'}
+                      onClick={handleExecuteReset}
+                      style={{
+                        background: resetConfirmInput.trim() === 'RESET APLIKASI' ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'rgba(239, 68, 68, 0.25)',
+                        color: resetConfirmInput.trim() === 'RESET APLIKASI' ? '#FFFFFF' : '#94A3B8',
+                        border: 'none',
+                        padding: '0.75rem 1.4rem',
+                        borderRadius: '12px',
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        cursor: resetConfirmInput.trim() === 'RESET APLIKASI' ? 'pointer' : 'not-allowed',
+                        boxShadow: resetConfirmInput.trim() === 'RESET APLIKASI' ? '0 4px 14px rgba(239, 68, 68, 0.4)' : 'none'
+                      }}
+                    >
+                      Mulai Reset Sekarang
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

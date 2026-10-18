@@ -123,16 +123,16 @@ export default function RekapPresensiPegawai({
 
     filteredData.forEach(item => {
       const tl = isTugasLuar(item)
-      if (tl) {
-        totalTugasLuar++
-      } else if (item.status === 'izin') {
+      if (item.status === 'izin') {
         totalIzin++
       } else if (item.status === 'sakit') {
         totalSakit++
       } else if (item.status === 'alpa') {
         totalAlpa++
       } else {
+        // Hadir normal maupun Tugas Luar dihitung HADIR
         totalHadir++
+        if (tl) totalTugasLuar++
       }
     })
 
@@ -220,7 +220,8 @@ export default function RekapPresensiPegawai({
           const att = attendanceMap[p.id]?.[dateStr]
           if (att) {
             if (isTugasLuar(att)) {
-              row.push('TL')
+              row.push('H')
+              countH++
               countTL++
             } else if (att.status === 'sakit') {
               row.push('S')
@@ -240,7 +241,7 @@ export default function RekapPresensiPegawai({
           }
         }
 
-        const totalHadir = countH + countTL
+        const totalHadir = countH
         const pct = kpiStats.hariEfektif > 0 ? `${Math.round((totalHadir / kpiStats.hariEfektif) * 100)}%` : '0%'
         row.push(String(countH), String(countS), String(countI), String(countTL), String(countA), pct)
         tableRows.push(row)
@@ -303,7 +304,8 @@ export default function RekapPresensiPegawai({
           const att = attendanceMap[p.id]?.[dateStr]
           if (att) {
             if (isTugasLuar(att)) {
-              row.push('TL')
+              row.push('H')
+              countH++
               countTL++
             } else if (att.status === 'sakit') {
               row.push('S')
@@ -323,7 +325,7 @@ export default function RekapPresensiPegawai({
           }
         }
 
-        const totalHadir = countH + countTL
+        const totalHadir = countH
         const pct = kpiStats.hariEfektif > 0 ? `${Math.round((totalHadir / kpiStats.hariEfektif) * 100)}%` : '0%'
         row.push(countH, countS, countI, countTL, countA, pct)
         data.push(row)
@@ -756,20 +758,15 @@ export default function RekapPresensiPegawai({
                     const tl = isTugasLuar(item)
                     const photo = extractPhoto(item)
                     const note = cleanKeterangan(item.keterangan)
-                    const isHadir = !item.status || item.status === 'hadir'
+                    const isHadir = !item.status || item.status === 'hadir' || tl
 
-                    // Warna badge status
+                    // Warna badge status: Tugas Luar statusnya tetap HADIR
                     let statusLabel = 'HADIR'
                     let badgeBg = '#ECFDF5'
                     let badgeColor = '#059669'
                     let badgeBorder = '#A7F3D0'
 
-                    if (tl) {
-                      statusLabel = 'TUGAS LUAR'
-                      badgeBg = '#EEF2FF'
-                      badgeColor = '#4F46E5'
-                      badgeBorder = '#C7D2FE'
-                    } else if (item.status === 'izin') {
+                    if (item.status === 'izin') {
                       statusLabel = 'IZIN'
                       badgeBg = '#EFF6FF'
                       badgeColor = '#2563EB'
@@ -784,6 +781,12 @@ export default function RekapPresensiPegawai({
                       badgeBg = '#FEE2E2'
                       badgeColor = '#DC2626'
                       badgeBorder = '#FECACA'
+                    } else {
+                      // Hadir biasa atau Tugas Luar -> Status tetap HADIR
+                      statusLabel = 'HADIR'
+                      badgeBg = '#ECFDF5'
+                      badgeColor = '#059669'
+                      badgeBorder = '#A7F3D0'
                     }
 
                     const inTime = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'
@@ -853,19 +856,19 @@ export default function RekapPresensiPegawai({
                           </span>
                         </td>
 
-                        {/* Kolom Keterangan: Bersih (-) jika Hadir, Teks + Tombol Foto jika Izin/Sakit/TL */}
+                        {/* Kolom Keterangan: Bersih (-) jika Hadir normal tanpa TL & note, Teks + Tombol Foto jika Izin/Sakit/TL */}
                         <td style={{ padding: '0.85rem 1rem' }}>
-                          {isHadir && !tl && !note ? (
+                          {!tl && isHadir && !note ? (
                             <span style={{ color: '#CBD5E1', fontWeight: 600 }}>-</span>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '0.82rem', color: '#334155' }}>
-                                {note || statusLabel}
+                                {tl ? (note ? `Tugas Luar - ${note}` : 'Tugas Luar') : (note || statusLabel)}
                               </span>
                               {photo && (
                                 <button
                                   type="button"
-                                  onClick={() => setActivePhotoModal({ photo, title: `${statusLabel}: ${item.profiles?.full_name || 'Pegawai'}`, note })}
+                                  onClick={() => setActivePhotoModal({ photo, title: `Lampiran: ${item.profiles?.full_name || 'Pegawai'}`, note: tl ? (note || 'Tugas Luar') : note })}
                                   title="Lihat foto surat izin / tugas luar"
                                   style={{
                                     display: 'inline-flex',
@@ -964,12 +967,7 @@ export default function RekapPresensiPegawai({
                 let badgeColor = '#64748B'
 
                 if (att) {
-                  if (tl) {
-                    bgBox = '#EEF2FF'
-                    borderColor = '#C7D2FE'
-                    statusText = 'TUGAS LUAR'
-                    badgeColor = '#4F46E5'
-                  } else if (att.status === 'izin') {
+                  if (att.status === 'izin') {
                     bgBox = '#EFF6FF'
                     borderColor = '#BFDBFE'
                     statusText = 'IZIN'
@@ -987,10 +985,14 @@ export default function RekapPresensiPegawai({
                   } else {
                     bgBox = '#ECFDF5'
                     borderColor = '#A7F3D0'
-                    const inStr = att.waktu_masuk ? new Date(att.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
-                    const outStr = att.waktu_pulang ? new Date(att.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
-                    statusText = inStr ? `${inStr} - ${outStr || '...'}` : 'HADIR'
                     badgeColor = '#059669'
+                    if (tl) {
+                      statusText = 'HADIR (TL)'
+                    } else {
+                      const inStr = att.waktu_masuk ? new Date(att.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
+                      const outStr = att.waktu_pulang ? new Date(att.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
+                      statusText = inStr ? `${inStr} - ${outStr || '...'}` : 'HADIR'
+                    }
                   }
                 } else if (isWeekend) {
                   bgBox = '#F8FAFC'
@@ -1117,9 +1119,10 @@ export default function RekapPresensiPegawai({
 
                         if (att) {
                           if (isTugasLuar(att)) {
-                            symbol = 'TL'
-                            cellBg = '#EEF2FF'
-                            cellColor = '#4F46E5'
+                            symbol = 'H'
+                            cellBg = '#ECFDF5'
+                            cellColor = '#059669'
+                            countH++
                             countTL++
                           } else if (att.status === 'sakit') {
                             symbol = 'S'
@@ -1171,7 +1174,7 @@ export default function RekapPresensiPegawai({
                       <td style={{ padding: '4px', fontWeight: 800, color: '#4F46E5', background: '#EEF2FF' }}>{countTL}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#DC2626', background: '#FEE2E2' }}>{countA}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#0284C7', background: '#F0F9FF' }}>
-                        {kpiStats.hariEfektif > 0 ? `${Math.round(((countH + countTL) / kpiStats.hariEfektif) * 100)}%` : '0%'}
+                        {kpiStats.hariEfektif > 0 ? `${Math.round((countH / kpiStats.hariEfektif) * 100)}%` : '0%'}
                       </td>
                     </tr>
                   )
@@ -1200,7 +1203,7 @@ export default function RekapPresensiPegawai({
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Status Kehadiran:</span>
                   <span style={{ fontWeight: 800, textTransform: 'uppercase', color: '#059669' }}>
-                    {activeDayDetail.tl ? 'TUGAS LUAR' : (activeDayDetail.att.status || 'HADIR')}
+                    {activeDayDetail.tl ? 'HADIR (TUGAS LUAR)' : (activeDayDetail.att.status || 'HADIR')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
