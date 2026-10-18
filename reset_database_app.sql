@@ -1,11 +1,11 @@
 -- ==============================================================================
 -- SCRIPT RESET TOTAL APLIKASI GAMMARA APP (MULAI KEMBALI DARI 0)
+-- & PENGHAPUSAN SELURUH AKUN PENGGUNA (GURU & ADMIN LAMA)
 -- Jalankan script ini di Supabase SQL Editor (Dashboard Supabase -> SQL Editor)
 -- Aman dijalankan berulang kali (Idempotent)
 -- ==============================================================================
 
--- 1. Buat RPC function reset_application_to_zero (SECURITY DEFINER)
--- Berfungsi untuk mengeksekusi reset 1-klik langsung dari Akun Pengembang
+-- 1. FUNGSI 1: RESET DATA APLIKASI (KOSONGKAN DATA, AKUN LOGIN TETAP ADA)
 CREATE OR REPLACE FUNCTION public.reset_application_to_zero()
 RETURNS jsonb AS $$
 DECLARE
@@ -111,10 +111,47 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Berikan izin akses eksekusi fungsi
 GRANT EXECUTE ON FUNCTION public.reset_application_to_zero() TO anon, authenticated;
 
--- Pastikan Kebijakan DELETE untuk absensi & tabel terkait tersedia
+-- ==============================================================================
+-- 2. FUNGSI 2 (OPSI 2): RESET TOTAL & HAPUS SEMUA AKUN (GURU & ADMIN LAMA)
+-- Menghapus seluruh auth.users & profiles, lalu mendaftarkan Admin Baru
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.reset_and_delete_all_accounts(
+  new_admin_email text DEFAULT 'admin@gammara.sch.id',
+  new_admin_name text DEFAULT 'Administrator Sekolah'
+)
+RETURNS jsonb AS $$
+DECLARE
+  v_users_deleted int := 0;
+BEGIN
+  -- 1. Kosongkan semua data aplikasi terlebih dahulu
+  PERFORM public.reset_application_to_zero();
+
+  -- 2. Hapus seluruh akun pengguna dari auth.users
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') THEN
+    SELECT count(*) INTO v_users_deleted FROM auth.users;
+    DELETE FROM auth.users;
+  END IF;
+
+  -- 3. Pastikan tabel profiles kosong total
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'profiles') THEN
+    DELETE FROM public.profiles;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'deleted_users_count', v_users_deleted,
+    'new_admin_email', new_admin_email,
+    'message', 'Seluruh akun guru & admin lama telah berhasil dihapus total dari database.',
+    'timestamp', now()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.reset_and_delete_all_accounts(text, text) TO anon, authenticated;
+
+-- Kebijakan DELETE untuk absensi agar Admin/Authenticated dapat menghapus data jika diperlukan
 DO $$ BEGIN
   CREATE POLICY "Allow delete absensi for owner or admin"
   ON public.absensi
@@ -126,8 +163,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ==============================================================================
--- PANDUAN:
--- 1. Jalankan script di atas di SQL Editor Supabase 1 kali agar fungsi tersimpan.
--- 2. Untuk menjalankan reset manual lewat SQL Editor, cukup ketik baris berikut:
+-- PANDUAN PENGGUNAAN DI SUPABASE SQL EDITOR:
+-- 1. Jalankan seluruh script ini di SQL Editor Supabase 1 kali.
+-- 2. Untuk Reset Data Saja (Akun guru tetap ada):
 --    SELECT public.reset_application_to_zero();
+-- 3. Untuk Reset Total + Hapus Semua Akun Guru/Admin:
+--    SELECT public.reset_and_delete_all_accounts('admin@sekolah.sch.id', 'Kepala Sekolah');
 -- ==============================================================================

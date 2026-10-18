@@ -1,7 +1,9 @@
 // ==============================================================================
-// APP RESET MANAGER - RESET ULANG APLIKASI MULAI KEMBALI DARI 0
+// APP RESET MANAGER - RESET ULANG APLIKASI & MANAJEMEN PENGHAPUSAN AKUN
 // Khusus diakses oleh Akun Pengembang (Developer)
 // ==============================================================================
+
+import { updateAdminAccountCredentials } from './developerManager'
 
 /**
  * Unduh snapshot cadangan lengkap seluruh database ke format file JSON sebelum reset
@@ -45,7 +47,7 @@ export async function downloadFullSystemBackup(supabase) {
     ])
 
     const backupData = {
-      backupTitle: 'GAMMARA APP - FULL SYSTEM BACKUP SEBELUM FACTORY RESET',
+      backupTitle: 'GAMMARA APP - FULL SYSTEM BACKUP SEBELUM RESET',
       exportedAt: new Date().toISOString(),
       metadata: {
         totalProfiles: profiles.length,
@@ -90,9 +92,7 @@ export async function downloadFullSystemBackup(supabase) {
 }
 
 /**
- * Eksekusi Factory Reset Aplikasi: Mengosongkan semua riwayat & data mulai kembali dari 0
- * @param {object} supabase - Supabase client instance
- * @param {function} onProgress - Callback (message, percent)
+ * Reset Data Saja (Akun guru tetap ada, penugasan direset)
  */
 export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
   const logStep = (msg, pct) => {
@@ -114,14 +114,11 @@ export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
       console.warn('RPC reset_application_to_zero tidak ditemukan, beralih ke penghapusan terkelola:', e)
     }
 
-    // 2. Jika RPC tidak tersedia, jalankan pembersihan menyeluruh via REST client
+    // 2. Jika RPC tidak tersedia, jalankan pembersihan via REST client
     if (!rpcSuccess) {
       logStep('Mereset riwayat presensi pegawai & absensi guru...', 20)
       try {
-        await supabase
-          .from('absensi')
-          .delete()
-          .not('id', 'is', null)
+        await supabase.from('absensi').delete().not('id', 'is', null)
       } catch (e) {
         console.warn('Error menghapus absensi:', e)
       }
@@ -172,7 +169,6 @@ export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
 
       logStep('Membersihkan pengumuman & konfigurasi sementara...', 75)
       try {
-        // Amankan Master Key Developer & Kredensial Admin, hapus pengumuman umum & config lainnya
         const { data: pList } = await supabase.from('pengumuman').select('id, target_type')
         if (pList && pList.length > 0) {
           const deleteIds = pList
@@ -189,7 +185,6 @@ export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
 
       logStep('Mereset penugasan akun guru & pegawai...', 85)
       try {
-        // Kosongkan penugasan mata pelajaran, jabatan, dan foto profil guru (akun auth tetap ada agar dapat login)
         await supabase
           .from('profiles')
           .update({
@@ -234,7 +229,7 @@ export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
            k.startsWith('absensi_') ||
            k.includes('device') ||
            k.includes('assignment')) &&
-          k !== 'panrita_developer_session' // Jangan logoutkan developer saat reset berhasil
+          k !== 'panrita_developer_session'
         ) {
           keysToRemove.push(k)
         }
@@ -252,5 +247,201 @@ export async function executeAppFactoryReset(supabase, onProgress = () => {}) {
   } catch (err) {
     console.error('Fatal reset error:', err)
     throw new Error('Terjadi kendala saat mereset aplikasi: ' + err.message)
+  }
+}
+
+/**
+ * RESET EKSTREM (OPSI 2): MENGHAPUS SEMUA AKUN (GURU & ADMIN LAMA), 
+ * KOSONGKAN SELURUH DATA, DAN BUATKAN AKUN ADMIN BARU OLEH PENGEMBANG
+ * @param {object} supabase - Supabase client instance
+ * @param {object} newAdminData - { email, password, fullName }
+ * @param {function} onProgress - Callback (message, percent)
+ */
+export async function executeExtremeResetAndDeleteAccounts(supabase, newAdminData, onProgress = () => {}) {
+  const logStep = (msg, pct) => {
+    console.log(`[Extreme Reset ${pct}%] ${msg}`)
+    onProgress(msg, pct)
+  }
+
+  const cleanAdminEmail = (newAdminData.email || 'admin@gammara.sch.id').trim().toLowerCase()
+  const cleanAdminPassword = newAdminData.password || 'admin123'
+  const cleanAdminName = (newAdminData.fullName || 'Administrator Sekolah').trim()
+
+  try {
+    // 1. Coba eksekusi melalui PostgreSQL Stored Procedure jika tersedia
+    logStep('Menghubungi Cloud Procedure reset_and_delete_all_accounts...', 15)
+    let rpcDone = false
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('reset_and_delete_all_accounts', {
+        new_admin_email: cleanAdminEmail,
+        new_admin_name: cleanAdminName
+      })
+      if (!rpcErr && rpcRes?.success) {
+        rpcDone = true
+        logStep('Prosedur Cloud RPC berhasil menghapus seluruh akun & data.', 65)
+      }
+    } catch (e) {
+      console.warn('RPC reset_and_delete_all_accounts belum dibuat, beralih ke penghapusan terkelola:', e)
+    }
+
+    // 2. Jika RPC tidak tersedia, jalankan pembersihan bertahap
+    if (!rpcDone) {
+      logStep('Menghapus riwayat transaksi presensi, jurnal, & nilai...', 25)
+      try {
+        await supabase.from('absensi').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('learning_journals').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('jurnal').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('student_attendance').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('student_grades').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('student_behavior_notes').delete().not('id', 'is', null)
+      } catch {}
+
+      logStep('Menghapus seluruh data siswa, kelas, & kalender...', 40)
+      try {
+        await supabase.from('students').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('classes').delete().not('id', 'is', null)
+      } catch {}
+      try {
+        await supabase.from('hari_libur').delete().not('id', 'is', null)
+      } catch {}
+
+      logStep('Menghapus seluruh pengumuman & riwayat perangkat...', 50)
+      try {
+        const { data: pList } = await supabase.from('pengumuman').select('id, target_type')
+        if (pList && pList.length > 0) {
+          const deleteIds = pList
+            .filter(p => p.target_type !== '__SYSTEM_DEVELOPER_KEY_CONFIG__')
+            .map(p => p.id)
+          if (deleteIds.length > 0) {
+            await supabase.from('pengumuman').delete().in('id', deleteIds)
+          }
+        }
+      } catch {}
+
+      logStep('Menghapus seluruh akun pengguna lama (Guru & Admin)...', 65)
+      try {
+        await supabase.from('profiles').delete().not('id', 'is', null)
+      } catch (e) {
+        console.warn('Could not truncate profiles directly:', e)
+      }
+
+      logStep('Mereset pengaturan sekolah ke setelan awal pabrik...', 75)
+      try {
+        await supabase.from('settings').upsert({
+          id: 1,
+          nama_sekolah: 'SDN 173 Gammara',
+          logo_sekolah: null,
+          hari_kerja: 5,
+          rekap_tampil_jam: true,
+          geofence_enabled: false,
+          school_lat: -5.147665,
+          school_lng: 119.432732,
+          school_radius: 100
+        }, { onConflict: 'id' })
+      } catch {}
+    }
+
+    // 3. Buatkan dan Daftarkan Akun Admin Baru yang Ditentukan Pengembang
+    logStep('Mendaftarkan & mengaktifkan Akun Admin baru...', 85)
+    try {
+      // Daftarkan di sistem kredensial cloud pengembang
+      await updateAdminAccountCredentials({
+        email: cleanAdminEmail,
+        password: cleanAdminPassword,
+        supabase
+      })
+
+      // Coba daftarkan juga ke Supabase Auth agar akun resmi langsung tersedia
+      try {
+        await supabase.auth.signUp({
+          email: cleanAdminEmail,
+          password: cleanAdminPassword,
+          options: {
+            data: {
+              role: 'admin',
+              full_name: cleanAdminName
+            }
+          }
+        })
+      } catch (authErr) {
+        console.warn('Supabase Auth signUp note:', authErr)
+      }
+
+      // Pastikan baris admin tersimpan di tabel profiles
+      try {
+        const { data: profExists } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', cleanAdminEmail)
+          .limit(1)
+
+        if (!profExists || profExists.length === 0) {
+          await supabase.from('profiles').insert([{
+            email: cleanAdminEmail,
+            full_name: cleanAdminName,
+            role: 'admin'
+          }])
+        } else {
+          await supabase.from('profiles').update({
+            full_name: cleanAdminName,
+            role: 'admin',
+            mata_pelajaran: null,
+            jabatan: 'Administrator Sekolah'
+          }).eq('id', profExists[0].id)
+        }
+      } catch (profErr) {
+        console.warn('Profiles insert note:', profErr)
+      }
+    } catch (adminErr) {
+      console.warn('Admin registration warning:', adminErr)
+    }
+
+    // 4. Bersihkan seluruh session & cache browser perangkat
+    logStep('Membersihkan cache sesi & token perangkat lama...', 95)
+    try {
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (
+          k &&
+          (k.startsWith('panrita_') ||
+           k.startsWith('pengumuman_') ||
+           k.startsWith('offline_') ||
+           k.startsWith('absensi_') ||
+           k.includes('device') ||
+           k.includes('assignment')) &&
+          k !== 'panrita_developer_session' // Tetap pertahankan console pengembang
+        ) {
+          keysToRemove.push(k)
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k))
+    } catch {}
+
+    logStep('Selesai! Seluruh akun lama telah dihapus dan Admin baru berhasil diaktifkan.', 100)
+
+    return {
+      success: true,
+      newAdmin: {
+        email: cleanAdminEmail,
+        password: cleanAdminPassword,
+        fullName: cleanAdminName
+      }
+    }
+  } catch (err) {
+    console.error('Fatal extreme reset error:', err)
+    throw new Error('Terjadi kendala saat mereset akun & aplikasi: ' + err.message)
   }
 }

@@ -16,10 +16,10 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X
+  RotateCcw, X, UserX
 } from 'lucide-react'
 import { getCloudOverrideToken, saveCloudOverrideToken, fetchOverrideAuditLogs } from '../../lib/attendanceOverrideManager'
-import { downloadFullSystemBackup, executeAppFactoryReset } from '../../lib/appResetManager'
+import { downloadFullSystemBackup, executeAppFactoryReset, executeExtremeResetAndDeleteAccounts } from '../../lib/appResetManager'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
@@ -305,13 +305,22 @@ export default function DashboardPengembang() {
     }
   }
 
-  // Reset Total Aplikasi ke 0
+  // Reset Total Aplikasi ke 0 & Hapus Semua Akun (Opsi 2)
   const [showResetModal, setShowResetModal] = useState(false)
+  const [resetMode, setResetMode] = useState('all_accounts') // 'data_only' | 'all_accounts'
   const [resetConfirmInput, setResetConfirmInput] = useState('')
   const [isResetting, setIsResetting] = useState(false)
   const [resetProgressMsg, setResetProgressMsg] = useState('')
   const [resetProgressPct, setResetProgressPct] = useState(0)
   const [resetSuccess, setResetSuccess] = useState(false)
+
+  // Form Akun Admin Baru untuk Opsi 2 (Dibuatkan oleh Pengembang)
+  const [newAdminEmail, setNewAdminEmail] = useState('admin@gammara.sch.id')
+  const [newAdminPassword, setNewAdminPassword] = useState('admin123')
+  const [newAdminFullName, setNewAdminFullName] = useState('Administrator Sekolah')
+  const [showNewAdminPass, setShowNewAdminPass] = useState(false)
+  const [createdAdminResult, setCreatedAdminResult] = useState(null)
+  const [copiedAdminResult, setCopiedAdminResult] = useState(false)
 
   const handleBackupDatabase = async () => {
     try {
@@ -322,18 +331,38 @@ export default function DashboardPengembang() {
     }
   }
 
-  const handleOpenResetModal = () => {
+  const handleOpenResetModal = (mode = 'all_accounts') => {
+    setResetMode(mode)
     setResetConfirmInput('')
     setResetSuccess(false)
     setResetProgressMsg('')
     setResetProgressPct(0)
+    setCreatedAdminResult(null)
+    setCopiedAdminResult(false)
+    if (mode === 'all_accounts') {
+      setNewAdminEmail('admin@gammara.sch.id')
+      setNewAdminPassword('admin123')
+      setNewAdminFullName('Administrator Sekolah')
+    }
     setShowResetModal(true)
   }
 
   const handleExecuteReset = async () => {
-    if (resetConfirmInput.trim() !== 'RESET APLIKASI') {
-      alert('Ketik "RESET APLIKASI" persis seperti yang diinstruksikan untuk konfirmasi keamanan.')
+    const requiredConfirmation = resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI'
+    if (resetConfirmInput.trim() !== requiredConfirmation) {
+      alert(`Ketik "${requiredConfirmation}" persis seperti yang diinstruksikan untuk konfirmasi keamanan.`)
       return
+    }
+
+    if (resetMode === 'all_accounts') {
+      if (!newAdminEmail.trim() || !newAdminEmail.includes('@')) {
+        alert('Email Admin Baru tidak boleh kosong dan harus valid!')
+        return
+      }
+      if (!newAdminPassword || newAdminPassword.length < 6) {
+        alert('Password Admin Baru minimal 6 karakter!')
+        return
+      }
     }
 
     setIsResetting(true)
@@ -348,11 +377,23 @@ export default function DashboardPengembang() {
         console.warn('Backup otomatis sebelum reset gagal, melanjutkan reset atas konfirmasi developer:', backupErr)
       }
 
-      // 2. Eksekusi reset menyeluruh
-      await executeAppFactoryReset(supabase, (msg, pct) => {
-        setResetProgressMsg(msg)
-        setResetProgressPct(pct)
-      })
+      // 2. Eksekusi reset sesuai mode yang dipilih
+      if (resetMode === 'all_accounts') {
+        const res = await executeExtremeResetAndDeleteAccounts(supabase, {
+          email: newAdminEmail.trim().toLowerCase(),
+          password: newAdminPassword,
+          fullName: newAdminFullName.trim()
+        }, (msg, pct) => {
+          setResetProgressMsg(msg)
+          setResetProgressPct(pct)
+        })
+        setCreatedAdminResult(res.newAdmin)
+      } else {
+        await executeAppFactoryReset(supabase, (msg, pct) => {
+          setResetProgressMsg(msg)
+          setResetProgressPct(pct)
+        })
+      }
 
       setResetSuccess(true)
       await loadSystemMetrics()
@@ -362,6 +403,18 @@ export default function DashboardPengembang() {
     } finally {
       setIsResetting(false)
     }
+  }
+
+  const handleCopyNewAdminCredentials = () => {
+    if (!createdAdminResult) return
+    const text = `KREDENSIAL AKUN ADMINISTRATOR GAMMARA APP\n` +
+      `Email   : ${createdAdminResult.email}\n` +
+      `Password: ${createdAdminResult.password}\n` +
+      `Nama    : ${createdAdminResult.fullName}\n` +
+      `Login   : Silakan login sebagai Admin di halaman login aplikasi.`
+    navigator.clipboard.writeText(text)
+    setCopiedAdminResult(true)
+    setTimeout(() => setCopiedAdminResult(false), 2500)
   }
 
   const handleLogout = () => {
@@ -1310,7 +1363,7 @@ export default function DashboardPengembang() {
                 </button>
               </div>
 
-              {/* KARTU 3: RESET ULANG APLIKASI (KEMBALI KE 0) */}
+              {/* KARTU 3: RESET ULANG APLIKASI (OPSI DATA ATAU HAPUS SEMUA AKUN) */}
               <div style={{
                 gridColumn: '1 / -1',
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.04) 100%)',
@@ -1319,7 +1372,7 @@ export default function DashboardPengembang() {
                 padding: '1.5rem',
                 marginTop: '0.5rem'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{
                       width: '44px',
@@ -1336,35 +1389,59 @@ export default function DashboardPengembang() {
                     </div>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#FCA5A5' }}>
-                        Zona Kritis: Reset Ulang Seluruh Aplikasi (Mulai dari 0)
+                        Zona Kritis: Reset Ulang Seluruh Aplikasi & Akun Pengguna
                       </h4>
                       <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8' }}>
-                        Fitur khusus Akun Pengembang untuk mengosongkan seluruh riwayat database dan mengembalikan aplikasi ke kondisi awal pabrik.
+                        Fasilitas khusus Pengembang untuk mengosongkan riwayat database atau menghapus seluruh akun lama dan membuatkan akun Admin baru.
                       </p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleOpenResetModal}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      padding: '0.75rem 1.25rem',
-                      borderRadius: '12px',
-                      fontSize: '0.85rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)'
-                    }}
-                  >
-                    <RotateCcw size={16} />
-                    <span>Reset Aplikasi ke 0</span>
-                  </button>
+                  {/* Tombol Aksi */}
+                  <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenResetModal('all_accounts')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        padding: '0.75rem 1.25rem',
+                        borderRadius: '12px',
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)'
+                      }}
+                    >
+                      <UserX size={16} />
+                      <span>Hapus Semua Akun & Reset Total (Opsi 2)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenResetModal('data_only')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        color: '#E2E8F0',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        padding: '0.75rem 1.1rem',
+                        borderRadius: '12px',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <RotateCcw size={15} />
+                      <span>Reset Data Saja</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{
@@ -1378,21 +1455,19 @@ export default function DashboardPengembang() {
                   borderRadius: '12px',
                   border: '1px solid rgba(255,255,255,0.06)'
                 }}>
-                  <div>• <strong>Presensi Pegawai:</strong> Dikosongkan (0 baris)</div>
-                  <div>• <strong>Jurnal & KBM Guru:</strong> Dikosongkan (0 baris)</div>
-                  <div>• <strong>Nilai & Absen Siswa:</strong> Dikosongkan (0 baris)</div>
-                  <div>• <strong>Siswa & Kelas:</strong> Dikosongkan (0 data)</div>
-                  <div>• <strong>Hari Libur Kalender:</strong> Dikosongkan (0 data)</div>
-                  <div>• <strong>Setelan Sekolah:</strong> Kembali ke SDN 173 Gammara</div>
-                  <div>• <strong>Akun Login:</strong> Tetap aktif tanpa penugasan mapel</div>
-                  <div>• <strong>Auto-Backup:</strong> Mengunduh file JSON otomatis</div>
+                  <div>• <strong>Opsi 2 (Hapus Semua Akun):</strong> Seluruh akun guru/admin lama dihapus, Admin baru dibuatkan pengembang.</div>
+                  <div>• <strong>Presensi & Nilai Siswa:</strong> Dikosongkan (0 baris riwayat)</div>
+                  <div>• <strong>Jurnal & KBM Guru:</strong> Dikosongkan (0 baris riwayat)</div>
+                  <div>• <strong>Siswa, Kelas, Libur:</strong> Dikosongkan (0 data sekolah)</div>
+                  <div>• <strong>Setelan Sekolah:</strong> Kembali ke nilai bawaan SDN 173 Gammara</div>
+                  <div>• <strong>Auto-Backup:</strong> Mengunduh file JSON cadangan otomatis sebelum data dihapus</div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* MODAL DIALOG RESET ULANG APLIKASI KE 0 */}
+        {/* MODAL DIALOG RESET ULANG APLIKASI & PENGHAPUSAN AKUN */}
         {showResetModal && (
           <div style={{
             position: 'fixed',
@@ -1403,13 +1478,14 @@ export default function DashboardPengembang() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 99999,
-            padding: '1rem'
+            padding: '1rem',
+            overflowY: 'auto'
           }}>
             <div style={{
               background: '#0B2545',
               border: '1.5px solid rgba(239, 68, 68, 0.5)',
               borderRadius: '24px',
-              maxWidth: '520px',
+              maxWidth: '560px',
               width: '100%',
               padding: '1.75rem',
               boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
@@ -1419,14 +1495,14 @@ export default function DashboardPengembang() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.2)', color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AlertTriangle size={22} />
+                    {resetMode === 'all_accounts' ? <UserX size={22} /> : <AlertTriangle size={22} />}
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FCA5A5' }}>
-                      Konfirmasi Reset Aplikasi ke 0
+                      {resetMode === 'all_accounts' ? 'Hapus Semua Akun & Reset Total (Opsi 2)' : 'Reset Riwayat Data Aplikasi ke 0'}
                     </h3>
                     <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>
-                      Prosedur Pengembalian Sistem ke Setelan Awal Pabrik
+                      {resetMode === 'all_accounts' ? 'Seluruh akun dihapus, Admin baru dibuatkan oleh Pengembang' : 'Mengosongkan data presensi & jurnal, akun login tetap ada'}
                     </p>
                   </div>
                 </div>
@@ -1442,16 +1518,72 @@ export default function DashboardPengembang() {
 
               {/* Modal Body */}
               {resetSuccess ? (
-                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10B981', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
-                    <CheckCircle2 size={36} />
+                <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10B981', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+                    <CheckCircle2 size={38} />
                   </div>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
-                    Reset Aplikasi Berhasil!
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: 800, color: '#10B981' }}>
+                    {resetMode === 'all_accounts' ? 'Reset Total & Pembuatan Admin Berhasil!' : 'Reset Data Berhasil!'}
                   </h4>
-                  <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.5 }}>
-                    Seluruh riwayat presensi, jurnal, nilai, dan data siswa telah dikosongkan. Pengaturan sekolah telah kembali ke setelan default pabrik dan cadangan JSON telah tersimpan di perangkat Anda.
+                  <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.5 }}>
+                    {resetMode === 'all_accounts'
+                      ? 'Seluruh akun guru & admin lama telah dihapus. Seluruh data transaksi kembali ke 0 dan Akun Admin Baru telah siap digunakan!'
+                      : 'Seluruh riwayat presensi, jurnal, nilai, dan data siswa telah dikosongkan ke 0. File cadangan offline telah tersimpan di perangkat Anda.'}
                   </p>
+
+                  {/* Kartu Kredensial Admin Baru jika Opsi 2 */}
+                  {createdAdminResult && (
+                    <div style={{
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1.5px solid rgba(16, 185, 129, 0.4)',
+                      borderRadius: '16px',
+                      padding: '1.25rem',
+                      marginBottom: '1.5rem',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#34D399', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Kredensial Akun Admin Baru (Aktif)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyNewAdminCredentials}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: copiedAdminResult ? '#10B981' : 'rgba(16, 185, 129, 0.2)',
+                            color: '#FFFFFF',
+                            border: '1px solid rgba(16, 185, 129, 0.5)',
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {copiedAdminResult ? <Check size={13} /> : <Copy size={13} />}
+                          <span>{copiedAdminResult ? 'Tersalin!' : 'Salin Kredensial'}</span>
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94A3B8' }}>Email Admin:</span>
+                          <strong style={{ color: '#FFFFFF' }}>{createdAdminResult.email}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94A3B8' }}>Password:</span>
+                          <strong style={{ color: '#38BDF8', letterSpacing: '1px' }}>{createdAdminResult.password}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94A3B8' }}>Nama Pimpinan:</span>
+                          <strong style={{ color: '#FFFFFF' }}>{createdAdminResult.fullName}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1462,11 +1594,12 @@ export default function DashboardPengembang() {
                       background: '#10B981',
                       color: '#FFFFFF',
                       border: 'none',
-                      padding: '0.8rem 2rem',
+                      padding: '0.8rem 2.2rem',
                       borderRadius: '12px',
                       fontSize: '0.9rem',
                       fontWeight: 800,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
                     }}
                   >
                     Selesai & Segarkan Halaman
@@ -1502,23 +1635,158 @@ export default function DashboardPengembang() {
                     color: '#FCA5A5',
                     lineHeight: 1.5
                   }}>
-                    <strong>Peringatan Keamanan:</strong> Tindakan ini bersifat permanen. Seluruh transaksi presensi, nilai, jurnal, dan data sekolah akan dikembalikan ke 0. Sistem akan <strong>mengunduh cadangan lengkap (backup JSON)</strong> secara otomatis sesaat sebelum data dihapus.
+                    {resetMode === 'all_accounts' ? (
+                      <>
+                        <strong>PERINGATAN TINGKAT TINGGI (OPSI 2):</strong> Seluruh akun guru/pegawai/admin lama akan dihapus permanen dari sistem. Anda wajib menentukan akun Admin baru di bawah ini agar sekolah tetap memiliki akses pimpinan resmi. Backup JSON akan otomatis diunduh terlebih dahulu.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Peringatan:</strong> Seluruh transaksi presensi, nilai, jurnal, dan data sekolah akan dikembalikan ke 0. Akun guru tetap ada tanpa penugasan mapel. Backup JSON otomatis diunduh sebelum penghapusan.
+                      </>
+                    )}
                   </div>
 
+                  {/* Form Pembuatan Akun Admin Baru jika Opsi 2 */}
+                  {resetMode === 'all_accounts' && (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '14px',
+                      padding: '1rem',
+                      marginBottom: '1.25rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#38BDF8' }}>
+                          Tentukan Akun Admin Baru (Dibuat oleh Pengembang):
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewAdminEmail('admin@gammara.sch.id')
+                            setNewAdminPassword('admin123')
+                            setNewAdminFullName('Administrator Sekolah')
+                          }}
+                          style={{
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            color: '#38BDF8',
+                            fontSize: '0.72rem',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 700
+                          }}
+                        >
+                          Gunakan Bawaan
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#94A3B8', marginBottom: '3px', fontWeight: 600 }}>
+                            Email Admin Baru:
+                          </label>
+                          <input
+                            type="email"
+                            value={newAdminEmail}
+                            onChange={(e) => setNewAdminEmail(e.target.value)}
+                            placeholder="admin@sekolah.sch.id"
+                            style={{
+                              width: '100%',
+                              padding: '0.65rem 0.85rem',
+                              background: 'rgba(255,255,255,0.06)',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                              borderRadius: '8px',
+                              color: '#FFFFFF',
+                              fontSize: '0.85rem',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#94A3B8', marginBottom: '3px', fontWeight: 600 }}>
+                            Password Admin Baru (min. 6 karakter):
+                          </label>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type={showNewAdminPass ? 'text' : 'password'}
+                              value={newAdminPassword}
+                              onChange={(e) => setNewAdminPassword(e.target.value)}
+                              placeholder="Minimal 6 karakter"
+                              style={{
+                                width: '100%',
+                                padding: '0.65rem 2.4rem 0.65rem 0.85rem',
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                borderRadius: '8px',
+                                color: '#FFFFFF',
+                                fontSize: '0.85rem',
+                                outline: 'none'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewAdminPass(!showNewAdminPass)}
+                              style={{
+                                position: 'absolute',
+                                right: '10px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: '#94A3B8',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                            >
+                              {showNewAdminPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#94A3B8', marginBottom: '3px', fontWeight: 600 }}>
+                            Nama Lengkap Admin / Pimpinan:
+                          </label>
+                          <input
+                            type="text"
+                            value={newAdminFullName}
+                            onChange={(e) => setNewAdminFullName(e.target.value)}
+                            placeholder="Contoh: Administrator Sekolah"
+                            style={{
+                              width: '100%',
+                              padding: '0.65rem 0.85rem',
+                              background: 'rgba(255,255,255,0.06)',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                              borderRadius: '8px',
+                              color: '#FFFFFF',
+                              fontSize: '0.85rem',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Input Konfirmasi Keamanan */}
                   <div style={{ marginBottom: '1.25rem' }}>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.5rem' }}>
-                      Ketik <span style={{ color: '#EF4444', fontWeight: 900, background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>RESET APLIKASI</span> untuk konfirmasi:
+                      Ketik <span style={{ color: '#EF4444', fontWeight: 900, background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>
+                        {resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI'}
+                      </span> untuk konfirmasi:
                     </label>
                     <input
                       type="text"
                       value={resetConfirmInput}
                       onChange={(e) => setResetConfirmInput(e.target.value)}
-                      placeholder="RESET APLIKASI"
+                      placeholder={resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI'}
                       style={{
                         width: '100%',
                         padding: '0.85rem 1rem',
                         background: 'rgba(255,255,255,0.06)',
-                        border: resetConfirmInput.trim() === 'RESET APLIKASI' ? '2px solid #10B981' : '1.5px solid rgba(255,255,255,0.15)',
+                        border: resetConfirmInput.trim() === (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI') ? '2px solid #10B981' : '1.5px solid rgba(255,255,255,0.15)',
                         borderRadius: '12px',
                         color: '#FFFFFF',
                         fontSize: '0.95rem',
@@ -1548,21 +1816,23 @@ export default function DashboardPengembang() {
                     </button>
                     <button
                       type="button"
-                      disabled={resetConfirmInput.trim() !== 'RESET APLIKASI'}
+                      disabled={resetConfirmInput.trim() !== (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI')}
                       onClick={handleExecuteReset}
                       style={{
-                        background: resetConfirmInput.trim() === 'RESET APLIKASI' ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' : 'rgba(239, 68, 68, 0.25)',
-                        color: resetConfirmInput.trim() === 'RESET APLIKASI' ? '#FFFFFF' : '#94A3B8',
+                        background: resetConfirmInput.trim() === (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI')
+                          ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
+                          : 'rgba(239, 68, 68, 0.25)',
+                        color: resetConfirmInput.trim() === (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI') ? '#FFFFFF' : '#94A3B8',
                         border: 'none',
                         padding: '0.75rem 1.4rem',
                         borderRadius: '12px',
                         fontSize: '0.85rem',
                         fontWeight: 800,
-                        cursor: resetConfirmInput.trim() === 'RESET APLIKASI' ? 'pointer' : 'not-allowed',
-                        boxShadow: resetConfirmInput.trim() === 'RESET APLIKASI' ? '0 4px 14px rgba(239, 68, 68, 0.4)' : 'none'
+                        cursor: resetConfirmInput.trim() === (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI') ? 'pointer' : 'not-allowed',
+                        boxShadow: resetConfirmInput.trim() === (resetMode === 'all_accounts' ? 'HAPUS SEMUA AKUN' : 'RESET APLIKASI') ? '0 4px 14px rgba(239, 68, 68, 0.4)' : 'none'
                       }}
                     >
-                      Mulai Reset Sekarang
+                      {resetMode === 'all_accounts' ? 'Mulai Hapus Akun & Reset' : 'Mulai Reset Sekarang'}
                     </button>
                   </div>
                 </div>
