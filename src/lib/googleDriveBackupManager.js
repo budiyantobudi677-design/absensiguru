@@ -107,11 +107,47 @@ export function loadGsiScript() {
 }
 
 /**
+ * Memvalidasi format Google OAuth Client ID
+ */
+export function validateGoogleClientId(clientId) {
+  if (!clientId || !clientId.trim()) {
+    return { valid: false, error: 'Google OAuth Client ID belum diisi.' }
+  }
+  const val = clientId.trim()
+  if (val.startsWith('AIzaSy')) {
+    return {
+      valid: false,
+      error: 'Nilai yang Anda masukkan adalah Google API Key (seperti kunci Gemini AI), BUKAN OAuth Client ID. OAuth Client ID berakhiran .apps.googleusercontent.com.'
+    }
+  }
+  if (val.includes('@')) {
+    return {
+      valid: false,
+      error: 'Nilai yang Anda masukkan adalah alamat email. Yang dibutuhkan adalah OAuth Client ID resmi dari Google Cloud Console.'
+    }
+  }
+  if (!val.includes('.apps.googleusercontent.com')) {
+    return {
+      valid: false,
+      error: 'Format tidak valid. Google OAuth Client ID resmi selalu berakhiran ".apps.googleusercontent.com" (Contoh: 123456789-xxxx.apps.googleusercontent.com).'
+    }
+  }
+  if (!/^[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(val)) {
+    return {
+      valid: false,
+      error: 'Format tidak sesuai pola Google. Pastikan diawali nomor proyek angka dan berakhiran .apps.googleusercontent.com.'
+    }
+  }
+  return { valid: true }
+}
+
+/**
  * Melakukan otorisasi OAuth 2.0 untuk mendapatkan Access Token Google Drive
  */
 export async function requestGDriveAccessToken(clientId) {
-  if (!clientId || !clientId.trim()) {
-    throw new Error('Google OAuth Client ID belum diisi. Silakan masukkan Client ID Anda.')
+  const check = validateGoogleClientId(clientId)
+  if (!check.valid) {
+    throw new Error(check.error)
   }
 
   await loadGsiScript()
