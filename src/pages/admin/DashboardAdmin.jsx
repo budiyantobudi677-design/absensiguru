@@ -724,15 +724,32 @@ export default function DashboardAdmin() {
     const { data, error } = await supabase
       .from('pengumuman')
       .select('*')
-      .neq('target_type', '__SYSTEM_CONFIG_SUBJECTS__')
       .order('created_at', { ascending: false })
-      .limit(50)
-    if (!error && data) setPengumumanData(data)
+      .limit(100)
+    if (!error && data) {
+      const filtered = data.filter(p => {
+        const tt = (p.target_type || '').trim()
+        if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return false
+        if (typeof p.pesan === 'string') {
+          const t = p.pesan.trim()
+          if (t.startsWith('{') && (t.includes('"deviceId"') || t.includes('"DEV-') || t.includes('"boundAt"') || t.includes('"passwordHash"'))) {
+            return false
+          }
+        }
+        return true
+      })
+      setPengumumanData(filtered)
+    }
     setLoadingData(false)
   }
 
   const hapusPengumuman = async (id) => {
     if (!window.confirm("Hapus pengumuman ini?")) return
+    const target = pengumumanData.find(p => p.id === id)
+    if (target?.target_type?.startsWith('__')) {
+       alert("Item sistem tidak dapat dihapus.")
+       return
+    }
     const { error } = await supabase.from('pengumuman').delete().eq('id', id)
     if (!error) {
        setPengumumanData(pengumumanData.filter(p => p.id !== id))

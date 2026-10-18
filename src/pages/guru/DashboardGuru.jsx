@@ -973,7 +973,18 @@ export default function DashboardGuru({ roleOverride = null }) {
          
       if (pData) {
          const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${currentUser.id}`) || '{"read":[], "deleted":[]}')
-         const activePengumuman = pData.filter(p => !localData.deleted.includes(p.id))
+         const activePengumuman = pData.filter(p => {
+           if (localData.deleted.includes(p.id)) return false
+           const tt = (p.target_type || '').trim()
+           if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return false
+           if (typeof p.pesan === 'string') {
+             const t = p.pesan.trim()
+             if (t.startsWith('{') && (t.includes('"deviceId"') || t.includes('"DEV-') || t.includes('"boundAt"') || t.includes('"passwordHash"'))) {
+               return false
+             }
+           }
+           return true
+         })
          setPengumumanData(activePengumuman)
          
          const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
