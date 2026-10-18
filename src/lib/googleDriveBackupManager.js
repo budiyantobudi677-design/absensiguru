@@ -679,33 +679,50 @@ export async function generatePersuratanFiles() {
 }
 
 /**
+ * Helper aman untuk query tabel supabase tanpa error
+ */
+async function safeFetchTable(supabase, tableName) {
+  try {
+    const { data, error } = await supabase.from(tableName).select('*')
+    if (error) {
+      console.warn(`Peringatan membaca tabel ${tableName}:`, error.message)
+      return []
+    }
+    return data || []
+  } catch (err) {
+    console.warn(`Gagal membaca tabel ${tableName}:`, err)
+    return []
+  }
+}
+
+/**
  * 5. PENGHASIL DOKUMEN: Snapshot Database Darurat (JSON Pemulihan Sistem)
  */
 export async function generateDatabaseSnapshotJson(supabase) {
   const [
-    { data: schoolSettings },
-    { data: settings },
-    { data: profiles },
-    { data: classes },
-    { data: students },
-    { data: studentGrades },
-    { data: studentAtt },
-    { data: employeeAtt },
-    { data: journals },
-    { data: behaviorNotes },
-    { data: holidays }
+    schoolSettings,
+    settings,
+    profiles,
+    classes,
+    students,
+    studentGrades,
+    studentAtt,
+    employeeAtt,
+    journals,
+    behaviorNotes,
+    holidays
   ] = await Promise.all([
-    supabase.from('school_settings').select('*').catch(() => ({ data: null })),
-    supabase.from('settings').select('*').catch(() => ({ data: null })),
-    supabase.from('profiles').select('*').catch(() => ({ data: null })),
-    supabase.from('classes').select('*').catch(() => ({ data: null })),
-    supabase.from('students').select('*').catch(() => ({ data: null })),
-    supabase.from('student_grades').select('*').catch(() => ({ data: null })),
-    supabase.from('student_attendance').select('*').catch(() => ({ data: null })),
-    supabase.from('absensi').select('*').catch(() => ({ data: null })),
-    supabase.from('learning_journals').select('*').catch(() => ({ data: null })),
-    supabase.from('student_behavior_notes').select('*').catch(() => ({ data: null })),
-    supabase.from('hari_libur').select('*').catch(() => ({ data: null }))
+    safeFetchTable(supabase, 'school_settings'),
+    safeFetchTable(supabase, 'settings'),
+    safeFetchTable(supabase, 'profiles'),
+    safeFetchTable(supabase, 'classes'),
+    safeFetchTable(supabase, 'students'),
+    safeFetchTable(supabase, 'student_grades'),
+    safeFetchTable(supabase, 'student_attendance'),
+    safeFetchTable(supabase, 'absensi'),
+    safeFetchTable(supabase, 'learning_journals'),
+    safeFetchTable(supabase, 'student_behavior_notes'),
+    safeFetchTable(supabase, 'hari_libur')
   ])
 
   // Ambil local storage snapshot jika ada
