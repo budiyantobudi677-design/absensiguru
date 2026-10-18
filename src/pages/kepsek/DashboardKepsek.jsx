@@ -22,6 +22,8 @@ import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
+import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
+import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -213,6 +215,7 @@ export default function DashboardKepsek() {
     fetchAdmin()
     fetchSettings()
     fetchOverviewStats()
+    checkAutoBackupSchedule(supabase)
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
@@ -3340,6 +3343,9 @@ export default function DashboardKepsek() {
                  </button>
                </div>
              </div>
+
+             {/* PENCADANGAN GOOGLE DRIVE & DATA SEKOLAH */}
+             <GoogleDriveBackupCard supabase={supabase} darkMode={darkMode} />
 
              <div className="card" style={{ border: 'none', background: 'white' }}>
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Keamanan Akun</h4>

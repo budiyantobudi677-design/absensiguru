@@ -24,6 +24,8 @@ import PersuratanSekolah from '../../components/admin/PersuratanSekolah'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import AdminOverrideModal from '../../components/admin/AdminOverrideModal'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
+import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
+import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -216,6 +218,7 @@ export default function DashboardAdmin() {
     fetchAdmin()
     fetchSettings()
     fetchOverviewStats()
+    checkAutoBackupSchedule(supabase)
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
@@ -3403,6 +3406,9 @@ export default function DashboardAdmin() {
                  </button>
                </div>
              </div>
+
+             {/* PENCADANGAN GOOGLE DRIVE & DATA SEKOLAH */}
+             <GoogleDriveBackupCard supabase={supabase} darkMode={darkMode} />
 
              <div className="card" style={{ border: 'none', background: 'white' }}>
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Keamanan Akun</h4>

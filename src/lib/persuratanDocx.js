@@ -60,7 +60,7 @@ function createDocxKop(kop = DEFAULT_KOP_DATA) {
 }
 
 // 1. Ekspor Surat Tugas ke .docx
-export async function exportSuratTugasDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Tugas') {
+export async function exportSuratTugasDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Tugas', returnBlob = false) {
   const d = {
     nomor: data?.nomor || '421.2/     /UPTD.SPF.SD.I.T.II/ST/     /2026',
     suratDari: data?.suratDari || 'Dinas Pendidikan Kota Makassar',
@@ -224,11 +224,12 @@ export async function exportSuratTugasDocx(data, kop = DEFAULT_KOP_DATA, filenam
   })
 
   const blob = await Packer.toBlob(doc)
+  if (returnBlob) return blob
   saveAs(blob, `${filename}.docx`)
 }
 
 // 2. Ekspor Surat Rekomendasi ke .docx
-export async function exportSuratRekomendasiDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Rekomendasi_Menerima') {
+export async function exportSuratRekomendasiDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Rekomendasi_Menerima', returnBlob = false) {
   const d = {
     nomor: data?.nomor || '421.2/      /UPTD.SPF.SD.I.T.II/SR/      /2026',
     nama: data?.nama || '................................................',
@@ -347,11 +348,12 @@ export async function exportSuratRekomendasiDocx(data, kop = DEFAULT_KOP_DATA, f
   })
 
   const blob = await Packer.toBlob(doc)
+  if (returnBlob) return blob
   saveAs(blob, `${filename}.docx`)
 }
 
 // 3. Ekspor Surat Pindah ke .docx
-export async function exportSuratPindahDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Pindah_Sekolah') {
+export async function exportSuratPindahDocx(data, kop = DEFAULT_KOP_DATA, filename = 'Surat_Pindah_Sekolah', returnBlob = false) {
   const d = {
     nomor: data?.nomor || '421.2/      /UPTD.SPF.SD.I.T.II/SP/     /2026',
     nama: data?.nama || '................................................',
@@ -517,11 +519,12 @@ export async function exportSuratPindahDocx(data, kop = DEFAULT_KOP_DATA, filena
   })
 
   const blob = await Packer.toBlob(doc)
+  if (returnBlob) return blob
   saveAs(blob, `${filename}.docx`)
 }
 
 // 4. Ekspor SPPD ke .docx
-export async function exportSppdDocx(data, kop = DEFAULT_KOP_DATA, filename = 'SPPD_Perjalanan_Dinas') {
+export async function exportSppdDocx(data, kop = DEFAULT_KOP_DATA, filename = 'SPPD_Perjalanan_Dinas', returnBlob = false) {
   const d = {
     nomor: data?.nomor || '421.2/      / UPTD.SPF.SD.I.T.II/SPPD/        /2026',
     pejabatPemberi: data?.pejabatPemberi || `Kepala sekolah ${kop.sekolah || 'UPTD SPF SD Inpres Tangkala II'}`,
@@ -692,6 +695,7 @@ export async function exportSppdDocx(data, kop = DEFAULT_KOP_DATA, filename = 'S
   })
 
   const blob = await Packer.toBlob(doc)
+  if (returnBlob) return blob
   saveAs(blob, `${filename}.docx`)
 }
 
