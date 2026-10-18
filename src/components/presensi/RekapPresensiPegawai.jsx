@@ -199,17 +199,17 @@ export default function RekapPresensiPegawai({
       doc.setLineWidth(0.4)
       doc.line(14, 23, 283, 23)
 
-      // Kolom Tabel: No, Nama, 1..daysInMonth, H, S, I, TL, A, %
+      // Kolom Tabel: No, Nama, 1..daysInMonth, H, S, I, A, %
       const headers = ['No', 'Nama Pegawai']
       for (let i = 1; i <= daysInMonth; i++) {
         headers.push(String(i))
       }
-      headers.push('H', 'S', 'I', 'TL', 'A', '%')
+      headers.push('H', 'S', 'I', 'A', '%')
 
       const tableRows = []
       activePegawaiList.forEach((p, idx) => {
         const row = [String(idx + 1), p.full_name || p.email?.split('@')[0]]
-        let countH = 0, countS = 0, countI = 0, countTL = 0, countA = 0
+        let countH = 0, countS = 0, countI = 0, countA = 0
 
         for (let i = 1; i <= daysInMonth; i++) {
           const dateStr = `${currentMonthStr}-${String(i).padStart(2, '0')}`
@@ -222,7 +222,6 @@ export default function RekapPresensiPegawai({
             if (isTugasLuar(att)) {
               row.push('H')
               countH++
-              countTL++
             } else if (att.status === 'sakit') {
               row.push('S')
               countS++
@@ -243,7 +242,7 @@ export default function RekapPresensiPegawai({
 
         const totalHadir = countH
         const pct = kpiStats.hariEfektif > 0 ? `${Math.round((totalHadir / kpiStats.hariEfektif) * 100)}%` : '0%'
-        row.push(String(countH), String(countS), String(countI), String(countTL), String(countA), pct)
+        row.push(String(countH), String(countS), String(countI), String(countA), pct)
         tableRows.push(row)
       })
 
@@ -288,12 +287,12 @@ export default function RekapPresensiPegawai({
       for (let i = 1; i <= daysInMonth; i++) {
         headers.push(String(i))
       }
-      headers.push('Total H', 'Total S', 'Total I', 'Total TL', 'Total A', '% Kehadiran')
+      headers.push('Total H', 'Total S', 'Total I', 'Total A', '% Kehadiran')
       data.push(headers)
 
       activePegawaiList.forEach((p, idx) => {
         const row = [idx + 1, p.full_name || p.email?.split('@')[0], p.nip || '-', p.jabatan || p.role || 'Guru']
-        let countH = 0, countS = 0, countI = 0, countTL = 0, countA = 0
+        let countH = 0, countS = 0, countI = 0, countA = 0
 
         for (let i = 1; i <= daysInMonth; i++) {
           const dateStr = `${currentMonthStr}-${String(i).padStart(2, '0')}`
@@ -306,7 +305,6 @@ export default function RekapPresensiPegawai({
             if (isTugasLuar(att)) {
               row.push('H')
               countH++
-              countTL++
             } else if (att.status === 'sakit') {
               row.push('S')
               countS++
@@ -327,7 +325,7 @@ export default function RekapPresensiPegawai({
 
         const totalHadir = countH
         const pct = kpiStats.hariEfektif > 0 ? `${Math.round((totalHadir / kpiStats.hariEfektif) * 100)}%` : '0%'
-        row.push(countH, countS, countI, countTL, countA, pct)
+        row.push(countH, countS, countI, countA, pct)
         data.push(row)
       })
 
@@ -1079,14 +1077,13 @@ export default function RekapPresensiPegawai({
                   <th style={{ padding: '0.75rem 0.4rem', background: '#059669', color: '#FFFFFF', minWidth: '32px' }}>H</th>
                   <th style={{ padding: '0.75rem 0.4rem', background: '#D97706', color: '#FFFFFF', minWidth: '32px' }}>S</th>
                   <th style={{ padding: '0.75rem 0.4rem', background: '#2563EB', color: '#FFFFFF', minWidth: '32px' }}>I</th>
-                  <th style={{ padding: '0.75rem 0.4rem', background: '#4F46E5', color: '#FFFFFF', minWidth: '32px' }}>TL</th>
                   <th style={{ padding: '0.75rem 0.4rem', background: '#DC2626', color: '#FFFFFF', minWidth: '32px' }}>A</th>
                   <th style={{ padding: '0.75rem 0.5rem', background: '#0F172A', color: '#38BDF8', minWidth: '45px', fontWeight: 800 }}>%</th>
                 </tr>
               </thead>
               <tbody>
                 {activePegawaiList.map((p, idx) => {
-                  let countH = 0, countS = 0, countI = 0, countTL = 0, countA = 0
+                  let countH = 0, countS = 0, countI = 0, countA = 0
 
                   return (
                     <tr
@@ -1123,7 +1120,6 @@ export default function RekapPresensiPegawai({
                             cellBg = '#ECFDF5'
                             cellColor = '#059669'
                             countH++
-                            countTL++
                           } else if (att.status === 'sakit') {
                             symbol = 'S'
                             cellBg = '#FEF3C7'
@@ -1171,7 +1167,6 @@ export default function RekapPresensiPegawai({
                       <td style={{ padding: '4px', fontWeight: 800, color: '#059669', background: '#ECFDF5' }}>{countH}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#D97706', background: '#FEF3C7' }}>{countS}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#2563EB', background: '#EFF6FF' }}>{countI}</td>
-                      <td style={{ padding: '4px', fontWeight: 800, color: '#4F46E5', background: '#EEF2FF' }}>{countTL}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#DC2626', background: '#FEE2E2' }}>{countA}</td>
                       <td style={{ padding: '4px', fontWeight: 800, color: '#0284C7', background: '#F0F9FF' }}>
                         {kpiStats.hariEfektif > 0 ? `${Math.round((countH / kpiStats.hariEfektif) * 100)}%` : '0%'}
