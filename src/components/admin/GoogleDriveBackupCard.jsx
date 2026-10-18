@@ -36,7 +36,7 @@ import {
 
 export default function GoogleDriveBackupCard({ supabase, darkMode = false }) {
   const [config, setConfig] = useState(getGDriveConfig())
-  const [clientIdInput, setClientIdInput] = useState(config.clientId || '')
+  const [clientIdInput, setClientIdInput] = useState(config.clientId || '185061686206-fmppn34daf8sifnsfhi5u2dksqntah27.apps.googleusercontent.com')
   const [frequency, setFrequency] = useState(config.frequency || '24h')
   const [connecting, setConnecting] = useState(false)
   const [backingUp, setBackingUp] = useState(false)
@@ -48,12 +48,12 @@ export default function GoogleDriveBackupCard({ supabase, darkMode = false }) {
   const [copiedOrigin, setCopiedOrigin] = useState(false)
 
   // Current Origin URL for Google Cloud setup
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://absensiguru-smoky.vercel.app'
 
   useEffect(() => {
     const current = getGDriveConfig()
     setConfig(current)
-    setClientIdInput(current.clientId || '')
+    setClientIdInput(current.clientId || '185061686206-fmppn34daf8sifnsfhi5u2dksqntah27.apps.googleusercontent.com')
     setFrequency(current.frequency || '24h')
   }, [])
 
@@ -807,6 +807,49 @@ export default function GoogleDriveBackupCard({ supabase, darkMode = false }) {
                 </ol>
               </div>
             )}
+
+            {/* PANDUAN MENGATASI ERROR 403: ACCESS_DENIED */}
+            <div
+              style={{
+                marginTop: '1rem',
+                marginBottom: '1rem',
+                padding: '0.85rem 1rem',
+                borderRadius: '12px',
+                background: darkMode ? '#1E1B4B' : '#FEF2F2',
+                border: darkMode ? '1px solid #3730A3' : '1px solid #FECACA',
+                fontSize: '0.78rem',
+                color: darkMode ? '#E0E7FF' : '#991B1B',
+                lineHeight: '1.6'
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}>
+                <AlertCircle size={15} color="#DC2626" />
+                <span>Muncul Pesan "Error 403: access_denied"? Ini Solusi Cepatnya (30 Detik):</span>
+              </div>
+              <p style={{ margin: '0 0 8px 0', fontSize: '0.76rem' }}>
+                Google memblokir akses jika proyek Google Cloud masih berstatus <strong>Testing (Pengujian)</strong> dan akun Google Anda (<code>budhy92@gmail.com</code>) belum didaftarkan sebagai pengguna uji (<em>Test User</em>).
+              </p>
+              <div style={{ background: darkMode ? '#0F172A' : '#FFFFFF', padding: '8px 10px', borderRadius: '8px', border: darkMode ? '1px solid #312E81' : '1px solid #FCA5A5' }}>
+                <strong>Langkah Memperbaikinya di Google Cloud:</strong>
+                <ol style={{ paddingLeft: '1.25rem', margin: '4px 0 0 0' }}>
+                  <li>
+                    Buka <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'underline', fontWeight: 600 }}>Google Cloud Console (Layar Izin OAuth) ↗</a>.
+                  </li>
+                  <li>
+                    Gulir ke bawah ke bagian <strong>Test users (Pengguna uji)</strong> &gt; klik <strong>+ ADD USERS</strong>.
+                  </li>
+                  <li>
+                    Masukkan email Anda: <code>budhy92@gmail.com</code> lalu klik <strong>SAVE (Simpan)</strong>.
+                  </li>
+                  <li>
+                    <em>(Atau)</em> Klik tombol <strong>PUBLISH APP (Publikasikan Aplikasi)</strong> di bagian atas agar semua akun sekolah bisa langsung terhubung.
+                  </li>
+                  <li>
+                    Setelah itu, kembali ke sini dan klik tombol <strong>Hubungkan Akun Google Drive</strong> lagi. Selesai!
+                  </li>
+                </ol>
+              </div>
+            </div>
 
             {/* Tombol Hubungkan Google */}
             <button

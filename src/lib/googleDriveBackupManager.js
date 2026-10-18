@@ -15,7 +15,7 @@ export const GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://
  * Konfigurasi default Google Drive Backup
  */
 export const DEFAULT_GDRIVE_CONFIG = {
-  clientId: '',
+  clientId: '185061686206-fmppn34daf8sifnsfhi5u2dksqntah27.apps.googleusercontent.com',
   accessToken: '',
   tokenExpiresAt: 0,
   userEmail: '',
