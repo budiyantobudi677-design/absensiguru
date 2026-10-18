@@ -3587,7 +3587,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         )}
 
         {/* Footer Copyright & Branding GammaraApp */}
-        <footer className="guru-footer-branding">
+        <footer className="guru-footer-branding no-print">
           <div className="gammara-logo" style={{ fontSize: '1.45rem', marginBottom: '0.25rem' }}>
             <span className="gammara">Gammara</span><span className="app">App</span>
           </div>

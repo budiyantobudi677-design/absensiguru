@@ -6,6 +6,33 @@ import { FileSpreadsheet, Printer, Calendar, BookOpen, Award, CheckCircle, Chevr
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects } from '../../lib/subjectsManager'
 
+// Helper format tanggal Indonesia panjang: contoh 18 Oktober 2026
+export const formatIndonesianLongDate = (d = new Date()) => {
+  try {
+    let dateObj
+    if (typeof d === 'string') {
+      const parts = d.split('-')
+      if (parts.length === 3) {
+        dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      } else {
+        dateObj = new Date(d)
+      }
+    } else {
+      dateObj = d
+    }
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ]
+    const day = dateObj.getDate()
+    const monthName = months[dateObj.getMonth()]
+    const year = dateObj.getFullYear()
+    return `${day} ${monthName} ${year}`
+  } catch {
+    return new Date().toLocaleDateString('id-ID')
+  }
+}
+
 export default function RekapDanLaporan({ selectedClass, classes, user, profile, schoolInfo }) {
   const activeProfile = profile || user || {}
   const uId = activeProfile?.id || user?.id
@@ -34,6 +61,71 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
   const [journalRecords, setJournalRecords] = useState([])
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(false)
+
+  // Pengaturan Titimangsa & Tanda Tangan (Tersimpan Permanen di LocalStorage)
+  const [signatureConfig, setSignatureConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gammara_rekap_signature_config')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {
+      console.warn('Failed to parse signature config:', e)
+    }
+    return {
+      kota: schoolInfo?.city || schoolInfo?.kabupaten || 'Makassar',
+      tanggal: new Date().toLocaleDateString('en-CA'),
+      principalName: schoolInfo?.principalName || '',
+      principalNIP: schoolInfo?.principalNIP || '',
+      teacherName: user?.full_name || schoolInfo?.teacherName || '',
+      teacherNIP: user?.nip || schoolInfo?.teacherNIP || ''
+    }
+  })
+
+  // Sinkronisasi data awal jika profil tersedia dan config lokal masih kosong
+  useEffect(() => {
+    setSignatureConfig(prev => {
+      let changed = false
+      const next = { ...prev }
+      if (!next.kota && (schoolInfo?.city || schoolInfo?.kabupaten)) {
+        next.kota = schoolInfo?.city || schoolInfo?.kabupaten
+        changed = true
+      }
+      if (!next.principalName && schoolInfo?.principalName) {
+        next.principalName = schoolInfo?.principalName
+        changed = true
+      }
+      if (!next.principalNIP && schoolInfo?.principalNIP) {
+        next.principalNIP = schoolInfo?.principalNIP
+        changed = true
+      }
+      if (!next.teacherName && (user?.full_name || schoolInfo?.teacherName)) {
+        next.teacherName = user?.full_name || schoolInfo?.teacherName
+        changed = true
+      }
+      if (!next.teacherNIP && (user?.nip || schoolInfo?.teacherNIP)) {
+        next.teacherNIP = user?.nip || schoolInfo?.teacherNIP
+        changed = true
+      }
+      if (changed) {
+        try {
+          localStorage.setItem('gammara_rekap_signature_config', JSON.stringify(next))
+        } catch (e) {}
+        return next
+      }
+      return prev
+    })
+  }, [user, schoolInfo])
+
+  const updateSignatureField = (field, val) => {
+    setSignatureConfig(prev => {
+      const updated = { ...prev, [field]: val }
+      try {
+        localStorage.setItem('gammara_rekap_signature_config', JSON.stringify(updated))
+      } catch (e) {
+        console.warn('Failed to save signature config:', e)
+      }
+      return updated
+    })
+  }
 
   const activeClassName = classes?.find(c => c.id === activeClassId)?.name || 'Semua Kelas'
 
@@ -216,6 +308,46 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
     return { h, s, i, a, total, pct }
   }
 
+  // ===================== PERHITUNGAN REKAP BULANAN UNTUK KETERANGAN & JUMLAH =====================
+  const attendanceMonthlySummary = useMemo(() => {
+    let totalSakit = 0
+    let totalIzin = 0
+    let totalAlfa = 0
+
+    students.forEach(st => {
+      daysInMonthInfo.forEach(d => {
+        const stt = attendanceLookup[`${st.id}_${d.dateStr}`]
+        if (stt === 'sakit') totalSakit++
+        else if (stt === 'izin') totalIzin++
+        else if (stt === 'alpha') totalAlfa++
+      })
+    })
+
+    const countL = students.filter(s => (s.gender || '').toUpperCase() === 'L').length
+    const countP = students.filter(s => (s.gender || '').toUpperCase() === 'P').length
+    const countTotal = students.length
+
+    const effectiveDays = daysInMonthInfo.filter(d => !d.isHoliday).length
+    const denom = effectiveDays * countTotal
+
+    const pctSakit = denom > 0 ? ((totalSakit / denom) * 100).toFixed(2) : '0.00'
+    const pctIzin = denom > 0 ? ((totalIzin / denom) * 100).toFixed(2) : '0.00'
+    const pctAlfa = denom > 0 ? ((totalAlfa / denom) * 100).toFixed(2) : '0.00'
+
+    return {
+      totalSakit,
+      totalIzin,
+      totalAlfa,
+      effectiveDays,
+      countL,
+      countP,
+      countTotal,
+      pctSakit,
+      pctIzin,
+      pctAlfa
+    }
+  }, [students, daysInMonthInfo, attendanceLookup])
+
   // ===================== LOGIKA NILAI PER MAPEL =====================
   const tpNumbers = useMemo(() => {
     const tpSet = new Set([1, 2, 3, 4, 5, 6])
@@ -358,11 +490,12 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
   const handleExportExcel = () => {
     const schoolInfoObj = {
       schoolName: schoolInfo?.schoolName || 'Presensia SD/SMP',
-      principalName: schoolInfo?.principalName || '',
-      principalNIP: schoolInfo?.principalNIP || '',
-      teacherName: user?.full_name || user?.email || 'Guru',
-      teacherNIP: user?.nip || '',
-      appMode: schoolInfo?.appMode || 'SD'
+      principalName: signatureConfig.principalName || schoolInfo?.principalName || '',
+      principalNIP: signatureConfig.principalNIP || schoolInfo?.principalNIP || '',
+      teacherName: signatureConfig.teacherName || user?.full_name || user?.email || 'Guru',
+      teacherNIP: signatureConfig.teacherNIP || user?.nip || '',
+      appMode: schoolInfo?.appMode || 'SD',
+      placeDateText: `${signatureConfig.kota || 'Makassar'}, ${formatIndonesianLongDate(signatureConfig.tanggal || new Date())}`
     }
 
     if (rekapType === 'kehadiran') {
@@ -409,12 +542,20 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
           return [idx + 1, st.nisn || '-', st.name, ...dailyStatuses, stats.h, stats.s, stats.i, stats.a]
         })
 
+        // Tabel Keterangan Kehadiran & Ket. Jumlah untuk ringkasan Excel
+        const summary = [
+          ['KETERANGAN KEHADIRAN', '', '', 'KET. JUMLAH', ''],
+          ['Sakit (s)', `( ${attendanceMonthlySummary.totalSakit} / (${attendanceMonthlySummary.effectiveDays} × ${attendanceMonthlySummary.countTotal}) ) × 100 = ${attendanceMonthlySummary.pctSakit}%`, '', 'L', attendanceMonthlySummary.countL],
+          ['Izin (i)', `( ${attendanceMonthlySummary.totalIzin} / (${attendanceMonthlySummary.effectiveDays} × ${attendanceMonthlySummary.countTotal}) ) × 100 = ${attendanceMonthlySummary.pctIzin}%`, '', 'P', attendanceMonthlySummary.countP],
+          ['Alfa (a)', `( ${attendanceMonthlySummary.totalAlfa} / (${attendanceMonthlySummary.effectiveDays} × ${attendanceMonthlySummary.countTotal}) ) × 100 = ${attendanceMonthlySummary.pctAlfa}%`, '', 'Jumlah', attendanceMonthlySummary.countTotal]
+        ]
+
         exportAttendanceRecapExcel({
           title: 'REKAPITULASI PRESENSI BULANAN',
           className: activeClassName,
           periodText: month,
           schoolInfo: schoolInfoObj,
-          dataGrid: { headers, rows }
+          dataGrid: { headers, rows, summary }
         })
       }
 
@@ -883,6 +1024,97 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
             </>
           )}
         </div>
+
+        {/* Panel Pengaturan Titimangsa & Penandatangan Dokumen Resmi (Tersimpan Otomatis) */}
+        <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px dashed var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: '800', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              🖋️ Titimangsa & Penandatangan Dokumen
+              <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: '6px', border: '1px solid #A7F3D0' }}>
+                Tersimpan Otomatis
+              </span>
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                Tempat / Kota Dokumen
+              </label>
+              <input
+                type="text"
+                value={signatureConfig.kota}
+                onChange={(e) => updateSignatureField('kota', e.target.value)}
+                placeholder="Contoh: Makassar"
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                Tanggal Dokumen
+              </label>
+              <input
+                type="date"
+                value={signatureConfig.tanggal}
+                onChange={(e) => updateSignatureField('tanggal', e.target.value)}
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                Nama Kepala Sekolah
+              </label>
+              <input
+                type="text"
+                value={signatureConfig.principalName}
+                onChange={(e) => updateSignatureField('principalName', e.target.value)}
+                placeholder="Nama Kepala Sekolah..."
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                NIP Kepala Sekolah
+              </label>
+              <input
+                type="text"
+                value={signatureConfig.principalNIP}
+                onChange={(e) => updateSignatureField('principalNIP', e.target.value)}
+                placeholder="NIP Kepala Sekolah..."
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                {schoolInfo?.appMode === 'SMP' ? 'Nama Guru Mapel' : 'Nama Guru Kelas'}
+              </label>
+              <input
+                type="text"
+                value={signatureConfig.teacherName}
+                onChange={(e) => updateSignatureField('teacherName', e.target.value)}
+                placeholder="Nama Guru Kelas..."
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                {schoolInfo?.appMode === 'SMP' ? 'NIP Guru Mapel' : 'NIP Guru Kelas'}
+              </label>
+              <input
+                type="text"
+                value={signatureConfig.teacherNIP}
+                onChange={(e) => updateSignatureField('teacherNIP', e.target.value)}
+                placeholder="NIP Guru Kelas..."
+                className="input"
+                style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderRadius: '10px', width: '100%' }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Main Table Preview Container */}
@@ -1055,8 +1287,9 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
           /* ========================================================================= */
           /* 1B. REKAP HADIR BULANAN (Matriks 1..31, H, S, I, A, NISN)                  */
           /* ========================================================================= */
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse', textAlign: 'center', minWidth: '850px' }}>
+          <div style={{ width: '100%' }}>
+            <div style={{ overflowX: 'auto', width: '100%' }}>
+              <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse', textAlign: 'center', minWidth: '850px' }}>
               <thead>
                 <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: 'var(--text)', fontWeight: 'bold' }}>
                   <th style={{ padding: '10px 8px', width: '36px', textAlign: 'center' }}>No</th>
@@ -1197,6 +1430,88 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
               </tbody>
             </table>
           </div>
+
+          {/* ===================== TABEL KETERANGAN KEHADIRAN & KET. JUMLAH ===================== */}
+          <div className="attendance-summary-wrapper" style={{ padding: '1.25rem', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-start', borderTop: '1px solid #E2E8F0', background: 'transparent' }}>
+            {/* Tabel 1: Keterangan Kehadiran */}
+            <div style={{ flex: '0 0 auto', minWidth: '340px' }}>
+              <table style={{ borderCollapse: 'collapse', border: '1px solid #1E293B', fontSize: '0.82rem', width: '100%' }}>
+                <thead>
+                  <tr style={{ background: '#F1F5F9' }}>
+                    <th colSpan={2} style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 'bold', color: '#0F172A', border: '1px solid #1E293B' }}>
+                      Keterangan Kehadiran
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A', width: '110px' }}>
+                      Sakit (s)
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A' }}>
+                      ( {attendanceMonthlySummary.totalSakit} / ({attendanceMonthlySummary.effectiveDays} × {attendanceMonthlySummary.countTotal}) ) × 100 = <strong>{attendanceMonthlySummary.pctSakit}%</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A' }}>
+                      Izin (i)
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A' }}>
+                      ( {attendanceMonthlySummary.totalIzin} / ({attendanceMonthlySummary.effectiveDays} × {attendanceMonthlySummary.countTotal}) ) × 100 = <strong>{attendanceMonthlySummary.pctIzin}%</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A' }}>
+                      Alfa (a)
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', color: '#0F172A' }}>
+                      ( {attendanceMonthlySummary.totalAlfa} / ({attendanceMonthlySummary.effectiveDays} × {attendanceMonthlySummary.countTotal}) ) × 100 = <strong>{attendanceMonthlySummary.pctAlfa}%</strong>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Tabel 2: Ket. Jumlah */}
+            <div style={{ flex: '0 0 auto', minWidth: '220px' }}>
+              <table style={{ borderCollapse: 'collapse', border: '1px solid #1E293B', fontSize: '0.82rem', width: '100%' }}>
+                <thead>
+                  <tr style={{ background: '#F1F5F9' }}>
+                    <th colSpan={2} style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 'bold', color: '#0F172A', border: '1px solid #1E293B' }}>
+                      Ket. Jumlah
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', fontWeight: 'bold', color: '#0F172A', width: '90px' }}>
+                      L
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', color: '#0F172A' }}>
+                      {attendanceMonthlySummary.countL}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', fontWeight: 'bold', color: '#0F172A' }}>
+                      P
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', color: '#0F172A' }}>
+                      {attendanceMonthlySummary.countP}
+                    </td>
+                  </tr>
+                  <tr style={{ fontWeight: 'bold' }}>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', color: '#0F172A' }}>
+                      Jumlah
+                    </td>
+                    <td style={{ padding: '7px 12px', border: '1px solid #1E293B', textAlign: 'center', color: '#0F172A' }}>
+                      {attendanceMonthlySummary.countTotal}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         ) : rekapType === 'nilai' && gradesViewMode === 'legger_semua' ? (
           /* ========================================================================= */
           /* 2B. LEGGER NILAI LENGKAP (SEMUA MAPEL + RATA-RATA + RANK KELAS)             */
@@ -1458,21 +1773,52 @@ export default function RekapDanLaporan({ selectedClass, classes, user, profile,
         )}
       </div>
 
-      {/* ===================== AREA TANDA TANGAN (HANYA MUNCUL DI PRINT/PDF) ===================== */}
+      {/* ===================== AREA TANDA TANGAN (PRATINJAU LAYAR & CETAK RESMI) ===================== */}
+      {/* 1. Pratinjau Tanda Tangan di Layar (no-print) */}
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', padding: '1.25rem 2rem', marginTop: '1rem', borderTop: '1px solid var(--border)', background: '#F8FAFC', borderRadius: '16px' }}>
+        <div style={{ textAlign: 'center', width: '240px' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Mengetahui,</div>
+          <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>Kepala Sekolah</div>
+          <div style={{ height: '50px' }}></div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline', color: 'var(--text)', fontSize: '0.88rem' }}>
+            {signatureConfig.principalName || '...........................................'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            NIP. {signatureConfig.principalNIP || '...........................................'}
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', width: '260px' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            {signatureConfig.kota || 'Makassar'}, {formatIndonesianLongDate(signatureConfig.tanggal || new Date())}
+          </div>
+          <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>
+            {schoolInfo?.appMode === 'SMP' ? 'Guru Mata Pelajaran' : 'Guru Kelas'}
+          </div>
+          <div style={{ height: '50px' }}></div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline', color: 'var(--text)', fontSize: '0.88rem' }}>
+            {signatureConfig.teacherName || '...........................................'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            NIP. {signatureConfig.teacherNIP || '...........................................'}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Area Tanda Tangan Cetak Resmi (Hanya Muncul saat Cetak / PDF) */}
       <div className="print-signature-area" style={{ display: 'none' }}>
-        <div style={{ textAlign: 'center', width: '220px' }}>
+        <div style={{ textAlign: 'center', width: '230px' }}>
           <div>Mengetahui,</div>
           <div style={{ fontWeight: 'bold' }}>Kepala Sekolah</div>
           <div style={{ height: '55px' }}></div>
-          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{schoolInfo?.principalName || '...........................................'}</div>
-          <div>NIP. {schoolInfo?.principalNIP || '...........................................'}</div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{signatureConfig.principalName || '...........................................'}</div>
+          <div>NIP. {signatureConfig.principalNIP || '...........................................'}</div>
         </div>
-        <div style={{ textAlign: 'center', width: '220px' }}>
-          <div>Dicetak: {new Date().toLocaleDateString('id-ID')}</div>
+        <div style={{ textAlign: 'center', width: '250px' }}>
+          <div>{signatureConfig.kota || 'Makassar'}, {formatIndonesianLongDate(signatureConfig.tanggal || new Date())}</div>
           <div style={{ fontWeight: 'bold' }}>{schoolInfo?.appMode === 'SMP' ? 'Guru Mata Pelajaran' : 'Guru Kelas'}</div>
           <div style={{ height: '55px' }}></div>
-          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{user?.full_name || schoolInfo?.teacherName || '...........................................'}</div>
-          <div>NIP. {user?.nip || schoolInfo?.teacherNIP || '...........................................'}</div>
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{signatureConfig.teacherName || '...........................................'}</div>
+          <div>NIP. {signatureConfig.teacherNIP || '...........................................'}</div>
         </div>
       </div>
     </div>

@@ -30,7 +30,7 @@ export function exportAttendanceRecapExcel({ title, className, periodText, dataG
   data.push([])
   data.push([])
   data.push([
-    'Mengetahui,', '', '', '', '', '', '', '', 'Dicetak pada: ' + new Date().toLocaleDateString('id-ID')
+    'Mengetahui,', '', '', '', '', '', '', '', schoolInfo?.placeDateText || ('Dicetak pada: ' + new Date().toLocaleDateString('id-ID'))
   ])
   data.push([
     'Kepala Sekolah', '', '', '', '', '', '', '', schoolInfo?.appMode === 'SMP' ? 'Guru Mata Pelajaran' : 'Guru Kelas'
@@ -84,7 +84,7 @@ export function exportGradesRecapExcel(props) {
 
   data.push([])
   data.push([])
-  data.push(['Mengetahui,', '', '', '', '', '', 'Dicetak pada: ' + new Date().toLocaleDateString('id-ID')])
+  data.push(['Mengetahui,', '', '', '', '', '', schoolInfo?.placeDateText || ('Dicetak pada: ' + new Date().toLocaleDateString('id-ID'))])
   data.push(['Kepala Sekolah', '', '', '', '', '', 'Guru Pengampu'])
   data.push([])
   data.push([])

@@ -3778,7 +3778,7 @@ export default function DashboardKepsek() {
         )}
 
         {/* Footer Admin GammaraApp */}
-        <footer style={{ marginTop: '3rem', padding: '1.75rem 1rem 5rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
+        <footer className="no-print" style={{ marginTop: '3rem', padding: '1.75rem 1rem 5rem 1rem', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
           <div className="gammara-logo" style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>
             <span className="gammara">Gammara</span><span className="app">App</span>
           </div>

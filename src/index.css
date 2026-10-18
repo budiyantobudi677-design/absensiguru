@@ -633,7 +633,7 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
     print-color-adjust: exact !important;
   }
 
-  /* Sembunyikan elemen non-cetak */
+  /* Sembunyikan elemen non-cetak dan semua footer aplikasi */
   .no-print,
   .card-gradient,
   header,
@@ -645,6 +645,8 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
   .bottom-nav,
   .login-header-brand,
   .guru-footer-branding,
+  footer,
+  [class*="footer"],
   input[type="month"],
   input[type="date"],
   select,
@@ -694,6 +696,26 @@ h1, h2, h3 { color: var(--dark); font-weight: 600; }
   th, td {
     border: 1px solid #64748B !important;
     padding: 4px 3px !important;
+    color: black !important;
+  }
+
+  .attendance-summary-wrapper {
+    display: flex !important;
+    gap: 20px !important;
+    margin-top: 14px !important;
+    margin-bottom: 14px !important;
+    page-break-inside: avoid !important;
+  }
+
+  .attendance-summary-wrapper table {
+    width: auto !important;
+    font-size: 8.5pt !important;
+  }
+
+  .attendance-summary-wrapper th,
+  .attendance-summary-wrapper td {
+    border: 1px solid #1E293B !important;
+    padding: 4px 10px !important;
     color: black !important;
   }
 
