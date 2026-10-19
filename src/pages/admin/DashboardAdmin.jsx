@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload, MessageSquare } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -26,6 +26,7 @@ import AdminOverrideModal from '../../components/admin/AdminOverrideModal'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
+import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -958,6 +959,9 @@ export default function DashboardAdmin() {
     } else if (path === '/admin/persuratan') {
       setActiveTab('persuratan')
       loadPegawai()
+    } else if (path === '/admin/komunikasi') {
+      setActiveTab('komunikasi')
+      loadPegawai()
     } else if (path === '/admin/pengaturan') {
       setActiveTab('pengaturan')
       fetchSettings()
@@ -976,6 +980,10 @@ export default function DashboardAdmin() {
     }
     if (menu === 'persuratan') {
        navigate('/admin/persuratan')
+       loadPegawai()
+    }
+    if (menu === 'komunikasi') {
+       navigate('/admin/komunikasi')
        loadPegawai()
     }
     if (menu === 'kbm') {
@@ -1423,6 +1431,10 @@ export default function DashboardAdmin() {
               <FileText size={18} />
               <span>Administrasi Persuratan</span>
             </button>
+            <button className={`admin-nav-item ${activeTab === 'komunikasi' ? 'active' : ''}`} onClick={() => { handleMenuClick('komunikasi'); setIsSidebarOpen(false); }}>
+              <MessageSquare size={18} />
+              <span>Pusat Komunikasi</span>
+            </button>
             <button className={`admin-nav-item ${activeTab === 'pengumuman' ? 'active' : ''}`} onClick={() => { handleMenuClick('pengumuman'); setIsSidebarOpen(false); }}>
               <Bell size={18} />
               <span>Pengumuman Sekolah</span>
@@ -1509,6 +1521,25 @@ export default function DashboardAdmin() {
                   }}
                 >
                   {darkMode ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#E0E7FF" />}
+                </button>
+                <button
+                  onClick={() => setActiveTab('komunikasi')}
+                  title="Pusat Komunikasi"
+                  style={{
+                    background: activeTab === 'komunikasi' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                    border: 'none',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer',
+                    position: 'relative'
+                  }}
+                >
+                  <MessageSquare size={17} />
                 </button>
                 <button
                   onClick={() => setActiveTab('pengumuman')}
@@ -1608,6 +1639,7 @@ export default function DashboardAdmin() {
                   {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                   {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
                   {activeTab === 'persuratan' && 'Administrasi & Pembuatan Persuratan Resmi'}
+                  {activeTab === 'komunikasi' && 'Pusat Komunikasi & Ruang Kolaborasi Sekolah'}
                   {activeTab === 'pengumuman' && 'Pusat Pengumuman & Notifikasi'}
                   {activeTab === 'pengaturan' && 'Pengaturan Sekolah & Validasi GPS (Geofencing)'}
                 </h3>
@@ -3440,6 +3472,12 @@ export default function DashboardAdmin() {
         {activeTab === 'persuratan' && (
           <div className="fade-in">
             <PersuratanSekolah pegawaiData={pegawaiData} darkMode={darkMode} />
+          </div>
+        )}
+
+        {activeTab === 'komunikasi' && (
+          <div className="fade-in">
+            <PusatKomunikasi user={admin} supabase={supabase} darkMode={darkMode} />
           </div>
         )}
 

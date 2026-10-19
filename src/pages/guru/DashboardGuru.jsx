@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -21,6 +21,7 @@ import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
+import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -141,6 +142,13 @@ function GuruDesktopWrapper({
               <span>Riwayat Kehadiran</span>
             </button>
             <button
+              className={`guru-desktop-nav-btn ${activeTab === 'komunikasi' ? 'active' : ''}`}
+              onClick={() => handleTabChangeWithUrl('komunikasi')}
+            >
+              <MessageSquare size={18} />
+              <span>Pusat Komunikasi</span>
+            </button>
+            <button
               className={`guru-desktop-nav-btn ${activeTab === 'pengumuman' ? 'active' : ''}`}
               onClick={() => setActiveTab('pengumuman')}
             >
@@ -199,6 +207,7 @@ function GuruDesktopWrapper({
               {activeTab === 'kbm' && 'Manajemen Data & Master KBM'}
               {activeTab === 'modul_ajar' && 'Penyusunan Modul Ajar (RPM AI)'}
               {activeTab === 'riwayat' && 'Riwayat & Rekap Kehadiran'}
+              {activeTab === 'komunikasi' && 'Pusat Komunikasi & Kolaborasi Staf'}
               {activeTab === 'pengumuman' && 'Pengumuman & Notifikasi'}
               {activeTab === 'pengaturan' && 'Profil Pegawai & Penugasan'}
             </h2>
@@ -435,6 +444,8 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
     } else if (subPath === '/riwayat') {
       setActiveTab('riwayat')
+    } else if (subPath === '/komunikasi') {
+      setActiveTab('komunikasi')
     } else if (subPath === '/pengumuman') {
       setActiveTab('pengumuman')
     } else if (subPath === '/profil' || subPath === '/pengaturan') {
@@ -454,6 +465,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     setActiveTab(newTab)
     if (newTab === 'absensi') navigate(base)
     else if (newTab === 'riwayat') navigate(`${base}/riwayat`)
+    else if (newTab === 'komunikasi') navigate(`${base}/komunikasi`)
     else if (newTab === 'pengumuman') navigate(`${base}/pengumuman`)
     else if (newTab === 'pengaturan') navigate(`${base}/profil`)
     else if (newTab === 'modul_ajar') {
@@ -2066,6 +2078,25 @@ export default function DashboardGuru({ roleOverride = null }) {
               {darkMode ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#E0E7FF" />}
             </button>
             <button
+              onClick={() => handleTabChangeWithUrl('komunikasi')}
+              title="Pusat Komunikasi"
+              style={{
+                background: activeTab === 'komunikasi' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                border: 'none',
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                cursor: 'pointer',
+                position: 'relative'
+              }}
+            >
+              <MessageSquare size={17} />
+            </button>
+            <button
               onClick={() => setActiveTab('pengumuman')}
               title="Pengumuman"
               style={{
@@ -3134,6 +3165,12 @@ export default function DashboardGuru({ roleOverride = null }) {
                   ))}
                 </div>
              )}
+          </div>
+        )}
+
+        {activeTab === 'komunikasi' && (
+          <div className="fade-in">
+            <PusatKomunikasi user={profile || user} supabase={supabase} darkMode={darkMode} />
           </div>
         )}
         {/* Tab KBM / Pembelajaran (Input Jurnal, Presensi Murid, Nilai, Rekap, Master KBM) */}
