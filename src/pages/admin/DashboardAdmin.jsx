@@ -27,6 +27,7 @@ import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
+import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -36,6 +37,12 @@ export default function DashboardAdmin() {
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
   const [showOverrideModal, setShowOverrideModal] = useState(false)
+
+  // State Pengaturan Kepala Sekolah (Pengesahan, Persuratan & Modul Ajar)
+  const [kepsekNama, setKepsekNama] = useState('')
+  const [kepsekNip, setKepsekNip] = useState('')
+  const [kepsekJabatan, setKepsekJabatan] = useState('')
+  const [savingKepsek, setSavingKepsek] = useState(false)
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -275,6 +282,17 @@ export default function DashboardAdmin() {
       if (data.school_lat) setSchoolLat(data.school_lat)
       if (data.school_lng) setSchoolLng(data.school_lng)
       if (data.school_radius) setSchoolRadius(data.school_radius)
+    }
+
+    try {
+      const kData = await loadKepsekConfigFromCloud({ supabase })
+      if (kData) {
+        setKepsekNama(kData.kepsekNama || '')
+        setKepsekNip(kData.kepsekNip || '')
+        setKepsekJabatan(kData.kepsekJabatan || '')
+      }
+    } catch (e) {
+      console.warn('Gagal memuat config kepsek:', e)
     }
 
     const dayOfWeek = new Date().getDay()
@@ -856,9 +874,9 @@ export default function DashboardAdmin() {
     const activeClassName = activeClass ? activeClass.name : 'Semua Kelas'
     const schoolInfoObj = {
       schoolName: namaSekolah,
-      principalName: '',
+      principalName: kepsekNama || '',
       teacherName: 'Administrator',
-      principalNIP: '-',
+      principalNIP: kepsekNip || '-',
       teacherNIP: '-'
     }
 
@@ -2847,7 +2865,7 @@ export default function DashboardAdmin() {
                   <RekapDanLaporan
                     classes={kbmClasses}
                     user={admin}
-                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: kepsekNama || '', principalNIP: kepsekNip || '', kkm: 75, appMode: 'SD' }}
                   />
                 )}
 
@@ -3012,6 +3030,81 @@ export default function DashboardAdmin() {
 
                  <button type="submit" disabled={profileSaving} className="btn btn-primary" style={{ padding: '0.85rem 1.5rem', background: '#2563EB', color: 'white', fontWeight: 'bold', borderRadius: '12px', width: '100%' }}>
                    {profileSaving ? 'Menyimpan Profil...' : 'Simpan Profil Pimpinan'}
+                 </button>
+               </form>
+             </div>
+
+             {/* Data Kepala Sekolah & Pejabat Pengesahan Dokumen */}
+             <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
+               <h4 style={{ fontSize: '1rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                 <ShieldCheck size={20} color="#4F46E5" /> Data Kepala Sekolah (Pengesahan, Persuratan & Modul Ajar)
+               </h4>
+               <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1.25rem' }}>
+                 Nama dan NIP Kepala Sekolah ini otomatis diambil dari profil Kepala Sekolah dan dapat diedit oleh Admin di sini. Setelah disimpan, perubahan akan otomatis memperbarui seluruh dokumen Persuratan Sekolah, Rekap Laporan KBM, dan TTD Pengesahan Modul Ajar.
+               </p>
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 setSavingKepsek(true);
+                 try {
+                   await saveKepsekConfigToCloud({
+                     supabase,
+                     kepsekNama,
+                     kepsekNip,
+                     kepsekJabatan
+                   });
+                   alert("Data Kepala Sekolah berhasil disimpan dan diperbarui di seluruh persuratan, rekap, dan modul ajar!");
+                 } catch (err) {
+                   alert("Gagal menyimpan data Kepala Sekolah: " + err.message);
+                 } finally {
+                   setSavingKepsek(false);
+                 }
+               }}>
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label" style={{ fontSize: '0.85rem' }}>Nama Lengkap & Gelar Kepala Sekolah</label>
+                   <input
+                     type="text"
+                     name="kepsek_nama"
+                     className="input"
+                     value={kepsekNama}
+                     onChange={(e) => setKepsekNama(e.target.value)}
+                     placeholder="Contoh: KURNIATI, S.Pd., M.Pd."
+                     required
+                   />
+                 </div>
+
+                 <div className="input-group" style={{ marginBottom: '1rem' }}>
+                   <label className="input-label" style={{ fontSize: '0.85rem' }}>NIP Kepala Sekolah</label>
+                   <input
+                     type="text"
+                     name="kepsek_nip"
+                     className="input"
+                     value={kepsekNip}
+                     onChange={(e) => setKepsekNip(e.target.value)}
+                     placeholder="Contoh: 19811208 200801 2 007"
+                     required
+                   />
+                 </div>
+
+                 <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                   <label className="input-label" style={{ fontSize: '0.85rem' }}>Jabatan Kepala Sekolah</label>
+                   <input
+                     type="text"
+                     name="kepsek_jabatan"
+                     className="input"
+                     value={kepsekJabatan}
+                     onChange={(e) => setKepsekJabatan(e.target.value)}
+                     placeholder="Contoh: Kepala UPTD SPF SD Inpres Tangkala II"
+                     required
+                   />
+                 </div>
+
+                 <button
+                   type="submit"
+                   disabled={savingKepsek}
+                   className="btn btn-primary"
+                   style={{ padding: '0.85rem 1.5rem', background: '#4F46E5', color: 'white', fontWeight: 'bold', borderRadius: '12px', width: '100%' }}
+                 >
+                   {savingKepsek ? 'Menyimpan Data Kepala Sekolah...' : 'Simpan Data Kepala Sekolah'}
                  </button>
                </form>
              </div>

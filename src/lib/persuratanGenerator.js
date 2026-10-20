@@ -49,6 +49,183 @@ export function getActiveKopData() {
 }
 
 /**
+ * Menyimpan KOP & Pengaturan Pimpinan Aktif ke localStorage
+ */
+export function saveActiveKopData(newData) {
+  try {
+    const current = getActiveKopData()
+    const merged = { ...current, ...newData }
+    localStorage.setItem('panrita_kop_surat', JSON.stringify(merged))
+    return merged
+  } catch (e) {
+    return DEFAULT_KOP_DATA
+  }
+}
+
+export const SYSTEM_KEPSEK_CONFIG_TARGET = '__SYSTEM_CONFIG_KEPSEK__'
+
+/**
+ * Sinkronisasi data Kepala Sekolah dari Cloud Supabase & LocalStorage
+ */
+export async function loadKepsekConfigFromCloud({ supabase }) {
+  let kepsekNama = ''
+  let kepsekNip = ''
+  let kepsekJabatan = ''
+
+  // 1. Coba baca dari localStorage panrita_kop_surat
+  try {
+    const localKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
+    if (localKop.kepsekNama) kepsekNama = localKop.kepsekNama
+    if (localKop.kepsekNip) kepsekNip = localKop.kepsekNip
+    if (localKop.kepsekJabatan) kepsekJabatan = localKop.kepsekJabatan
+  } catch (e) {}
+
+  if (!supabase) {
+    return {
+      kepsekNama: kepsekNama || DEFAULT_KOP_DATA.kepsekNama,
+      kepsekNip: kepsekNip || DEFAULT_KOP_DATA.kepsekNip,
+      kepsekJabatan: kepsekJabatan || DEFAULT_KOP_DATA.kepsekJabatan
+    }
+  }
+
+  // 2. Coba baca konfigurasi cloud dari tabel pengumuman (__SYSTEM_CONFIG_KEPSEK__)
+  try {
+    const { data: cloudConfig } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', SYSTEM_KEPSEK_CONFIG_TARGET)
+      .limit(1)
+      .maybeSingle()
+
+    if (cloudConfig?.pesan) {
+      try {
+        const parsed = JSON.parse(cloudConfig.pesan)
+        if (parsed.kepsekNama) kepsekNama = parsed.kepsekNama
+        if (parsed.kepsekNip) kepsekNip = parsed.kepsekNip
+        if (parsed.kepsekJabatan) kepsekJabatan = parsed.kepsekJabatan
+      } catch (err) {}
+    }
+  } catch (e) {}
+
+  // 3. Fallback jika masih kosong: baca dari profiles role = 'kepsek'
+  if (!kepsekNama || !kepsekNip) {
+    try {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('full_name, nip, jabatan')
+        .eq('role', 'kepsek')
+        .limit(1)
+        .maybeSingle()
+
+      if (prof) {
+        if (!kepsekNama && prof.full_name) kepsekNama = prof.full_name
+        if (!kepsekNip && prof.nip) kepsekNip = prof.nip
+        if (!kepsekJabatan && prof.jabatan) kepsekJabatan = prof.jabatan
+      }
+    } catch (e) {}
+  }
+
+  // Fallback ke default jika sama sekali belum ada data
+  kepsekNama = kepsekNama || DEFAULT_KOP_DATA.kepsekNama
+  kepsekNip = kepsekNip || DEFAULT_KOP_DATA.kepsekNip
+  kepsekJabatan = kepsekJabatan || DEFAULT_KOP_DATA.kepsekJabatan
+
+  // Sinkronkan ke localStorage agar dokumen offline & persuratan tetap sinkron
+  try {
+    const active = getActiveKopData()
+    localStorage.setItem('panrita_kop_surat', JSON.stringify({
+      ...active,
+      kepsekNama,
+      kepsekNip,
+      kepsekJabatan
+    }))
+  } catch (e) {}
+
+  return { kepsekNama, kepsekNip, kepsekJabatan }
+}
+
+/**
+ * Menyimpan data Kepala Sekolah dari Admin ke Cloud Supabase & LocalStorage
+ */
+export async function saveKepsekConfigToCloud({ supabase, kepsekNama, kepsekNip, kepsekJabatan }) {
+  const kNama = (kepsekNama || '').trim()
+  const kNip = (kepsekNip || '').trim()
+  const kJabatan = (kepsekJabatan || '').trim() || DEFAULT_KOP_DATA.kepsekJabatan
+
+  // 1. Simpan ke LocalStorage panrita_kop_surat
+  try {
+    const active = getActiveKopData()
+    localStorage.setItem('panrita_kop_surat', JSON.stringify({
+      ...active,
+      kepsekNama: kNama,
+      kepsekNip: kNip,
+      kepsekJabatan: kJabatan
+    }))
+  } catch (e) {}
+
+  if (!supabase) return true
+
+  // 2. Simpan ke Cloud Config tabel pengumuman (__SYSTEM_CONFIG_KEPSEK__)
+  try {
+    const configPayload = JSON.stringify({
+      kepsekNama: kNama,
+      kepsekNip: kNip,
+      kepsekJabatan: kJabatan,
+      updated_at: new Date().toISOString()
+    })
+
+    const { data: existing } = await supabase
+      .from('pengumuman')
+      .select('id')
+      .eq('target_type', SYSTEM_KEPSEK_CONFIG_TARGET)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing?.id) {
+      await supabase
+        .from('pengumuman')
+        .update({ pesan: configPayload })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('pengumuman')
+        .insert([{
+          target_type: SYSTEM_KEPSEK_CONFIG_TARGET,
+          pesan: configPayload,
+          target_users: ''
+        }])
+    }
+  } catch (e) {
+    console.warn('Gagal simpan cloud config kepsek ke pengumuman:', e)
+  }
+
+  // 3. Jika ada akun Kepala Sekolah di tabel profiles (role = 'kepsek'), sinkronkan juga nama & NIP-nya
+  try {
+    const { data: kepsekAccounts } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'kepsek')
+
+    if (kepsekAccounts && kepsekAccounts.length > 0) {
+      for (const acc of kepsekAccounts) {
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: kNama,
+            nip: kNip,
+            jabatan: kJabatan
+          })
+          .eq('id', acc.id)
+      }
+    }
+  } catch (e) {
+    console.warn('Gagal sinkron akun profiles kepsek:', e)
+  }
+
+  return true
+}
+
+/**
  * Template Header Kop Surat HTML untuk Preview, Print, dan Word HTML
  */
 export function renderKopSuratHtml(kop = DEFAULT_KOP_DATA) {

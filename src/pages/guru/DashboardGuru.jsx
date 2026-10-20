@@ -22,6 +22,7 @@ import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
+import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -913,27 +914,18 @@ export default function DashboardGuru({ roleOverride = null }) {
         setSchoolName(settings.nama_sekolah)
       }
 
-      // Ambil data Kepala Sekolah dan NIP dari Pengaturan Aplikasi (panrita_kop_surat & profiles role kepsek)
+      // Ambil data Kepala Sekolah dan NIP dari Pengaturan Aplikasi (cloud config, panrita_kop_surat & profiles role kepsek)
       let pName = ''
       let pNip = ''
       try {
-        const savedKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
-        if (savedKop.kepsekNama) pName = savedKop.kepsekNama
-        if (savedKop.kepsekNip) pNip = savedKop.kepsekNip
-      } catch (e) {}
-
-      try {
-        const { data: kepsekProf } = await supabase
-          .from('profiles')
-          .select('full_name, nip')
-          .eq('role', 'kepsek')
-          .limit(1)
-          .maybeSingle()
-        if (kepsekProf) {
-          if (!pName && kepsekProf.full_name) pName = kepsekProf.full_name
-          if (!pNip && kepsekProf.nip) pNip = kepsekProf.nip
+        const kData = await loadKepsekConfigFromCloud({ supabase })
+        if (kData) {
+          pName = kData.kepsekNama || ''
+          pNip = kData.kepsekNip || ''
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Gagal load kepsek config:', e)
+      }
 
       setSchoolInfoData(prev => ({
         ...prev,

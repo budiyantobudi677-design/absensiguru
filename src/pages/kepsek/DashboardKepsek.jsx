@@ -25,6 +25,7 @@ import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
+import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -33,6 +34,10 @@ export default function DashboardKepsek() {
   const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview') 
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
+
+  // Data Kepala Sekolah
+  const [kepsekNama, setKepsekNama] = useState('')
+  const [kepsekNip, setKepsekNip] = useState('')
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -272,6 +277,16 @@ export default function DashboardKepsek() {
       if (data.school_lat) setSchoolLat(data.school_lat)
       if (data.school_lng) setSchoolLng(data.school_lng)
       if (data.school_radius) setSchoolRadius(data.school_radius)
+    }
+
+    try {
+      const kData = await loadKepsekConfigFromCloud({ supabase })
+      if (kData) {
+        setKepsekNama(kData.kepsekNama || '')
+        setKepsekNip(kData.kepsekNip || '')
+      }
+    } catch (e) {
+      console.warn('Gagal memuat config kepsek:', e)
     }
 
     const dayOfWeek = new Date().getDay()
@@ -842,9 +857,9 @@ export default function DashboardKepsek() {
     const activeClassName = activeClass ? activeClass.name : 'Semua Kelas'
     const schoolInfoObj = {
       schoolName: namaSekolah,
-      principalName: '',
+      principalName: kepsekNama || '',
       teacherName: 'Administrator',
-      principalNIP: '-',
+      principalNIP: kepsekNip || '-',
       teacherNIP: '-'
     }
 
@@ -2784,7 +2799,7 @@ export default function DashboardKepsek() {
                   <RekapDanLaporan
                     classes={kbmClasses}
                     user={admin}
-                    schoolInfo={{ schoolName: namaSekolah, principalName: '', principalNIP: '', kkm: 75, appMode: 'SD' }}
+                    schoolInfo={{ schoolName: namaSekolah, principalName: kepsekNama || '', principalNIP: kepsekNip || '', kkm: 75, appMode: 'SD' }}
                   />
                 )}
 

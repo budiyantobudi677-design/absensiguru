@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { generateModulAjarAI, getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey } from '../../lib/gemini'
 import { exportModulAjarToWord, printModulAjar } from '../../lib/modulAjarExport'
+import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 
 export default function PembuatanModulAjar({ user, profile, schoolName, schoolInfo, supabase, onBack }) {
   const [apiKey, setApiKey] = useState('')
@@ -86,30 +87,17 @@ export default function PembuatanModulAjar({ user, profile, schoolName, schoolIn
     if (profile?.nip) setNipGuru(profile.nip)
     if (schoolName) setSekolah(schoolName)
 
-    // Sinkronisasi data Kepala Sekolah & NIP dari Pengaturan Aplikasi (panrita_kop_surat & profiles role kepsek)
+    // Sinkronisasi data Kepala Sekolah & NIP dari Pengaturan Aplikasi (cloud config, panrita_kop_surat & profiles role kepsek)
     const syncKepsekData = async () => {
       let kNama = schoolInfo?.principalName || ''
       let kNip = schoolInfo?.principalNIP || ''
       try {
-        const savedKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
-        if (!kNama && savedKop.kepsekNama) kNama = savedKop.kepsekNama
-        if (!kNip && savedKop.kepsekNip) kNip = savedKop.kepsekNip
+        const kData = await loadKepsekConfigFromCloud({ supabase })
+        if (kData) {
+          if (!kNama && kData.kepsekNama) kNama = kData.kepsekNama
+          if (!kNip && kData.kepsekNip) kNip = kData.kepsekNip
+        }
       } catch (e) {}
-
-      if (supabase && (!kNama || !kNip)) {
-        try {
-          const { data: kProf } = await supabase
-            .from('profiles')
-            .select('full_name, nip')
-            .eq('role', 'kepsek')
-            .limit(1)
-            .maybeSingle()
-          if (kProf) {
-            if (!kNama && kProf.full_name) kNama = kProf.full_name
-            if (!kNip && kProf.nip) kNip = kProf.nip
-          }
-        } catch (e) {}
-      }
 
       if (kNama) setNamaKepsek(kNama)
       if (kNip) setNipKepsek(kNip)
