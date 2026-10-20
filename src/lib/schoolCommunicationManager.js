@@ -180,11 +180,45 @@ export function formatPhoneNumberToWA(phone) {
 export function openWhatsAppDirect(phone, text) {
   const cleanPhone = formatPhoneNumberToWA(phone)
   const encoded = encodeURIComponent(text || '')
-  const url = cleanPhone
-    ? `https://wa.me/${cleanPhone}?text=${encoded}`
-    : `https://wa.me/?text=${encoded}`
 
-  window.open(url, '_blank', 'noopener,noreferrer')
+  // 1. Jika ada nomor telepon tujuan (chat personal langsung)
+  if (cleanPhone) {
+    const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+    try {
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      if (isMobile) {
+        window.location.href = waUrl
+        return
+      }
+    } catch (e) {}
+    window.open(waUrl, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  // 2. Jika tanpa nomor telepon (berbagi ke grup WhatsApp atau paguyuban)
+  // Gunakan Web Share API jika didukung oleh mobile browser atau Capacitor WebView
+  if (navigator.share) {
+    navigator.share({
+      title: 'Pengumuman Resmi Sekolah',
+      text: text
+    }).catch((err) => {
+      if (err?.name === 'AbortError') return
+      const waUrl = `https://api.whatsapp.com/send?text=${encoded}`
+      window.open(waUrl, '_blank', 'noopener,noreferrer')
+    })
+    return
+  }
+
+  // Fallback standar ke WhatsApp web/aplikasi
+  const waUrl = `https://api.whatsapp.com/send?text=${encoded}`
+  try {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    if (isMobile) {
+      window.location.href = waUrl
+      return
+    }
+  } catch (e) {}
+  window.open(waUrl, '_blank', 'noopener,noreferrer')
 }
 
 export function createAttendanceReminderTemplate({ schoolName = 'Sekolah', dateStr }) {
@@ -216,15 +250,17 @@ Mohon konfirmasi jika ada surat keterangan atau keperluan yang perlu disampaikan
 - Wali Kelas / Pihak Sekolah`
 }
 
-export function createAnnouncementWhatsAppTemplate({ schoolName = 'Sekolah', title, content, dateStr }) {
+export function createAnnouncementWhatsAppTemplate({ schoolName = 'Sekolah', title = '', content = '', dateStr }) {
   const d = dateStr || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const sName = (schoolName || 'Sekolah').toUpperCase()
+  const cleanTitle = title && title.trim() ? `*${title.trim().toUpperCase()}*\n\n` : ''
+  const cleanContent = (content && content.trim()) || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.'
+
   return `📢 *PENGUMUMAN RESMI SEKOLAH*
-*${schoolName.toUpperCase()}*
+*${sName}*
 Tanggal: ${d}
 
-*${title.toUpperCase()}*
-
-${content}
+${cleanTitle}${cleanContent}
 
 Demikian pengumuman ini disampaikan untuk menjadi perhatian bersama. Terima kasih. 🙏`
 }

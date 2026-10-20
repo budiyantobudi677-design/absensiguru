@@ -107,12 +107,18 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
         const [{ data: profs }, { data: sSet }, { data: pList }] = await Promise.all([
           supabase.from('profiles').select('*').order('full_name'),
           supabase.from('school_settings').select('school_name').limit(1),
-          supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(5)
+          supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(20)
         ])
 
         if (profs) setTeachersList(profs)
         if (sSet && sSet[0]?.school_name) setSchoolName(sSet[0].school_name)
-        if (pList) setPengumumanList(pList)
+        if (pList) {
+          const validPengumuman = pList.filter(p => {
+            if (p.target_type && p.target_type.startsWith('__')) return false
+            return p.pesan || p.isi || p.judul
+          })
+          setPengumumanList(validPengumuman)
+        }
 
         // Cek guru yang belum absen hari ini
         const todayStr = new Date().toLocaleDateString('en-CA')
@@ -1173,76 +1179,83 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               padding: '1.25rem'
             }}
           >
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📜</span> Bagikan Pengumuman Resmi Sekolah ke WhatsApp
-              </h4>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                Pilih pengumuman sekolah untuk disiarkan ke WhatsApp grup guru atau paguyuban orang tua
-              </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '1rem' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📜</span> Bagikan Pengumuman Resmi Sekolah ke WhatsApp
+                </h4>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                  1-Klik menyiarkan pengumuman resmi sekolah ke WhatsApp grup guru atau paguyuban orang tua
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const latest = pengumumanList[0]
+                  const text = createAnnouncementWhatsAppTemplate({
+                    schoolName,
+                    title: latest?.judul || 'Pemberitahuan Sekolah',
+                    content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
+                    dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+                  })
+                  openWhatsAppDirect('', text)
+                }}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)'
+                }}
+              >
+                <Share2 size={15} />
+                <span>Bagikan ke WhatsApp</span>
+              </button>
             </div>
 
-            {pengumumanList.length === 0 ? (
-              <p style={{ fontSize: '0.8rem', color: '#94A3B8', margin: 0 }}>Belum ada pengumuman sekolah yang diterbitkan.</p>
-            ) : (
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {pengumumanList.map(p => (
-                  <div
-                    key={p.id}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '10px',
-                      background: darkMode ? '#0F172A' : '#F8FAFC',
-                      border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '8px'
-                    }}
-                  >
-                    <div>
-                      <strong style={{ fontSize: '0.85rem', color: darkMode ? '#F8FAFC' : '#1E293B' }}>
-                        {p.judul}
-                      </strong>
-                      <span style={{ display: 'block', fontSize: '0.72rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                        {p.isi ? p.isi.slice(0, 70) + '...' : ''}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const text = createAnnouncementWhatsAppTemplate({
-                          schoolName,
-                          title: p.judul,
-                          content: p.isi,
-                          dateStr: p.created_at ? new Date(p.created_at).toLocaleDateString('id-ID') : ''
-                        })
-                        openWhatsAppDirect('', text)
-                      }}
-                      className="btn"
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        background: '#25D366',
-                        color: 'white',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        border: 'none',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <Share2 size={13} />
-                      <span>Bagikan ke WhatsApp</span>
-                    </button>
-                  </div>
-                ))}
+            {/* Info Pengumuman Aktif */}
+            {pengumumanList.length > 0 && (pengumumanList[0].pesan || pengumumanList[0].judul) && (
+              <div style={{ marginBottom: '0.6rem', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                <span style={{ fontWeight: 600, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
+                  Pengumuman Terkini ({new Date(pengumumanList[0].created_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}):
+                </span>{' '}
+                {pengumumanList[0].pesan || pengumumanList[0].isi || pengumumanList[0].judul}
               </div>
             )}
+
+            {/* Preview Teks Template */}
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: '10px',
+                background: darkMode ? '#0F172A' : '#F8FAFC',
+                border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
+                fontSize: '0.78rem',
+                color: darkMode ? '#CBD5E1' : '#334155',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                lineHeight: '1.5'
+              }}
+            >
+              {(() => {
+                const latest = pengumumanList[0]
+                return createAnnouncementWhatsAppTemplate({
+                  schoolName,
+                  title: latest?.judul || 'Pemberitahuan Sekolah',
+                  content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
+                  dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+                })
+              })()}
+            </div>
           </div>
         </div>
       )}
