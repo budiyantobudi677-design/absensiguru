@@ -60,6 +60,19 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [schoolName, setSchoolName] = useState('Sekolah')
   const [pengumumanList, setPengumumanList] = useState([])
   const [unclockedTeachers, setUnclockedTeachers] = useState([])
+  const [editableAnnouncementText, setEditableAnnouncementText] = useState('')
+
+  // Sinkronisasi teks pengumuman yang dapat diedit dengan data pengumuman terbaru
+  useEffect(() => {
+    const latest = pengumumanList[0]
+    const initialText = createAnnouncementWhatsAppTemplate({
+      schoolName,
+      title: latest?.judul || 'Pemberitahuan Sekolah',
+      content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
+      dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+    })
+    setEditableAnnouncementText(prev => prev ? prev : initialText)
+  }, [schoolName, pengumumanList])
 
   const messagesEndRef = useRef(null)
   const sendingRef = useRef(false)
@@ -1185,76 +1198,114 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                   <span>📜</span> Bagikan Pengumuman Resmi Sekolah ke WhatsApp
                 </h4>
                 <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                  1-Klik menyiarkan pengumuman resmi sekolah ke WhatsApp grup guru atau paguyuban orang tua
+                  Pesan dapat diedit langsung sebelum dikirimkan ke WhatsApp grup guru atau paguyuban orang tua
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const latest = pengumumanList[0]
-                  const text = createAnnouncementWhatsAppTemplate({
-                    schoolName,
-                    title: latest?.judul || 'Pemberitahuan Sekolah',
-                    content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
-                    dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
-                  })
-                  openWhatsAppDirect('', text)
-                }}
-                className="btn"
-                style={{
-                  background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-                  color: 'white',
-                  fontWeight: 700,
-                  fontSize: '0.82rem',
-                  padding: '8px 16px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)'
-                }}
-              >
-                <Share2 size={15} />
-                <span>Bagikan ke WhatsApp</span>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const latest = pengumumanList[0]
+                    const resetText = createAnnouncementWhatsAppTemplate({
+                      schoolName,
+                      title: latest?.judul || 'Pemberitahuan Sekolah',
+                      content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
+                      dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+                    })
+                    setEditableAnnouncementText(resetText)
+                  }}
+                  title="Kembalikan teks ke template pengumuman awal"
+                  style={{
+                    background: 'transparent',
+                    border: darkMode ? '1px solid #475569' : '1px solid #CBD5E1',
+                    color: darkMode ? '#CBD5E1' : '#64748B',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <RefreshCw size={12} />
+                  <span>Reset Template</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = (editableAnnouncementText && editableAnnouncementText.trim()) ? editableAnnouncementText.trim() : createAnnouncementWhatsAppTemplate({
+                      schoolName,
+                      title: pengumumanList[0]?.judul || 'Pemberitahuan Sekolah',
+                      content: pengumumanList[0]?.pesan || pengumumanList[0]?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.'
+                    })
+                    openWhatsAppDirect('', text)
+                  }}
+                  className="btn"
+                  style={{
+                    background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                    color: 'white',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    padding: '8px 16px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)'
+                  }}
+                >
+                  <Share2 size={15} />
+                  <span>Bagikan ke WhatsApp</span>
+                </button>
+              </div>
             </div>
 
-            {/* Info Pengumuman Aktif */}
+            {/* Info Sumber Pengumuman Aktif */}
             {pengumumanList.length > 0 && (pengumumanList[0].pesan || pengumumanList[0].judul) && (
               <div style={{ marginBottom: '0.6rem', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
                 <span style={{ fontWeight: 600, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
-                  Pengumuman Terkini ({new Date(pengumumanList[0].created_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}):
+                  Sumber Pengumuman Terkini ({new Date(pengumumanList[0].created_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}):
                 </span>{' '}
                 {pengumumanList[0].pesan || pengumumanList[0].isi || pengumumanList[0].judul}
               </div>
             )}
 
-            {/* Preview Teks Template */}
-            <div
-              style={{
-                padding: '0.85rem 1rem',
-                borderRadius: '10px',
-                background: darkMode ? '#0F172A' : '#F8FAFC',
-                border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-                fontSize: '0.78rem',
-                color: darkMode ? '#CBD5E1' : '#334155',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap',
-                lineHeight: '1.5'
-              }}
-            >
-              {(() => {
-                const latest = pengumumanList[0]
-                return createAnnouncementWhatsAppTemplate({
-                  schoolName,
-                  title: latest?.judul || 'Pemberitahuan Sekolah',
-                  content: latest?.pesan || latest?.isi || 'Dihimbau kepada seluruh Bapak/Ibu Guru dan Tenaga Kependidikan untuk senantiasa memperhatikan kedisiplinan dan koordinasi kegiatan sekolah.',
-                  dateStr: latest?.created_at ? new Date(latest.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
-                })
-              })()}
+            {/* Kotak Input / Textarea Pengumuman yang Dapat Diedit Langsung */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: darkMode ? '#94A3B8' : '#64748B' }}>
+                  ✏️ Edit Teks Pesan WhatsApp Sebelum Dikirim:
+                </label>
+                <span style={{ fontSize: '0.7rem', color: darkMode ? '#64748B' : '#94A3B8' }}>
+                  Format tebal (*teks*), miring (_teks_), dll didukung di WhatsApp
+                </span>
+              </div>
+              <textarea
+                value={editableAnnouncementText}
+                onChange={(e) => setEditableAnnouncementText(e.target.value)}
+                placeholder="Tulis atau sesuaikan pesan pengumuman resmi sekolah di sini..."
+                rows={9}
+                style={{
+                  width: '100%',
+                  padding: '0.85rem 1rem',
+                  borderRadius: '12px',
+                  background: darkMode ? '#0F172A' : '#F8FAFC',
+                  border: darkMode ? '1px solid #334155' : '1px solid #CBD5E1',
+                  fontSize: '0.82rem',
+                  color: darkMode ? '#F8FAFC' : '#1E293B',
+                  lineHeight: '1.6',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  fontFamily: 'monospace',
+                  outline: 'none'
+                }}
+              />
             </div>
           </div>
         </div>
