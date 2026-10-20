@@ -600,42 +600,74 @@ Kamu HARUS menghasilkan keluaran dalam format JSON MURNI yang valid dengan struk
   "pengalamanBelajar": [
     {
       "sesi": 1,
-      "label": "Pertemuan 1, Sesi 1",
-      "topik": "Topik bahasan sesi 1",
-      "durasi": "3 × 35 Menit",
+      "label": "Pertemuan 1",
+      "topik": "Topik bahasan pertemuan 1",
+      "jumlahJP": "5 JP / 175 menit",
+      "tujuanPembelajaran": "Peserta didik dapat ... (tujuan spesifik pertemuan ini)",
       "pembuka": {
-        "deskripsi": "Apersepsi & Motivasi: Guru menyapa dan memantik rasa ingin tahu siswa dengan stimulus kontekstual. Pertanyaan pemantik: '...'. Guru menyampaikan tujuan pembelajaran sesi ini.",
-        "waktuPrinsip": "10 Menit | Bermakna"
+        "durasi": "15 menit",
+        "langkah": [
+          { "aktivitas": "Guru menyapa, mengajak berdoa, dan memeriksa kesiapan belajar peserta didik dengan penuh kehangatan.", "prinsip": "Berkesadaran" },
+          { "aktivitas": "Guru menyampaikan pertanyaan pemantik terkait masalah kontekstual: \\\"...?\\\"", "prinsip": "Bermakna" },
+          { "aktivitas": "Guru mengaitkan pertanyaan dengan pengalaman/pengetahuan awal peserta didik dan menyampaikan tujuan pembelajaran pertemuan ini.", "prinsip": "Bermakna" },
+          { "aktivitas": "Guru memberi motivasi singkat (ice breaking/tepuk semangat) agar peserta didik siap belajar dengan gembira.", "prinsip": "Menggembirakan" }
+        ]
       },
       "inti": {
-        "memahami": "(Langkah 1 Model) Guru menyajikan masalah kontekstual... Siswa membaca bahan dan mengidentifikasi informasi penting melalui ceramah interaktif.",
-        "mengaplikasikan": "(Langkah 2–4 Model) Siswa membentuk kelompok kerja, mendiskusikan LKPD Sesi 1, melakukan penyelidikan, dan mempresentasikan hasil di depan kelas.",
-        "merefleksikan": "(Langkah 5 Model) Tanya jawab reflektif: '...' Guru memberikan apresiasi dan umpan balik konstruktif.",
-        "waktuPrinsip": "85 Menit | Bermakna, Menggembirakan, Berkesadaran"
+        "durasi": "145 menit",
+        "sintaksLabel": "Sintaks Model PBL",
+        "langkah": [
+          { "no": 1, "label": "Langkah 1 – Orientasi Masalah", "kategori": "Memahami", "aktivitas": "Guru menjelaskan tujuan pembelajaran dan menyajikan masalah kontekstual \\\"...\\\" melalui ceramah interaktif dan media gambar/video singkat.", "prinsip": "Bermakna" },
+          { "no": 2, "label": "Langkah 2 – Mengorganisasi Peserta Didik", "kategori": "Mengaplikasikan", "aktivitas": "Guru membentuk kelompok diskusi 4–5 peserta didik dan membagikan LKPD sesuai materi pertemuan.", "prinsip": "Menggembirakan" },
+          { "no": 3, "label": "Langkah 3 – Penyelidikan Kelompok", "kategori": "Mengaplikasikan", "aktivitas": "Peserta didik berdiskusi kelompok, membaca sumber/buku siswa, dan mengisi LKPD melalui tanya jawab dengan guru.", "prinsip": "Bermakna" },
+          { "no": 4, "label": "Langkah 4 – Pengembangan dan Penyajian Hasil Karya", "kategori": "Mengaplikasikan", "aktivitas": "Setiap kelompok menyusun hasil kerja (jawaban LKPD/karya) dan mempresentasikannya secara bergiliran dengan percaya diri.", "prinsip": "Menggembirakan" },
+          { "no": 5, "label": "Langkah 5 – Analisis dan Evaluasi", "kategori": "Merefleksikan", "aktivitas": "Guru dan peserta didik bersama-sama menganalisis hasil diskusi, memberi penguatan konsep, serta mengajak peserta didik merenungkan makna pembelajaran hari ini.", "prinsip": "Berkesadaran" }
+        ]
       },
       "penutup": {
-        "deskripsi": "Guru bersama siswa menyimpulkan poin inti pelajaran. Apresiasi dan penguatan positif. Penyampaian materi pertemuan selanjutnya dan doa penutup.",
-        "waktuPrinsip": "10 Menit | Berkesadaran"
+        "durasi": "15 menit",
+        "langkah": [
+          { "aktivitas": "Guru dan peserta didik menyimpulkan pembelajaran bersama-sama secara lisan.", "prinsip": "Bermakna" },
+          { "aktivitas": "Peserta didik menuliskan satu kalimat refleksi singkat tentang apa yang dipelajari hari ini pada jurnal belajar.", "prinsip": "Berkesadaran" },
+          { "aktivitas": "Guru memberi apresiasi/penghargaan atas partisipasi peserta didik dan menyampaikan rencana pembelajaran pertemuan berikutnya.", "prinsip": "Menggembirakan" },
+          { "aktivitas": "Guru dan peserta didik menutup pembelajaran dengan doa.", "prinsip": "Berkesadaran" }
+        ]
       }
     },
     {
       "sesi": 2,
-      "label": "Pertemuan 2, Sesi 2",
-      "topik": "Topik bahasan sesi 2",
-      "durasi": "3 × 35 Menit",
+      "label": "Pertemuan 2",
+      "topik": "Topik bahasan pertemuan 2",
+      "jumlahJP": "5 JP / 175 menit",
+      "tujuanPembelajaran": "Peserta didik dapat ... (tujuan spesifik pertemuan 2)",
       "pembuka": {
-        "deskripsi": "Ulasan singkat sesi sebelumnya melalui kuis cepat. Pertanyaan pemantik lanjutan: '...'. Penyampaian tujuan sesi 2.",
-        "waktuPrinsip": "10 Menit | Bermakna"
+        "durasi": "15 menit",
+        "langkah": [
+          { "aktivitas": "Guru menyapa, mengajak berdoa, dan mengecek kehadiran peserta didik.", "prinsip": "Berkesadaran" },
+          { "aktivitas": "Guru mereview materi pertemuan sebelumnya dan menyampaikan pertanyaan pemantik lanjutan: \\\"...?\\\"", "prinsip": "Bermakna" },
+          { "aktivitas": "Guru menyampaikan tujuan pembelajaran pertemuan ini dan mengaitkan dengan konteks kehidupan nyata.", "prinsip": "Bermakna" },
+          { "aktivitas": "Guru melakukan ice breaking atau tepuk semangat untuk membangkitkan antusiasme peserta didik.", "prinsip": "Menggembirakan" }
+        ]
       },
       "inti": {
-        "memahami": "Orientasi proyek / penyelidikan lanjutan materi ...",
-        "mengaplikasikan": "Penyusunan karya / unjuk kerja / tugas terstruktur ...",
-        "merefleksikan": "Gallery walk / presentasi antar kelompok dan pemberian bintang apresiasi ...",
-        "waktuPrinsip": "85 Menit | Bermakna, Menggembirakan, Berkesadaran"
+        "durasi": "145 menit",
+        "sintaksLabel": "Sintaks Model PBL",
+        "langkah": [
+          { "no": 1, "label": "Langkah 1 – Orientasi Masalah", "kategori": "Memahami", "aktivitas": "Guru menyajikan permasalahan lanjutan dan stimulus kontekstual terkait topik pertemuan 2 melalui teks bacaan/video/gambar.", "prinsip": "Bermakna" },
+          { "no": 2, "label": "Langkah 2 – Mengorganisasi Peserta Didik", "kategori": "Mengaplikasikan", "aktivitas": "Guru membentuk kelompok dan membagikan LKPD pertemuan 2. Peserta didik memahami petunjuk kerja.", "prinsip": "Menggembirakan" },
+          { "no": 3, "label": "Langkah 3 – Penyelidikan Kelompok", "kategori": "Mengaplikasikan", "aktivitas": "Peserta didik berdiskusi kelompok, melakukan penyelidikan, dan menyelesaikan LKPD bersama.", "prinsip": "Bermakna" },
+          { "no": 4, "label": "Langkah 4 – Pengembangan dan Penyajian Hasil Karya", "kategori": "Mengaplikasikan", "aktivitas": "Setiap kelompok mempresentasikan hasil kerja di depan kelas. Kelompok lain memberikan tanggapan dan apresiasi.", "prinsip": "Menggembirakan" },
+          { "no": 5, "label": "Langkah 5 – Analisis dan Evaluasi", "kategori": "Merefleksikan", "aktivitas": "Guru dan peserta didik menganalisis dan mengevaluasi hasil presentasi, menyimpulkan pembelajaran, serta merenungkan makna materi.", "prinsip": "Berkesadaran" }
+        ]
       },
       "penutup": {
-        "deskripsi": "Refleksi diri peserta didik ('Satu hal berharga yang kupelajari hari ini...'). Simpulan dan apresiasi guru.",
-        "waktuPrinsip": "10 Menit | Berkesadaran"
+        "durasi": "15 menit",
+        "langkah": [
+          { "aktivitas": "Guru dan peserta didik menyimpulkan seluruh pembelajaran bab secara bersama-sama.", "prinsip": "Bermakna" },
+          { "aktivitas": "Peserta didik menuliskan refleksi: 'Satu hal berharga yang kupelajari dari bab ini...'", "prinsip": "Berkesadaran" },
+          { "aktivitas": "Guru memberi apresiasi dan penghargaan atas seluruh partisipasi peserta didik selama pembelajaran.", "prinsip": "Menggembirakan" },
+          { "aktivitas": "Guru dan peserta didik menutup pembelajaran dengan doa dan salam.", "prinsip": "Berkesadaran" }
+        ]
       }
     }
   ],
@@ -737,7 +769,7 @@ PENTING:
   const result = await callGeminiWithFallback({
     apiKey,
     contents: [{ parts: [{ text: promptInstruction }] }],
-    maxTokens: 8192,
+    maxTokens: 12288,
     temperature: 0.3
   })
 

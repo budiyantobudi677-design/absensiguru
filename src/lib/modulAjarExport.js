@@ -303,36 +303,83 @@ export function exportModulAjarToWord(modul) {
   <!-- D. PENGALAMAN BELAJAR -->
   <div class="page-break"></div>
   <h2 class="section-header">D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN DEEP LEARNING)</h2>
-  ${pb.map(sesi => `
+  ${pb.map((sesi, sIdx) => `
     <div style="margin-bottom: 22px;">
-      <h3 class="sub-header">${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (Alokasi: ${sesi.durasi || '3 × 35 Menit'})</h3>
+      <h3 class="sub-header" style="font-size: 11pt; margin-top: 14px; margin-bottom: 2px;">
+        ${sesi.label || `Pertemuan ${sesi.sesi || (sIdx + 1)}`}: ${sesi.topik || ''} (${sesi.jumlahJP || sesi.durasi || '5 JP / 175 menit'})
+      </h3>
+      <p style="font-style: italic; margin-top: 2px; margin-bottom: 8px; font-size: 10pt;">
+        <em>Tujuan Pembelajaran: ${sesi.tujuanPembelajaran || (dp.tujuanPembelajaran && dp.tujuanPembelajaran[sIdx]) || 'Peserta didik dapat memahami dan menerapkan materi pembelajaran secara mendalam.'}</em>
+      </p>
       <table class="data-table">
         <thead>
           <tr>
-            <th style="width: 20%;">Tahapan Kegiatan</th>
-            <th style="width: 62%;">Uraian Kegiatan Pembelajaran</th>
-            <th style="width: 18%;">Waktu & Prinsip</th>
+            <th style="width: 25%;">Tahapan & Durasi</th>
+            <th style="width: 75%;">Aktivitas Pembelajaran</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>KEGIATAN PEMBUKA</strong></td>
-            <td>${sesi.pembuka?.deskripsi || '-'}</td>
-            <td style="text-align: center;">${sesi.pembuka?.waktuPrinsip || '10 Menit | Bermakna'}</td>
-          </tr>
-          <tr>
-            <td><strong>KEGIATAN INTI</strong></td>
-            <td>
-              <p><strong>1. Memahami (Orientasi & Pengenalan Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
-              <p><strong>2. Mengaplikasikan (Penyelidikan Mandiri/Kelompok & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
-              <p><strong>3. Merefleksikan (Evaluasi & Refleksi Pembelajaran):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>PEMBUKA</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.pembuka?.durasi || sesi.pembuka?.waktuPrinsip || '15 menit'})</span>
             </td>
-            <td style="text-align: center;">${sesi.inti?.waktuPrinsip || '85 Menit | Bermakna, Menggembirakan, Berkesadaran'}</td>
+            <td>
+              ${Array.isArray(sesi.pembuka?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.pembuka.langkah.map(l => `
+                    <li style="margin-bottom: 4px;">
+                      ${typeof l === 'string' ? l : l.aktivitas}
+                      ${l.prinsip ? `<strong><em>(${l.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `<p style="margin: 0;">${sesi.pembuka?.deskripsi || '-'}</p>`}
+            </td>
           </tr>
           <tr>
-            <td><strong>KEGIATAN PENUTUP</strong></td>
-            <td>${sesi.penutup?.deskripsi || '-'}</td>
-            <td style="text-align: center;">${sesi.penutup?.waktuPrinsip || '10 Menit | Berkesadaran'}</td>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>KEGIATAN INTI</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.inti?.durasi || sesi.inti?.waktuPrinsip || '145 menit'})</span>
+            </td>
+            <td>
+              <p style="font-weight: bold; margin-top: 2px; margin-bottom: 5px; text-decoration: underline;">
+                ${sesi.inti?.sintaksLabel || 'Sintaks Model PBL:'}
+              </p>
+              ${Array.isArray(sesi.inti?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.inti.langkah.map((step, idx) => `
+                    <li style="margin-bottom: 5px;">
+                      <strong>${step.label || `Langkah ${step.no || idx + 1}`} ${step.kategori ? `(${step.kategori})` : ''}:</strong>
+                      ${step.aktivitas}
+                      ${step.prinsip ? `<strong><em>(${step.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `
+                <p><strong>1. Memahami (Orientasi Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
+                <p><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
+                <p><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
+              `}
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>PENUTUP</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.penutup?.durasi || sesi.penutup?.waktuPrinsip || '15 menit'})</span>
+            </td>
+            <td>
+              ${Array.isArray(sesi.penutup?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.penutup.langkah.map(l => `
+                    <li style="margin-bottom: 4px;">
+                      ${typeof l === 'string' ? l : l.aktivitas}
+                      ${l.prinsip ? `<strong><em>(${l.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `<p style="margin: 0;">${sesi.penutup?.deskripsi || '-'}</p>`}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -838,36 +885,83 @@ export function printModulAjar(modul) {
   <!-- D. PENGALAMAN BELAJAR -->
   <div class="page-break"></div>
   <h2 class="section-header">D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN DEEP LEARNING)</h2>
-  ${pb.map(sesi => `
-    <div style="margin-bottom: 20px;">
-      <h3 class="sub-header">${sesi.label || `Sesi ${sesi.sesi}`} : ${sesi.topik || ''} (Alokasi: ${sesi.durasi || '3 × 35 Menit'})</h3>
+  ${pb.map((sesi, sIdx) => `
+    <div style="margin-bottom: 22px;">
+      <h3 class="sub-header" style="font-size: 11pt; margin-top: 14px; margin-bottom: 2px;">
+        ${sesi.label || `Pertemuan ${sesi.sesi || (sIdx + 1)}`}: ${sesi.topik || ''} (${sesi.jumlahJP || sesi.durasi || '5 JP / 175 menit'})
+      </h3>
+      <p style="font-style: italic; margin-top: 2px; margin-bottom: 8px; font-size: 10pt;">
+        <em>Tujuan Pembelajaran: ${sesi.tujuanPembelajaran || (dp.tujuanPembelajaran && dp.tujuanPembelajaran[sIdx]) || 'Peserta didik dapat memahami dan menerapkan materi pembelajaran secara mendalam.'}</em>
+      </p>
       <table class="data-table">
         <thead>
           <tr>
-            <th style="width: 20%;">Tahapan Kegiatan</th>
-            <th style="width: 62%;">Uraian Kegiatan Pembelajaran</th>
-            <th style="width: 18%;">Waktu & Prinsip</th>
+            <th style="width: 25%;">Tahapan & Durasi</th>
+            <th style="width: 75%;">Aktivitas Pembelajaran</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>KEGIATAN PEMBUKA</strong></td>
-            <td>${sesi.pembuka?.deskripsi || '-'}</td>
-            <td style="text-align: center;">${sesi.pembuka?.waktuPrinsip || '10 Menit | Bermakna'}</td>
-          </tr>
-          <tr>
-            <td><strong>KEGIATAN INTI</strong></td>
-            <td>
-              <p><strong>1. Memahami (Orientasi Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
-              <p><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
-              <p><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>PEMBUKA</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.pembuka?.durasi || sesi.pembuka?.waktuPrinsip || '15 menit'})</span>
             </td>
-            <td style="text-align: center;">${sesi.inti?.waktuPrinsip || '85 Menit | Bermakna, Menggembirakan, Berkesadaran'}</td>
+            <td>
+              ${Array.isArray(sesi.pembuka?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.pembuka.langkah.map(l => `
+                    <li style="margin-bottom: 4px;">
+                      ${typeof l === 'string' ? l : l.aktivitas}
+                      ${l.prinsip ? `<strong><em>(${l.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `<p style="margin: 0;">${sesi.pembuka?.deskripsi || '-'}</p>`}
+            </td>
           </tr>
           <tr>
-            <td><strong>KEGIATAN PENUTUP</strong></td>
-            <td>${sesi.penutup?.deskripsi || '-'}</td>
-            <td style="text-align: center;">${sesi.penutup?.waktuPrinsip || '10 Menit | Berkesadaran'}</td>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>KEGIATAN INTI</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.inti?.durasi || sesi.inti?.waktuPrinsip || '145 menit'})</span>
+            </td>
+            <td>
+              <p style="font-weight: bold; margin-top: 2px; margin-bottom: 5px; text-decoration: underline;">
+                ${sesi.inti?.sintaksLabel || 'Sintaks Model PBL:'}
+              </p>
+              ${Array.isArray(sesi.inti?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.inti.langkah.map((step, idx) => `
+                    <li style="margin-bottom: 5px;">
+                      <strong>${step.label || `Langkah ${step.no || idx + 1}`} ${step.kategori ? `(${step.kategori})` : ''}:</strong>
+                      ${step.aktivitas}
+                      ${step.prinsip ? `<strong><em>(${step.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `
+                <p><strong>1. Memahami (Orientasi Konsep):</strong><br>${sesi.inti?.memahami || '-'}</p>
+                <p><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong><br>${sesi.inti?.mengaplikasikan || '-'}</p>
+                <p><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong><br>${sesi.inti?.merefleksikan || '-'}</p>
+              `}
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; background-color: #F8FAFC; vertical-align: top;">
+              <strong>PENUTUP</strong><br>
+              <span style="font-size: 9pt; font-weight: normal;">(${sesi.penutup?.durasi || sesi.penutup?.waktuPrinsip || '15 menit'})</span>
+            </td>
+            <td>
+              ${Array.isArray(sesi.penutup?.langkah) ? `
+                <ol style="margin: 2px 0; padding-left: 20px;">
+                  ${sesi.penutup.langkah.map(l => `
+                    <li style="margin-bottom: 4px;">
+                      ${typeof l === 'string' ? l : l.aktivitas}
+                      ${l.prinsip ? `<strong><em>(${l.prinsip})</em></strong>` : ''}
+                    </li>
+                  `).join('')}
+                </ol>
+              ` : `<p style="margin: 0;">${sesi.penutup?.deskripsi || '-'}</p>`}
+            </td>
           </tr>
         </tbody>
       </table>

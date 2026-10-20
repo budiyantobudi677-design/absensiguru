@@ -782,45 +782,170 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
               </div>
             </div>
 
-            {/* Bagian D: PENGALAMAN BELAJAR (SKENARIO) */}
+            {/* Bagian D: PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN SESUAI FORMAT RESMI TABEL) */}
             <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '0.4rem', marginBottom: '0.8rem' }}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '0.4rem', marginBottom: '1rem' }}>
                 D. PENGALAMAN BELAJAR (SKENARIO PEMBELAJARAN)
               </h3>
               
               {(currentModul.pengalamanBelajar || []).map((sesi, idx) => (
-                <div key={idx} style={{ marginBottom: '1.5rem', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <div style={{ background: 'var(--primary)', color: 'white', padding: '0.6rem 1rem', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{sesi.label || `Sesi ${sesi.sesi}`} : {sesi.topik}</span>
-                    <span>{sesi.durasi}</span>
+                <div key={idx} style={{ marginBottom: '2rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                  
+                  {/* Judul Pertemuan & Alokasi JP */}
+                  <div style={{ background: 'var(--primary)', color: 'white', padding: '0.75rem 1.25rem', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <span>{sesi.label || `Pertemuan ${sesi.sesi || (idx + 1)}`}: {sesi.topik}</span>
+                    <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.2)', padding: '2px 10px', borderRadius: '12px' }}>
+                      {sesi.jumlahJP || sesi.durasi || '5 JP / 175 menit'}
+                    </span>
                   </div>
 
-                  <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.85rem' }}>
-                    <div>
-                      <span style={{ fontWeight: 'bold', color: '#059669', background: '#D1FAE5', padding: '2px 8px', borderRadius: '6px' }}>
-                        KEGIATAN PEMBUKA ({sesi.pembuka?.waktuPrinsip || '10 Menit'})
-                      </span>
-                      <p style={{ margin: '0.3rem 0 0 0' }}>{sesi.pembuka?.deskripsi}</p>
-                    </div>
-
-                    <div>
-                      <span style={{ fontWeight: 'bold', color: '#2563EB', background: '#DBEAFE', padding: '2px 8px', borderRadius: '6px' }}>
-                        KEGIATAN INTI ({sesi.inti?.waktuPrinsip || '85 Menit'})
-                      </span>
-                      <div style={{ margin: '0.3rem 0 0 0', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        <div><strong>1. Memahami:</strong> {sesi.inti?.memahami}</div>
-                        <div><strong>2. Mengaplikasikan:</strong> {sesi.inti?.mengaplikasikan}</div>
-                        <div><strong>3. Merefleksikan:</strong> {sesi.inti?.merefleksikan}</div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <span style={{ fontWeight: 'bold', color: '#4B5563', background: '#E5E7EB', padding: '2px 8px', borderRadius: '6px' }}>
-                        KEGIATAN PENUTUP ({sesi.penutup?.waktuPrinsip || '10 Menit'})
-                      </span>
-                      <p style={{ margin: '0.3rem 0 0 0' }}>{sesi.penutup?.deskripsi}</p>
-                    </div>
+                  {/* Tujuan Pembelajaran Spesifik Pertemuan */}
+                  <div style={{ padding: '0.75rem 1.25rem', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text)' }}>
+                    <strong>Tujuan Pembelajaran:</strong> {sesi.tujuanPembelajaran || currentModul.desainPembelajaran?.tujuanPembelajaran?.[idx] || 'Peserta didik dapat memahami dan menerapkan materi pembelajaran secara mendalam.'}
                   </div>
+
+                  {/* Tabel Skenario Pengalaman Belajar */}
+                  <div style={{ overflowX: 'auto', padding: '1rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg)', textAlign: 'left' }}>
+                          <th style={{ padding: '10px 12px', border: '1px solid var(--border)', width: '25%', fontWeight: 'bold' }}>
+                            Tahapan & Durasi
+                          </th>
+                          <th style={{ padding: '10px 12px', border: '1px solid var(--border)', width: '75%', fontWeight: 'bold' }}>
+                            Aktivitas Pembelajaran
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* 1. KEGIATAN PEMBUKA */}
+                        <tr>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top', background: 'var(--bg)' }}>
+                            <div style={{ fontWeight: 'bold', color: '#059669', marginBottom: '4px' }}>
+                              PEMBUKA
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              ({sesi.pembuka?.durasi || sesi.pembuka?.waktuPrinsip || '15 menit'})
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top' }}>
+                            {Array.isArray(sesi.pembuka?.langkah) ? (
+                              <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {sesi.pembuka.langkah.map((l, lIdx) => (
+                                  <li key={lIdx} style={{ lineHeight: 1.5 }}>
+                                    <span>{typeof l === 'string' ? l : l.aktivitas}</span>
+                                    {l.prinsip && (
+                                      <span style={{ 
+                                        marginLeft: '6px', 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: 'bold', 
+                                        fontStyle: 'italic',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        background: l.prinsip.includes('Berkesadaran') ? '#D1FAE5' : l.prinsip.includes('Bermakna') ? '#DBEAFE' : '#FEF3C7',
+                                        color: l.prinsip.includes('Berkesadaran') ? '#065F46' : l.prinsip.includes('Bermakna') ? '#1E40AF' : '#92400E'
+                                      }}>
+                                        ({l.prinsip})
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <p style={{ margin: 0, lineHeight: 1.5 }}>{sesi.pembuka?.deskripsi || '-'}</p>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* 2. KEGIATAN INTI */}
+                        <tr>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top', background: 'var(--bg)' }}>
+                            <div style={{ fontWeight: 'bold', color: '#2563EB', marginBottom: '4px' }}>
+                              KEGIATAN INTI
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              ({sesi.inti?.durasi || sesi.inti?.waktuPrinsip || '145 menit'})
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 'bold', textDecoration: 'underline', marginBottom: '0.6rem', color: 'var(--text)' }}>
+                              {sesi.inti?.sintaksLabel || 'Sintaks Model PBL:'}
+                            </div>
+                            {Array.isArray(sesi.inti?.langkah) ? (
+                              <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                                {sesi.inti.langkah.map((step, sIdx) => (
+                                  <li key={sIdx} style={{ lineHeight: 1.5 }}>
+                                    <strong>{step.label || `Langkah ${step.no || sIdx + 1}`} {step.kategori ? `(${step.kategori})` : ''}:</strong>{' '}
+                                    <span>{step.aktivitas}</span>
+                                    {step.prinsip && (
+                                      <span style={{ 
+                                        marginLeft: '6px', 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: 'bold', 
+                                        fontStyle: 'italic',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        background: step.prinsip.includes('Berkesadaran') ? '#D1FAE5' : step.prinsip.includes('Bermakna') ? '#DBEAFE' : '#FEF3C7',
+                                        color: step.prinsip.includes('Berkesadaran') ? '#065F46' : step.prinsip.includes('Bermakna') ? '#1E40AF' : '#92400E'
+                                      }}>
+                                        ({step.prinsip})
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', lineHeight: 1.5 }}>
+                                <div><strong>1. Memahami (Orientasi Konsep):</strong> {sesi.inti?.memahami || '-'}</div>
+                                <div><strong>2. Mengaplikasikan (Penyelidikan & Karya):</strong> {sesi.inti?.mengaplikasikan || '-'}</div>
+                                <div><strong>3. Merefleksikan (Evaluasi & Refleksi):</strong> {sesi.inti?.merefleksikan || '-'}</div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* 3. KEGIATAN PENUTUP */}
+                        <tr>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top', background: 'var(--bg)' }}>
+                            <div style={{ fontWeight: 'bold', color: '#4B5563', marginBottom: '4px' }}>
+                              PENUTUP
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              ({sesi.penutup?.durasi || sesi.penutup?.waktuPrinsip || '15 menit'})
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', border: '1px solid var(--border)', verticalAlign: 'top' }}>
+                            {Array.isArray(sesi.penutup?.langkah) ? (
+                              <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {sesi.penutup.langkah.map((l, lIdx) => (
+                                  <li key={lIdx} style={{ lineHeight: 1.5 }}>
+                                    <span>{typeof l === 'string' ? l : l.aktivitas}</span>
+                                    {l.prinsip && (
+                                      <span style={{ 
+                                        marginLeft: '6px', 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: 'bold', 
+                                        fontStyle: 'italic',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        background: l.prinsip.includes('Berkesadaran') ? '#D1FAE5' : l.prinsip.includes('Bermakna') ? '#DBEAFE' : '#FEF3C7',
+                                        color: l.prinsip.includes('Berkesadaran') ? '#065F46' : l.prinsip.includes('Bermakna') ? '#1E40AF' : '#92400E'
+                                      }}>
+                                        ({l.prinsip})
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <p style={{ margin: 0, lineHeight: 1.5 }}>{sesi.penutup?.deskripsi || '-'}</p>
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
                 </div>
               ))}
             </div>
