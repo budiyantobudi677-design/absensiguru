@@ -62,8 +62,38 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [unclockedTeachers, setUnclockedTeachers] = useState([])
 
   const messagesEndRef = useRef(null)
+  const sendingRef = useRef(false)
 
   const currentUserId = user?.id
+
+  // Helper deduplikasi pesan: hindari ID duplikat atau pengiriman ganda dalam selisih waktu sangat cepat
+  const deduplicateMessages = (msgList) => {
+    if (!Array.isArray(msgList)) return []
+    const result = []
+    const seenIds = new Set()
+
+    for (let i = 0; i < msgList.length; i++) {
+      const m = msgList[i]
+      if (!m || !m.id) continue
+      if (seenIds.has(m.id)) continue
+
+      // Cek apakah pesan ini duplikat cepat dari pesan sebelumnya (teks sama, pengirim sama, channel sama, waktu <= 3 detik)
+      const prev = result[result.length - 1]
+      if (
+        prev &&
+        prev.sender_id === m.sender_id &&
+        prev.channel === m.channel &&
+        prev.message === m.message &&
+        Math.abs(new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) < 3000
+      ) {
+        continue
+      }
+
+      seenIds.add(m.id)
+      result.push(m)
+    }
+    return result
+  }
 
   // Auto-scroll chat to bottom
   const scrollToBottom = () => {
@@ -114,32 +144,62 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
         limit: 80
       })
       if (isMounted) {
-        setMessages(data)
+        setMessages(deduplicateMessages(data || []))
         setLoadingMessages(false)
         setTimeout(scrollToBottom, 100)
       }
     }
     loadChat()
 
-    // Realtime subscription
+    // Realtime subscription dengan channel name terisolasi
+    const channelSubName = `realtime:school_chat:${activeChannel}:${selectedPartner?.id || 'group'}_${Date.now()}`
     const channelSub = supabase
-      .channel('realtime:school_chat')
+      .channel(channelSubName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'school_chat_messages' },
         (payload) => {
           const newMsg = payload.new
+          if (!newMsg || !newMsg.id) return
+
           // Cek apakah pesan cocok dengan channel/partner yang sedang dibuka
           if (activeChannel === 'private') {
             if (
               (newMsg.sender_id === currentUserId && newMsg.receiver_id === selectedPartner?.id) ||
               (newMsg.sender_id === selectedPartner?.id && newMsg.receiver_id === currentUserId)
             ) {
-              setMessages(prev => [...prev, newMsg])
+              setMessages(prev => {
+                // Jangan tambahkan jika ID pesan sudah ada (mencegah pesan double dari event realtime vs sendChatMessage)
+                if (prev.some(m => m.id === newMsg.id)) return prev
+                const last = prev[prev.length - 1]
+                if (
+                  last &&
+                  last.sender_id === newMsg.sender_id &&
+                  last.message === newMsg.message &&
+                  Math.abs(new Date(newMsg.created_at).getTime() - new Date(last.created_at).getTime()) < 3000
+                ) {
+                  return prev
+                }
+                return [...prev, newMsg]
+              })
               setTimeout(scrollToBottom, 100)
             }
           } else if (newMsg.channel === activeChannel) {
-            setMessages(prev => [...prev, newMsg])
+            setMessages(prev => {
+              // Jangan tambahkan jika ID pesan sudah ada
+              if (prev.some(m => m.id === newMsg.id)) return prev
+              const last = prev[prev.length - 1]
+              if (
+                last &&
+                last.sender_id === newMsg.sender_id &&
+                last.channel === newMsg.channel &&
+                last.message === newMsg.message &&
+                Math.abs(new Date(newMsg.created_at).getTime() - new Date(last.created_at).getTime()) < 3000
+              ) {
+                return prev
+              }
+              return [...prev, newMsg]
+            })
             setTimeout(scrollToBottom, 100)
           }
         }
@@ -172,26 +232,35 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
 
   // Handle send message
   const handleSendMessage = async (e) => {
-    e.preventDefault()
-    if (!inputText.trim() || sending) return
+    e?.preventDefault()
+    const textToSend = inputText.trim()
+    if (!textToSend || sendingRef.current || sending) return
 
+    sendingRef.current = true
     setSending(true)
+    setInputText('') // Segera kosongkan input form agar tidak dapat dikirim ganda
+
     try {
       const sent = await sendChatMessage({
         supabase,
         senderId: currentUserId,
         receiverId: activeChannel === 'private' ? selectedPartner?.id : null,
         channel: activeChannel,
-        message: inputText
+        message: textToSend
       })
       if (sent) {
-        setMessages(prev => [...prev, sent])
-        setInputText('')
+        setMessages(prev => {
+          // Cegah double jika event realtime telah lebih dulu menambahkan pesan
+          if (prev.some(m => m.id === sent.id)) return prev
+          return [...prev, sent]
+        })
         setTimeout(scrollToBottom, 50)
       }
     } catch (err) {
+      setInputText(textToSend) // Kembalikan isi teks jika pengiriman gagal
       alert(`Gagal mengirim pesan: ${err.message}`)
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }
