@@ -911,8 +911,38 @@ export default function DashboardGuru({ roleOverride = null }) {
       const hariKerja = hariKerjaVal
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
-        setSchoolInfoData(prev => ({ ...prev, schoolName: settings.nama_sekolah }))
       }
+
+      // Ambil data Kepala Sekolah dan NIP dari Pengaturan Aplikasi (panrita_kop_surat & profiles role kepsek)
+      let pName = ''
+      let pNip = ''
+      try {
+        const savedKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
+        if (savedKop.kepsekNama) pName = savedKop.kepsekNama
+        if (savedKop.kepsekNip) pNip = savedKop.kepsekNip
+      } catch (e) {}
+
+      try {
+        const { data: kepsekProf } = await supabase
+          .from('profiles')
+          .select('full_name, nip')
+          .eq('role', 'kepsek')
+          .limit(1)
+          .maybeSingle()
+        if (kepsekProf) {
+          if (!pName && kepsekProf.full_name) pName = kepsekProf.full_name
+          if (!pNip && kepsekProf.nip) pNip = kepsekProf.nip
+        }
+      } catch (e) {}
+
+      setSchoolInfoData(prev => ({
+        ...prev,
+        schoolName: settings?.nama_sekolah || prev.schoolName,
+        principalName: pName || prev.principalName,
+        principalNIP: pNip || prev.principalNIP,
+        teacherName: profile?.full_name || user?.full_name || prev.teacherName,
+        teacherNIP: profile?.nip || user?.nip || prev.teacherNIP
+      }))
       if (settings?.logo_sekolah) {
         setSchoolLogo(settings.logo_sekolah)
       }
@@ -3567,6 +3597,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolName={schoolName}
+                    schoolInfo={schoolInfoData}
                     supabase={supabase}
                     onBack={() => handleTabChangeWithUrl('kbm')}
                   />
@@ -3628,6 +3659,7 @@ export default function DashboardGuru({ roleOverride = null }) {
               user={{ ...user, ...profile }}
               profile={profile}
               schoolName={schoolName}
+              schoolInfo={schoolInfoData}
               supabase={supabase}
               onBack={() => handleTabChangeWithUrl('kbm')}
             />

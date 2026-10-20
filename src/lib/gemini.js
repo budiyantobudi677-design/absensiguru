@@ -495,8 +495,12 @@ Berikan keluaran HANYA dalam format JSON murni tanpa teks pengantar:
  */
 export async function generateModulAjarAI({ apiKey, inputData }) {
   const {
-    namaGuru = 'Budianto, S.Pd., Gr.',
-    namaSekolah = 'UPTD SPF SD Inpres Tangkala II',
+    namaGuru = 'Guru Kelas',
+    nipGuru = '',
+    namaKepalaSekolah = 'Kepala Sekolah',
+    nipKepalaSekolah = '',
+    namaSekolah = 'Satuan Pendidikan',
+    kota = 'Makassar',
     tahunPelajaran = '2026/2027',
     semester = '1 (Satu)',
     mataPelajaran = 'Bahasa Indonesia',
@@ -516,7 +520,8 @@ Tugasmu adalah menyusun dokumen lengkap "RENCANA PEMBELAJARAN MENDALAM (RPM) KUR
 yang berfokus pada 3 Prinsip Pembelajaran Mendalam: Berkesadaran (Mindful), Bermakna (Meaningful), dan Menggembirakan (Joyful).
 
 Data Masukan:
-- Penyusun: ${namaGuru}
+- Penyusun: ${namaGuru} ${nipGuru ? `(NIP. ${nipGuru})` : ''}
+- Kepala Sekolah: ${namaKepalaSekolah} ${nipKepalaSekolah ? `(NIP. ${nipKepalaSekolah})` : ''}
 - Satuan Pendidikan: ${namaSekolah}
 - Tahun Pelajaran: ${tahunPelajaran}
 - Semester: ${semester}
@@ -754,10 +759,10 @@ Kamu HARUS menghasilkan keluaran dalam format JSON MURNI yang valid dengan struk
     { "istilah": "${model.split(' ')[0]}", "definisi": "Model pembelajaran terstruktur berbasis investigasi dan pemecahan masalah." }
   ],
   "pengesahan": {
-    "kota": "Makassar",
+    "kota": "${kota || 'Makassar'}",
     "tanggal": "${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}",
-    "kepalaSekolah": { "nama": "KURNIATI, S.Pd., M.Pd.", "nip": "19811208 200801 2 007" },
-    "guru": { "nama": "${namaGuru}", "nip": "19920512 202221 1 015" }
+    "kepalaSekolah": { "nama": "${namaKepalaSekolah || 'Kepala Sekolah'}", "nip": "${nipKepalaSekolah || '...........................................'}" },
+    "guru": { "nama": "${namaGuru || 'Guru Kelas'}", "nip": "${nipGuru || '...........................................'}" }
   }
 }
 

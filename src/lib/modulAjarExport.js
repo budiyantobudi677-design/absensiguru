@@ -4,6 +4,7 @@
 // ==============================================================================
 
 import { saveAs } from 'file-saver'
+import { getActiveKopData } from './persuratanGenerator'
 
 /**
  * Ekspor dokumen Modul Ajar ke format Microsoft Word (.doc)
@@ -22,6 +23,11 @@ export function exportModulAjarToWord(modul) {
   const lkpd = m.lkpd || []
   const tindak = m.tindakLanjutRefleksi || {}
   const sah = m.pengesahan || {}
+  const activeKop = getActiveKopData()
+  const kepsekNama = sah.kepalaSekolah?.nama || activeKop.kepsekNama || '( .................................................... )'
+  const kepsekNip = sah.kepalaSekolah?.nip || activeKop.kepsekNip || '...................................................'
+  const guruNama = sah.guru?.nama || iden.penyusun || '( .................................................... )'
+  const guruNip = sah.guru?.nip || iden.nipPenyusun || iden.nip || '...................................................'
 
   const htmlContent = `
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -179,7 +185,7 @@ export function exportModulAjarToWord(modul) {
   <!-- A. IDENTIFIKASI -->
   <h2 class="section-header">A. IDENTIFIKASI</h2>
   <table class="info-table">
-    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'}</td></tr>
+    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'} ${guruNip && guruNip !== '...................................................' ? `(NIP. ${guruNip})` : ''}</td></tr>
     <tr><td style="font-weight: bold;">Satuan Pendidikan</td><td>:</td><td>${iden.sekolah || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Tahun Pelajaran</td><td>:</td><td>${iden.tahunPelajaran || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Semester</td><td>:</td><td>${iden.semester || '-'}</td></tr>
@@ -564,15 +570,15 @@ export function exportModulAjarToWord(modul) {
           Mengetahui,<br>
           Kepala Sekolah
           <br><br><br><br><br>
-          <strong><u>${sah.kepalaSekolah?.nama || '( .................................................... )'}</u></strong><br>
-          NIP. ${sah.kepalaSekolah?.nip || '...................................................'}
+          <strong><u>${kepsekNama}</u></strong><br>
+          NIP. ${kepsekNip}
         </td>
         <td style="width: 50%;">
-          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
+          ${sah.kota || activeKop.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
           Guru Kelas / Pengampu Mata Pelajaran
           <br><br><br><br><br>
-          <strong><u>${sah.guru?.nama || iden.penyusun || '( .................................................... )'}</u></strong><br>
-          NIP. ${sah.guru?.nip || '...................................................'}
+          <strong><u>${guruNama}</u></strong><br>
+          NIP. ${guruNip}
         </td>
       </tr>
     </table>
@@ -606,6 +612,11 @@ export function printModulAjar(modul) {
   const lkpd = m.lkpd || []
   const tindak = m.tindakLanjutRefleksi || {}
   const sah = m.pengesahan || {}
+  const activeKop = getActiveKopData()
+  const kepsekNama = sah.kepalaSekolah?.nama || activeKop.kepsekNama || '( .................................................... )'
+  const kepsekNip = sah.kepalaSekolah?.nip || activeKop.kepsekNip || '...................................................'
+  const guruNama = sah.guru?.nama || iden.penyusun || '( .................................................... )'
+  const guruNip = sah.guru?.nip || iden.nipPenyusun || iden.nip || '...................................................'
 
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
@@ -767,7 +778,7 @@ export function printModulAjar(modul) {
   <!-- A. IDENTIFIKASI -->
   <h2 class="section-header">A. IDENTIFIKASI PEMBELAJARAN</h2>
   <table class="info-table">
-    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'}</td></tr>
+    <tr><td style="width: 25%; font-weight: bold;">Nama Penyusun</td><td style="width: 3%;">:</td><td style="width: 72%;">${iden.penyusun || '-'} ${guruNip && guruNip !== '...................................................' ? `(NIP. ${guruNip})` : ''}</td></tr>
     <tr><td style="font-weight: bold;">Satuan Pendidikan</td><td>:</td><td>${iden.sekolah || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Tahun Pelajaran</td><td>:</td><td>${iden.tahunPelajaran || '-'}</td></tr>
     <tr><td style="font-weight: bold;">Semester</td><td>:</td><td>${iden.semester || '-'}</td></tr>
@@ -1146,15 +1157,15 @@ export function printModulAjar(modul) {
           Mengetahui,<br>
           Kepala Sekolah
           <br><br><br><br><br>
-          <strong><u>${sah.kepalaSekolah?.nama || '( .................................................... )'}</u></strong><br>
-          NIP. ${sah.kepalaSekolah?.nip || '...................................................'}
+          <strong><u>${kepsekNama}</u></strong><br>
+          NIP. ${kepsekNip}
         </td>
         <td style="width: 50%;">
-          ${sah.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
+          ${sah.kota || activeKop.kota || 'Makassar'}, ${sah.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br>
           Guru Kelas / Pengampu Mata Pelajaran
           <br><br><br><br><br>
-          <strong><u>${sah.guru?.nama || iden.penyusun || '( .................................................... )'}</u></strong><br>
-          NIP. ${sah.guru?.nip || '...................................................'}
+          <strong><u>${guruNama}</u></strong><br>
+          NIP. ${guruNip}
         </td>
       </tr>
     </table>

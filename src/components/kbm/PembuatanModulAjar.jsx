@@ -8,15 +8,36 @@ import {
 import { generateModulAjarAI, getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey } from '../../lib/gemini'
 import { exportModulAjarToWord, printModulAjar } from '../../lib/modulAjarExport'
 
-export default function PembuatanModulAjar({ user, profile, schoolName, supabase, onBack }) {
+export default function PembuatanModulAjar({ user, profile, schoolName, schoolInfo, supabase, onBack }) {
   const [apiKey, setApiKey] = useState('')
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [showKeyModal, setShowKeyModal] = useState(false)
   const [activeTab, setActiveTab] = useState('generator') // 'generator' | 'preview' | 'history'
 
-  // Input State
-  const [namaGuru, setNamaGuru] = useState(profile?.full_name || 'Budianto, S.Pd., Gr.')
-  const [sekolah, setSekolah] = useState(schoolName || 'UPTD SPF SD Inpres Tangkala II')
+  // Input State: Nama Guru & NIP dari Profil Pengguna
+  const [namaGuru, setNamaGuru] = useState(profile?.full_name || user?.full_name || 'Budianto, S.Pd., Gr.')
+  const [nipGuru, setNipGuru] = useState(profile?.nip || user?.nip || '')
+
+  // Data Kepala Sekolah & NIP dari Pengaturan Aplikasi (panrita_kop_surat / schoolInfo)
+  const getInitialKepsek = () => {
+    let nama = schoolInfo?.principalName || ''
+    let nip = schoolInfo?.principalNIP || ''
+    try {
+      const savedKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
+      if (!nama && savedKop.kepsekNama) nama = savedKop.kepsekNama
+      if (!nip && savedKop.kepsekNip) nip = savedKop.kepsekNip
+    } catch (e) {}
+    return {
+      nama: nama || 'KURNIATI, S.Pd., M.Pd.',
+      nip: nip || '19811208 200801 2 007'
+    }
+  }
+
+  const initialKepsek = getInitialKepsek()
+  const [namaKepsek, setNamaKepsek] = useState(initialKepsek.nama)
+  const [nipKepsek, setNipKepsek] = useState(initialKepsek.nip)
+
+  const [sekolah, setSekolah] = useState(schoolName || schoolInfo?.schoolName || 'UPTD SPF SD Inpres Tangkala II')
   const [tahunPelajaran, setTahunPelajaran] = useState('2026/2027')
   const [semester, setSemester] = useState('1 (Satu)')
   const [mataPelajaran, setMataPelajaran] = useState('Bahasa Indonesia')
@@ -60,10 +81,42 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
       }
     } catch (e) {}
 
-    // Auto-update nama guru & sekolah dari prop jika ada
+    // Auto-update nama guru & NIP dari profil jika ada
     if (profile?.full_name) setNamaGuru(profile.full_name)
+    if (profile?.nip) setNipGuru(profile.nip)
     if (schoolName) setSekolah(schoolName)
-  }, [user, profile, schoolName])
+
+    // Sinkronisasi data Kepala Sekolah & NIP dari Pengaturan Aplikasi (panrita_kop_surat & profiles role kepsek)
+    const syncKepsekData = async () => {
+      let kNama = schoolInfo?.principalName || ''
+      let kNip = schoolInfo?.principalNIP || ''
+      try {
+        const savedKop = JSON.parse(localStorage.getItem('panrita_kop_surat') || '{}')
+        if (!kNama && savedKop.kepsekNama) kNama = savedKop.kepsekNama
+        if (!kNip && savedKop.kepsekNip) kNip = savedKop.kepsekNip
+      } catch (e) {}
+
+      if (supabase && (!kNama || !kNip)) {
+        try {
+          const { data: kProf } = await supabase
+            .from('profiles')
+            .select('full_name, nip')
+            .eq('role', 'kepsek')
+            .limit(1)
+            .maybeSingle()
+          if (kProf) {
+            if (!kNama && kProf.full_name) kNama = kProf.full_name
+            if (!kNip && kProf.nip) kNip = kProf.nip
+          }
+        } catch (e) {}
+      }
+
+      if (kNama) setNamaKepsek(kNama)
+      if (kNip) setNipKepsek(kNip)
+    }
+
+    syncKepsekData()
+  }, [user, profile, schoolName, schoolInfo, supabase])
 
   // Sinkronisasi Fase otomatis berdasarkan pilihan Kelas
   const handleKelasChange = (newKelas) => {
@@ -98,6 +151,32 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
     localStorage.setItem(storageKey, JSON.stringify(filtered))
   }
 
+  // Sinkronisasi data modul dengan nama & NIP terbaru dari profil guru dan pengaturan aplikasi
+  const getEnrichedModul = (modul) => {
+    if (!modul) return null
+    return {
+      ...modul,
+      identifikasi: {
+        ...modul.identifikasi,
+        penyusun: namaGuru || modul.identifikasi?.penyusun || '',
+        nipPenyusun: nipGuru || modul.identifikasi?.nipPenyusun || '',
+        sekolah: sekolah || modul.identifikasi?.sekolah || ''
+      },
+      pengesahan: {
+        kota: modul.pengesahan?.kota || 'Makassar',
+        tanggal: modul.pengesahan?.tanggal || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+        kepalaSekolah: {
+          nama: namaKepsek || modul.pengesahan?.kepalaSekolah?.nama || '',
+          nip: nipKepsek || modul.pengesahan?.kepalaSekolah?.nip || ''
+        },
+        guru: {
+          nama: namaGuru || modul.pengesahan?.guru?.nama || '',
+          nip: nipGuru || modul.pengesahan?.guru?.nip || ''
+        }
+      }
+    }
+  }
+
   // Handle Generate AI
   const handleGenerate = async (e) => {
     e?.preventDefault()
@@ -125,6 +204,9 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
         apiKey,
         inputData: {
           namaGuru,
+          nipGuru,
+          namaKepalaSekolah: namaKepsek,
+          nipKepalaSekolah: nipKepsek,
           namaSekolah: sekolah,
           tahunPelajaran,
           semester,
@@ -145,8 +227,9 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
       clearTimeout(timer3)
 
       if (res && res.data) {
-        setCurrentModul(res.data)
-        saveToHistory(res.data)
+        const enriched = getEnrichedModul(res.data)
+        setCurrentModul(enriched)
+        saveToHistory(enriched)
         setActiveTab('preview')
       } else {
         throw new Error('AI tidak mengembalikan data modul ajar yang valid.')
@@ -474,12 +557,52 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', marginBottom: '0.4rem' }}>
-                  Nama Guru Penyusun
+                  Nama Guru Penyusun (Profil)
                 </label>
                 <input
                   type="text"
                   value={namaGuru}
                   onChange={(e) => setNamaGuru(e.target.value)}
+                  placeholder="Nama Lengkap & Gelar Guru"
+                  style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', marginBottom: '0.4rem' }}>
+                  NIP Guru Penyusun (Profil)
+                </label>
+                <input
+                  type="text"
+                  value={nipGuru}
+                  onChange={(e) => setNipGuru(e.target.value)}
+                  placeholder="NIP Guru (Contoh: 19920512...)"
+                  style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', marginBottom: '0.4rem' }}>
+                  Nama Kepala Sekolah (Pengaturan)
+                </label>
+                <input
+                  type="text"
+                  value={namaKepsek}
+                  onChange={(e) => setNamaKepsek(e.target.value)}
+                  placeholder="Nama Kepala Sekolah"
+                  style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', marginBottom: '0.4rem' }}>
+                  NIP Kepala Sekolah (Pengaturan)
+                </label>
+                <input
+                  type="text"
+                  value={nipKepsek}
+                  onChange={(e) => setNipKepsek(e.target.value)}
+                  placeholder="NIP Kepala Sekolah"
                   style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.875rem' }}
                 />
               </div>
@@ -612,7 +735,7 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
               </button>
 
               <button
-                onClick={() => printModulAjar(currentModul)}
+                onClick={() => printModulAjar(getEnrichedModul(currentModul))}
                 style={{
                   background: '#0284C7',
                   border: 'none',
@@ -632,7 +755,7 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
               </button>
 
               <button
-                onClick={() => exportModulAjarToWord(currentModul)}
+                onClick={() => exportModulAjarToWord(getEnrichedModul(currentModul))}
                 style={{
                   background: '#2563EB',
                   border: 'none',
@@ -1024,15 +1147,15 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
                 Mengetahui,<br />
                 Kepala Sekolah
                 <div style={{ height: '60px' }} />
-                <strong><u>{currentModul.pengesahan?.kepalaSekolah?.nama || '( ........................................ )'}</u></strong><br />
-                NIP. {currentModul.pengesahan?.kepalaSekolah?.nip || '...........................................'}
+                <strong><u>{currentModul.pengesahan?.kepalaSekolah?.nama || namaKepsek || '( ........................................ )'}</u></strong><br />
+                NIP. {currentModul.pengesahan?.kepalaSekolah?.nip || nipKepsek || '...........................................'}
               </div>
               <div style={{ width: '45%' }}>
                 {currentModul.pengesahan?.kota || 'Makassar'}, {currentModul.pengesahan?.tanggal || new Date().toLocaleDateString('id-ID')}<br />
                 Guru Kelas / Pengampu
                 <div style={{ height: '60px' }} />
-                <strong><u>{currentModul.pengesahan?.guru?.nama || currentModul.identifikasi?.penyusun || '( ........................................ )'}</u></strong><br />
-                NIP. {currentModul.pengesahan?.guru?.nip || '...........................................'}
+                <strong><u>{currentModul.pengesahan?.guru?.nama || namaGuru || currentModul.identifikasi?.penyusun || '( ........................................ )'}</u></strong><br />
+                NIP. {currentModul.pengesahan?.guru?.nip || nipGuru || '...........................................'}
               </div>
             </div>
 
@@ -1067,7 +1190,7 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
                   <div
                     key={item.id}
                     onClick={() => {
-                      setCurrentModul(m)
+                      setCurrentModul(getEnrichedModul(m))
                       setActiveTab('preview')
                     }}
                     style={{
@@ -1100,7 +1223,7 @@ export default function PembuatanModulAjar({ user, profile, schoolName, supabase
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          exportModulAjarToWord(m)
+                          exportModulAjarToWord(getEnrichedModul(m))
                         }}
                         title="Unduh Word"
                         style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}

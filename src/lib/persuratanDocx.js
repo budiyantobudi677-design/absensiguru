@@ -1,6 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, WidthType, BorderStyle, HeadingLevel } from 'docx'
 import { saveAs } from 'file-saver'
-import { DEFAULT_KOP_DATA } from './persuratanGenerator'
+import { DEFAULT_KOP_DATA, getActiveKopData } from './persuratanGenerator'
 
 /**
  * Membuat Header Kop Surat Resmi dalam format DOCX murni
@@ -208,14 +208,14 @@ export async function exportSuratTugasDocx(data, kop = DEFAULT_KOP_DATA, filenam
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: `NIP. ${kop.kepsekNip || '19811208 200801 2 007'}`, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: `NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}`, size: 22, font: 'Times New Roman' }),
             ],
           }),
         ],
@@ -332,14 +332,14 @@ export async function exportSuratRekomendasiDocx(data, kop = DEFAULT_KOP_DATA, f
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: `NIP. ${kop.kepsekNip || '19811208 200801 2 007'}`, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: `NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}`, size: 22, font: 'Times New Roman' }),
             ],
           }),
         ],
@@ -469,14 +469,14 @@ export async function exportSuratPindahDocx(data, kop = DEFAULT_KOP_DATA, filena
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )', bold: true, underline: {}, size: 22, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
             indent: { left: 5400 },
             spacing: { after: 200 },
             children: [
-              new TextRun({ text: `NIP. ${kop.kepsekNip || '19811208 200801 2 007'}`, size: 22, font: 'Times New Roman' }),
+              new TextRun({ text: `NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}`, size: 22, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
@@ -679,14 +679,14 @@ export async function exportSppdDocx(data, kop = DEFAULT_KOP_DATA, filename = 'S
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd', bold: true, underline: {}, size: 21, font: 'Times New Roman' }),
+              new TextRun({ text: kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )', bold: true, underline: {}, size: 21, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
             indent: { left: 5400 },
             spacing: { after: 40 },
             children: [
-              new TextRun({ text: `NIP. ${kop.kepsekNip || '19811208 200801 2 007'}`, size: 21, font: 'Times New Roman' }),
+              new TextRun({ text: `NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}`, size: 21, font: 'Times New Roman' }),
             ],
           }),
         ],

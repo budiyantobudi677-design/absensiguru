@@ -33,6 +33,22 @@ export const DEFAULT_KOP_DATA = {
 }
 
 /**
+ * Mendapatkan KOP & Pengaturan Pimpinan Aktif dari Pengaturan Aplikasi (localStorage panrita_kop_surat)
+ */
+export function getActiveKopData() {
+  try {
+    const saved = localStorage.getItem('panrita_kop_surat')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed && typeof parsed === 'object') {
+        return { ...DEFAULT_KOP_DATA, ...parsed }
+      }
+    }
+  } catch (e) {}
+  return DEFAULT_KOP_DATA
+}
+
+/**
  * Template Header Kop Surat HTML untuk Preview, Print, dan Word HTML
  */
 export function renderKopSuratHtml(kop = DEFAULT_KOP_DATA) {
@@ -146,10 +162,10 @@ export function getSuratTugasHtml(data, kop = DEFAULT_KOP_DATA) {
       <div style="width: 300px; text-align: left;">
         <div>Dikeluarkan: di ${d.dikeluarkanDi}</div>
         <div style="margin-bottom: 4px;">Pada Tanggal: ${d.tanggalSurat}</div>
-        <div style="font-weight: bold;">${kop.kepsekJabatan || 'Kepala UPTD SPF SD Inpres Tangkala II'}</div>
+        <div style="font-weight: bold;">${kop.kepsekJabatan || getActiveKopData().kepsekJabatan || 'Kepala Sekolah'}</div>
         <div style="height: 60px;"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.'}</div>
-        <div>NIP. ${kop.kepsekNip || '19811208 200801 2 007'}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )'}</div>
+        <div>NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}</div>
       </div>
     </div>
   </div>
@@ -249,10 +265,10 @@ export function getSuratRekomendasiHtml(data, kop = DEFAULT_KOP_DATA) {
     <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
       <div style="width: 300px; text-align: left;">
         <div>${d.kota}, ${d.tanggalSurat}</div>
-        <div style="font-weight: bold; margin-bottom: 4px;">${kop.kepsekJabatan || 'Kepala UPTD SPF SD Inpres Tangkala II'}</div>
+        <div style="font-weight: bold; margin-bottom: 4px;">${kop.kepsekJabatan || getActiveKopData().kepsekJabatan || 'Kepala Sekolah'}</div>
         <div style="height: 60px;"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.'}</div>
-        <div>NIP. ${kop.kepsekNip || '19811208 200801 2 007'}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )'}</div>
+        <div>NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}</div>
       </div>
     </div>
   </div>
@@ -336,10 +352,10 @@ export function getSuratPindahHtml(data, kop = DEFAULT_KOP_DATA) {
     <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
       <div style="width: 300px; text-align: left;">
         <div>${d.kota}, ${d.tanggalSurat}</div>
-        <div style="font-weight: bold; margin-bottom: 4px;">Kepala ${kop.sekolah || 'UPTD SPF SDI TANGKALA II'}</div>
+        <div style="font-weight: bold; margin-bottom: 4px;">Kepala ${kop.sekolah || getActiveKopData().sekolah || 'Satuan Pendidikan'}</div>
         <div style="height: 50px;"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd.'}</div>
-        <div>NIP. ${kop.kepsekNip || '19811208 200801 2 007'}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )'}</div>
+        <div>NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}</div>
       </div>
     </div>
 
@@ -542,10 +558,10 @@ export function getSppdHtml(data, kop = DEFAULT_KOP_DATA) {
       <div style="width: 280px; text-align: left; font-size: 10.5pt;">
         <div>Dikeluarkan di : ${d.dikeluarkanDi}</div>
         <div style="margin-bottom: 4px;">Pada tanggal : ${d.tanggalSurat}</div>
-        <div style="font-weight: bold;">${kop.kepsekJabatan || 'Kepala UPTD SPF SD Inpres Tangkala II'}</div>
+        <div style="font-weight: bold;">${kop.kepsekJabatan || getActiveKopData().kepsekJabatan || 'Kepala Sekolah'}</div>
         <div style="height: 50px;"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || 'KURNIATI, S.Pd., M.Pd'}</div>
-        <div>NIP. ${kop.kepsekNip || '19811208 200801 2 007'}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${kop.kepsekNama || getActiveKopData().kepsekNama || '( ........................................ )'}</div>
+        <div>NIP. ${kop.kepsekNip || getActiveKopData().kepsekNip || '...........................................'}</div>
       </div>
     </div>
 
