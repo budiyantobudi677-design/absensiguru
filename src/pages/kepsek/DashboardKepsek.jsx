@@ -26,6 +26,7 @@ import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
+import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -367,6 +368,14 @@ export default function DashboardKepsek() {
         if (retrySess?.session?.user) {
           currentUser = retrySess.session.user
         }
+      } catch (e) {}
+    }
+
+    // 5. Fallback ke getActiveSession saat offline
+    if (!currentUser) {
+      try {
+        const { user: offUser } = await getActiveSession()
+        if (offUser) currentUser = offUser
       } catch (e) {}
     }
 
@@ -1448,7 +1457,7 @@ export default function DashboardKepsek() {
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Kepala Sekolah</div>
               </div>
             </div>
-            <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <button onClick={async () => { await clearActiveSession(); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               <LogOut size={16} />
             </button>
           </div>

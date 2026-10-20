@@ -23,6 +23,18 @@ import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
+import { 
+  saveActiveSession, 
+  getActiveSession, 
+  clearActiveSession, 
+  cacheUserProfile, 
+  getCachedUserProfile, 
+  cacheSchoolSettings, 
+  getCachedSchoolSettings, 
+  enqueueOfflineAttendance, 
+  getOfflineAttendanceQueue, 
+  syncOfflineAttendanceQueue 
+} from '../../lib/offlineManager'
 
 const getLocalPref = async (key, fallback = null) => {
   try {
@@ -191,7 +203,7 @@ function GuruDesktopWrapper({
                 </div>
               </div>
             </div>
-            <button onClick={() => { localStorage.removeItem('panrita_developer_session'); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <button onClick={async () => { await clearActiveSession(); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               <LogOut size={16} />
             </button>
           </div>
@@ -650,71 +662,24 @@ export default function DashboardGuru({ roleOverride = null }) {
   }
 
   const checkUnsynced = () => {
-    const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-    const myOffline = user?.id ? offlineData.filter(d => d.user_id === user.id && d.tanggal > '2026-10-09') : []
+    const myOffline = getOfflineAttendanceQueue(user?.id)
     setUnsyncedCount(myOffline.length)
   }
 
   const syncOfflineData = async () => {
-    const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-    if (offlineData.length === 0) return
-
+    if (!navigator.onLine) return
     setLoading(true)
-    let syncSuccessCount = 0
-    const remainingOffline = []
-    
-    for (const record of offlineData) {
-      // Abaikan data lama / duplikat uji coba sebelum 10 Okt 2026
-      if (!record.user_id || !record.tanggal || record.tanggal <= '2026-10-09') {
-        continue
+    try {
+      const res = await syncOfflineAttendanceQueue(supabase, user)
+      checkUnsynced()
+      if (res.successCount > 0) {
+        showPopup("Sinkronisasi Selesai", `${res.successCount} data presensi luring telah disinkronkan ke server.`, "success")
+        fetchUser() // Refresh UI
       }
-      if (user?.id && record.user_id !== user.id) {
-        remainingOffline.push(record)
-        continue
-      }
-      if (record.jenis === 'masuk') {
-        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: 'hadir' })
-          if (!error) syncSuccessCount++
-        }
-      } else if (record.jenis === 'pulang') {
-        const { error } = await supabase.from('absensi').update({ waktu_pulang: record.waktu, lokasi_pulang: record.loc }).eq('user_id', record.user_id).eq('tanggal', record.tanggal)
-        if (!error) syncSuccessCount++
-      } else if (record.jenis === 'sakit' || record.jenis === 'izin') {
-        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({ user_id: record.user_id, waktu_masuk: record.waktu, tanggal: record.tanggal, lokasi_masuk: record.loc, status: record.jenis, keterangan: record.keterangan })
-          if (!error) syncSuccessCount++
-        }
-      } else if (record.jenis === 'tugas_luar') {
-        const { data: exist } = await supabase.from('absensi').select('id').eq('user_id', record.user_id).eq('tanggal', record.tanggal).limit(1)
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({
-            user_id: record.user_id,
-            waktu_masuk: record.waktu_masuk,
-            waktu_pulang: record.waktu_pulang,
-            tanggal: record.tanggal,
-            lokasi_masuk: record.loc,
-            lokasi_pulang: record.loc,
-            status: 'hadir',
-            keterangan: record.keterangan
-          })
-          if (!error) syncSuccessCount++
-        }
-      }
-    }
-    
-    if (remainingOffline.length > 0) {
-      localStorage.setItem('offlineAbsensi', JSON.stringify(remainingOffline))
-    } else {
-      localStorage.removeItem('offlineAbsensi')
-    }
-    setUnsyncedCount(0)
-    setLoading(false)
-    if (syncSuccessCount > 0) {
-      showPopup("Sinkronisasi Selesai", `${syncSuccessCount} data luring telah disinkronkan ke server.`, "success")
-      fetchUser() // Refresh UI
+    } catch (err) {
+      console.warn('Gagal sinkronisasi luring:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -726,23 +691,53 @@ export default function DashboardGuru({ roleOverride = null }) {
       let currentProfile = null
       const isDev = Boolean(devSession)
 
-      // Ambil seluruh data guru terdaftar
-      const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
-      if (profilesAll) setAllProfiles(profilesAll)
+      // Ambil seluruh data guru terdaftar (dengan proteksi fallback cache jika offline)
+      try {
+        const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
+        if (profilesAll) {
+          setAllProfiles(profilesAll)
+          localStorage.setItem('panrita_cached_all_profiles', JSON.stringify(profilesAll))
+        }
+      } catch (errProfiles) {
+        try {
+          const cachedAll = localStorage.getItem('panrita_cached_all_profiles')
+          if (cachedAll) setAllProfiles(JSON.parse(cachedAll))
+        } catch {}
+      }
 
       const activeTargetId = overrideTeacherId !== null ? overrideTeacherId : selectedViewTeacherId
 
       // Cek apakah ada sesi Supabase Auth resmi yang sedang aktif
-      const { data: authUserData } = await supabase.auth.getUser()
-      const realSupabaseUser = authUserData?.user || null
+      let realSupabaseUser = null
+      try {
+        const { data: authUserData } = await supabase.auth.getUser()
+        realSupabaseUser = authUserData?.user || null
+      } catch (e) {}
+
+      // Fallback ke getSession() jika getUser() gagal saat offline
+      if (!realSupabaseUser) {
+        try {
+          const { data: sessData } = await supabase.auth.getSession()
+          realSupabaseUser = sessData?.session?.user || null
+        } catch (e) {}
+      }
+
+      // Fallback ke getActiveSession() dari cache lokal
+      if (!realSupabaseUser) {
+        try {
+          const { user: cachedUser } = await getActiveSession()
+          if (cachedUser) realSupabaseUser = cachedUser
+        } catch (e) {}
+      }
 
       if (isDev && (!realSupabaseUser || activeTargetId)) {
         try {
           const parsed = JSON.parse(devSession)
           if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
             // Jika memilih guru tertentu untuk diinspeksi (Mode Lihat)
-            if (activeTargetId && profilesAll) {
-              const matched = profilesAll.find(p => p.id === activeTargetId)
+            const allList = profilesAll || JSON.parse(localStorage.getItem('panrita_cached_all_profiles') || '[]')
+            if (activeTargetId && allList) {
+              const matched = allList.find(p => p.id === activeTargetId)
               if (matched) {
                 currentUser = {
                   id: matched.id,
@@ -780,13 +775,33 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
 
       if (!currentUser) {
-        if (!realSupabaseUser) return navigate('/')
+        if (!realSupabaseUser) {
+          const { user: cachedUser } = await getActiveSession()
+          if (cachedUser) {
+            realSupabaseUser = cachedUser
+          } else {
+            return navigate('/')
+          }
+        }
         currentUser = realSupabaseUser
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', realSupabaseUser.id).maybeSingle()
-        currentProfile = profile
 
-        if (profile?.role === 'admin') return navigate('/admin')
-        if (profile?.role === 'kepsek') return navigate('/kepsek')
+        // Ambil profil dari DB, atau fallback ke cache jika luring
+        try {
+          const { data: profile } = await supabase.from('profiles').select('*').eq('id', realSupabaseUser.id).maybeSingle()
+          if (profile) {
+            currentProfile = profile
+            cacheUserProfile(realSupabaseUser.id, profile)
+          }
+        } catch (errProf) {
+          console.warn('Gagal ambil profil dari server (mungkin luring):', errProf)
+        }
+
+        if (!currentProfile) {
+          currentProfile = getCachedUserProfile(realSupabaseUser.id)
+        }
+
+        if (currentProfile?.role === 'admin' && navigator.onLine) return navigate('/admin')
+        if (currentProfile?.role === 'kepsek' && navigator.onLine) return navigate('/kepsek')
       }
 
       setUser(currentUser)
@@ -794,7 +809,22 @@ export default function DashboardGuru({ roleOverride = null }) {
       const existingGeminiKey = await loadSavedGeminiKeyAsync(currentUser.id, currentUser, currentProfile)
       setGeminiApiKey(existingGeminiKey)
       
-      let { data: cls } = await supabase.from('classes').select('*').order('name', { ascending: true })
+      let cls = null
+      try {
+        const { data: clsData } = await supabase.from('classes').select('*').order('name', { ascending: true })
+        if (clsData && clsData.length > 0) {
+          cls = clsData
+          localStorage.setItem('panrita_cached_classes', JSON.stringify(clsData))
+        }
+      } catch (e) {}
+
+      if (!cls) {
+        try {
+          const cachedCls = localStorage.getItem('panrita_cached_classes')
+          if (cachedCls) cls = JSON.parse(cachedCls)
+        } catch (e) {}
+      }
+
       if (!cls || cls.length === 0) {
         try {
           const defaultSDClasses = [
@@ -816,8 +846,13 @@ export default function DashboardGuru({ roleOverride = null }) {
       if (cls) setClassesList(cls)
 
       // Sinkronisasi daftar mata pelajaran & penugasan guru dari cloud database
-      await syncCloudSubjects(supabase)
-      const cloudAssignments = await syncCloudTeacherAssignments(supabase)
+      try {
+        await syncCloudSubjects(supabase)
+      } catch (e) {}
+      let cloudAssignments = null
+      try {
+        cloudAssignments = await syncCloudTeacherAssignments(supabase)
+      } catch (e) {}
       const myCloudAssignment = cloudAssignments?.[currentUser.id]
 
       // Cek apakah akun ini dikonfigurasi sebagai Tendik di cloud, route, atau profil
@@ -906,7 +941,19 @@ export default function DashboardGuru({ roleOverride = null }) {
         } catch {}
       }
 
-      const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+      let settings = null
+      try {
+        const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+        if (settingsData) {
+          settings = settingsData
+          cacheSchoolSettings(settingsData)
+        }
+      } catch (e) {}
+
+      if (!settings) {
+        settings = getCachedSchoolSettings()
+      }
+
       const hariKerjaVal = settings?.hari_kerja || 5
       setHariKerja(hariKerjaVal)
       const hariKerja = hariKerjaVal
@@ -962,37 +1009,50 @@ export default function DashboardGuru({ roleOverride = null }) {
       const today = getLocalDateString()
 
       if (!holiday) {
-         const { data: libur } = await supabase.from('hari_libur').select('*').eq('tanggal', today).maybeSingle()
-         if (libur) {
-            holiday = true
-            reason = libur.keterangan
-         }
+         try {
+           const { data: libur } = await supabase.from('hari_libur').select('*').eq('tanggal', today).maybeSingle()
+           if (libur) {
+              holiday = true
+              reason = libur.keterangan
+           }
+         } catch (e) {}
       }
       
       setIsHoliday(holiday)
       setHolidayReason(reason)
 
-      const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', currentUser.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
-        
-      const absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null;
+      let absensi = null
+      try {
+        const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', currentUser.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
+        absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null
+      } catch (e) {}
+
+      // Periksa juga antrean presensi luring lokal untuk hari ini
+      const offlineQueue = getOfflineAttendanceQueue(currentUser.id)
+      const offlineToday = offlineQueue.find(d => d.user_id === currentUser.id && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+      const offlinePulang = offlineQueue.find(d => d.user_id === currentUser.id && d.tanggal === today && d.jenis === 'pulang')
 
       if (absensi && absensi.waktu_masuk) {
+        if (offlinePulang && !absensi.waktu_pulang) {
+          absensi.waktu_pulang = offlinePulang.waktu
+          absensi.lokasi_pulang = offlinePulang.loc
+        }
         setHasCheckedIn(true)
         setTodayStatus(absensi.status)
         setTodayAbsensi(absensi)
-      } else {
-        // Also check if there's offline check-in for today belonging to currentUser
-        const offlineData = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-        const offlineToday = offlineData.find(d => d.user_id === currentUser.id && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
-        if (offlineToday) {
-           setHasCheckedIn(true)
-           setTodayStatus(offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
-           setTodayAbsensi(offlineToday)
-        } else {
-           setHasCheckedIn(false)
-           setTodayStatus(null)
-           setTodayAbsensi(null)
+      } else if (offlineToday) {
+        const combined = { ...offlineToday }
+        if (offlinePulang) {
+          combined.waktu_pulang = offlinePulang.waktu
+          combined.lokasi_pulang = offlinePulang.loc
         }
+        setHasCheckedIn(true)
+        setTodayStatus(offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
+        setTodayAbsensi(combined)
+      } else {
+        setHasCheckedIn(false)
+        setTodayStatus(null)
+        setTodayAbsensi(null)
       }
 
       // Muat ulang riwayat kehadiran untuk akun aktif ini
@@ -1315,16 +1375,31 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   const saveOffline = (jenis, loc, now, today, ket = '') => {
     const record = { user_id: user.id, jenis, loc, waktu: now, tanggal: today, keterangan: ket }
-    const current = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-    current.push(record)
-    localStorage.setItem('offlineAbsensi', JSON.stringify(current))
+    enqueueOfflineAttendance(record)
     checkUnsynced()
     
     if (jenis !== 'pulang') {
        setHasCheckedIn(true)
+       setTodayStatus(jenis === 'masuk' ? 'hadir' : jenis)
+       setTodayAbsensi({
+         user_id: user.id,
+         waktu_masuk: now,
+         tanggal: today,
+         lokasi_masuk: loc,
+         status: jenis === 'masuk' ? 'hadir' : jenis,
+         keterangan: ket,
+         is_offline: true
+       })
        setIzinMode(null)
+    } else {
+       setTodayAbsensi(prev => ({
+         ...(prev || { user_id: user.id, tanggal: today, status: 'hadir' }),
+         waktu_pulang: now,
+         lokasi_pulang: loc,
+         is_offline_pulang: true
+       }))
     }
-    showPopup("Tersimpan Luring (Offline)", "Data disimpan sementara. Akan dikirim otomatis saat internet tersambung.", "success")
+    showPopup("Tersimpan Luring (Offline)", "Presensi tercatat di perangkat. Akan dikirim otomatis ke server saat internet tersambung.", "success")
     setLoading(false)
   }
 
@@ -1402,7 +1477,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         }
       }
       
-      if (isOffline) {
+      if (isOffline || !navigator.onLine) {
          saveOffline(jenis, loc, now, today, keterangan)
          return
       }
@@ -1558,7 +1633,7 @@ export default function DashboardGuru({ roleOverride = null }) {
       ? `${finalCatatan} | Foto: ${uploadedPhotoUrl}` 
       : (webpPhoto ? `${finalCatatan} [FOTO_WEBP:${webpPhoto}]` : finalCatatan)
 
-    if (isOffline) {
+    if (isOffline || !navigator.onLine) {
       const record = {
         user_id: user.id,
         jenis: 'tugas_luar',
@@ -1569,9 +1644,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         tanggal: today,
         keterangan: keteranganLengkap
       }
-      const current = JSON.parse(localStorage.getItem('offlineAbsensi') || '[]')
-      current.push(record)
-      localStorage.setItem('offlineAbsensi', JSON.stringify(current))
+      enqueueOfflineAttendance(record)
       checkUnsynced()
       setHasCheckedIn(true)
       setTodayStatus('hadir')
@@ -1586,7 +1659,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         keterangan: keteranganLengkap
       })
       setShowTugasLuarModal(false)
-      showPopup("Tersimpan Luring (Offline)", "Presensi Tugas Luar disimpan. Otomatis Hadir (07:00 - 14:00).", "success")
+      showPopup("Tersimpan Luring (Offline)", "Presensi Tugas Luar disimpan di HP. Otomatis Hadir (07:00 - 14:00).", "success")
       setLoading(false)
       return
     }
@@ -3088,9 +3161,9 @@ export default function DashboardGuru({ roleOverride = null }) {
 
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
-                  localStorage.removeItem('panrita_developer_session')
+                  await clearActiveSession()
                   supabase.auth.signOut().then(() => navigate('/'))
                 }
               }}

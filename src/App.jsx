@@ -15,6 +15,7 @@ import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
 import { syncCloudTeacherAssignments } from './lib/assignmentManager'
+import { saveActiveSession, getActiveSession } from './lib/offlineManager'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -34,7 +35,7 @@ function App() {
       }
 
       // Check cached role first for immediate UI response without waiting
-      const cachedRole = localStorage.getItem(`panrita_role_${userSession.user.id}`)
+      const cachedRole = localStorage.getItem(`panrita_role_${userSession.user.id}`) || localStorage.getItem('panrita_last_active_role')
       if (cachedRole && isMounted) {
         setRole(cachedRole)
         setLoading(false)
@@ -64,14 +65,18 @@ function App() {
         localStorage.removeItem('intended_login_role')
 
         localStorage.setItem(`panrita_role_${userSession.user.id}`, userRole)
+        saveActiveSession(userSession, userSession.user, userRole)
+
         if (isMounted) {
           setRole(userRole)
           setLoading(false)
         }
       } catch (err) {
-        console.error('Error fetching role:', err)
-        if (isMounted && !cachedRole) {
-          setRole('guru')
+        console.error('Error fetching role (mungkin luring):', err)
+        if (isMounted) {
+          const fallbackRole = cachedRole || 'guru'
+          setRole(fallbackRole)
+          saveActiveSession(userSession, userSession.user, fallbackRole)
           setLoading(false)
         }
       }
@@ -84,17 +89,40 @@ function App() {
       setRole(devSession.role || 'pengembang')
       setLoading(false)
     } else {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      // 1. Jika sedang luring (tanpa internet), pulihkan sesi lokal instan tanpa menunggu Supabase
+      getActiveSession().then(({ session: cachedSess, user: cachedUser, role: cachedRole }) => {
         if (!isMounted) return
-        setSession(session)
-        if (session) {
-          syncUserRole(session)
-        } else {
+        if (cachedUser && (!navigator.onLine || !session)) {
+          setSession(cachedSess || { user: cachedUser })
+          setRole(cachedRole || 'guru')
           setLoading(false)
         }
-      }).catch((err) => {
-        console.error('Session get error:', err)
-        if (isMounted) setLoading(false)
+      }).catch(() => {})
+
+      // 2. Cek getSession resmi dari Supabase Auth
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        if (!isMounted) return
+        if (session) {
+          setSession(session)
+          await syncUserRole(session)
+        } else {
+          // Fallback offline jika getSession menghasilkan null saat tanpa jaringan
+          const { session: offlineSess, user: offlineUser, role: offlineRole } = await getActiveSession()
+          if (offlineUser) {
+            setSession(offlineSess || { user: offlineUser })
+            setRole(offlineRole || 'guru')
+          }
+          setLoading(false)
+        }
+      }).catch(async (err) => {
+        console.error('Session get error (offline):', err)
+        if (!isMounted) return
+        const { session: offlineSess, user: offlineUser, role: offlineRole } = await getActiveSession()
+        if (offlineUser) {
+          setSession(offlineSess || { user: offlineUser })
+          setRole(offlineRole || 'guru')
+        }
+        setLoading(false)
       })
     }
 
@@ -134,6 +162,15 @@ function App() {
           setLoading(false)
           return
         }
+
+        // Jika offline dan bukan logout eksplisit (masih ada cache user), pertahankan sesi luring
+        if (!navigator.onLine) {
+          const { user: cachedUser } = await getActiveSession()
+          if (cachedUser) {
+            return
+          }
+        }
+
         setSession(null)
         setRole(null)
         setLoading(false)

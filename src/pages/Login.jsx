@@ -16,6 +16,7 @@ import {
   verifyAdminOverrideLogin
 } from '../lib/developerManager'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
+import { saveActiveSession, cacheUserProfile } from '../lib/offlineManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -184,6 +185,10 @@ export default function Login() {
         }
 
         localStorage.setItem(`panrita_role_${data.user.id}`, userRole)
+        await saveActiveSession(data.session, data.user, userRole)
+        if (profile) {
+          cacheUserProfile(data.user.id, profile)
+        }
 
         // Arahkan ke dashboard sesuai peran akun sebenarnya
         if (isAdmin) {
