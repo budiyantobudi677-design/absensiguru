@@ -143,17 +143,33 @@ export async function saveCloudOverrideToken(supabase, rawToken) {
   localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, token)
 
   if (supabase) {
-    const { error } = await supabase
-      .from('pengumuman')
-      .insert({
-        judul: 'SISTEM CONFIG: TOKEN OVERRIDE ADMIN',
-        pesan: JSON.stringify(payload),
-        target_type: OVERRIDE_TOKEN_TARGET,
-        target_role: 'admin'
-      })
+    try {
+      const { data: existing } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', OVERRIDE_TOKEN_TARGET)
+        .limit(1)
 
-    if (error) {
-      console.error('Failed saving override token to cloud:', error)
+      if (existing && existing.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: JSON.stringify(payload), target_users: '' })
+          .eq('id', existing[0].id)
+      } else {
+        const { error } = await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: JSON.stringify(payload),
+            target_type: OVERRIDE_TOKEN_TARGET,
+            target_users: ''
+          }])
+
+        if (error) {
+          console.error('Failed saving override token to cloud:', error)
+        }
+      }
+    } catch (e) {
+      console.warn('Error saving override token:', e)
     }
   }
 
@@ -220,18 +236,35 @@ export async function setOverrideFeatureStatus(supabase, enabled) {
   localStorage.setItem(LOCAL_STORAGE_FEATURE_ENABLED_KEY, isEnabled ? 'true' : 'false')
 
   if (supabase) {
-    const { error } = await supabase
+    const { data: existing } = await supabase
       .from('pengumuman')
-      .insert({
-        judul: 'SISTEM CONFIG: STATUS FITUR PRESENSI KHUSUS',
-        pesan: JSON.stringify(payload),
-        target_type: OVERRIDE_FEATURE_FLAG_TARGET,
-        target_role: 'admin'
-      })
+      .select('id')
+      .eq('target_type', OVERRIDE_FEATURE_FLAG_TARGET)
+      .limit(1)
 
-    if (error) {
-      console.error('Failed saving override feature status to cloud:', error)
-      throw error
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('pengumuman')
+        .update({ pesan: JSON.stringify(payload), target_users: '' })
+        .eq('id', existing[0].id)
+
+      if (error) {
+        console.error('Failed updating override feature status to cloud:', error)
+        throw error
+      }
+    } else {
+      const { error } = await supabase
+        .from('pengumuman')
+        .insert([{
+          pesan: JSON.stringify(payload),
+          target_type: OVERRIDE_FEATURE_FLAG_TARGET,
+          target_users: ''
+        }])
+
+      if (error) {
+        console.error('Failed saving override feature status to cloud:', error)
+        throw error
+      }
     }
   }
 
@@ -298,12 +331,11 @@ export async function saveOverrideAuditLog(supabase, logData) {
       createdAt: new Date().toISOString()
     }
 
-    await supabase.from('pengumuman').insert({
-      judul: 'AUDIT_LOG_OVERRIDE',
+    await supabase.from('pengumuman').insert([{
       pesan: JSON.stringify(entry),
       target_type: AUDIT_LOG_TARGET,
-      target_role: 'pengembang'
-    })
+      target_users: ''
+    }])
   } catch (err) {
     console.warn('Gagal menyimpan silent audit log:', err)
   }

@@ -256,14 +256,15 @@ export default function DashboardAdmin() {
       ?.on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'pengumuman',
           filter: `target_type=eq.${OVERRIDE_FEATURE_FLAG_TARGET}`
         },
         (payload) => {
           try {
-            const parsed = JSON.parse(payload.new?.pesan || '{}')
+            const row = payload.new || payload.record
+            const parsed = JSON.parse(row?.pesan || '{}')
             if (isMounted && typeof parsed?.enabled === 'boolean') {
               setIsOverrideEnabled(parsed.enabled)
             }
