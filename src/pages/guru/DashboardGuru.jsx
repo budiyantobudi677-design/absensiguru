@@ -3158,35 +3158,6 @@ export default function DashboardGuru({ roleOverride = null }) {
                 </button>
               </form>
             </div>
-
-            <button
-              type="button"
-              onClick={async () => {
-                if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
-                  await clearActiveSession()
-                  supabase.auth.signOut().then(() => navigate('/'))
-                }
-              }}
-              className="btn"
-              style={{
-                width: '100%',
-                marginTop: '1.25rem',
-                padding: '0.95rem',
-                background: '#FEF2F2',
-                color: '#EF4444',
-                border: '1px solid #FCA5A5',
-                borderRadius: '14px',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                cursor: 'pointer'
-              }}
-            >
-              <LogOut size={18} />
-              <span>Keluar dari Akun</span>
-            </button>
           </div>
         )}
 

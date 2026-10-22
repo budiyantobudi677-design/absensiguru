@@ -12,12 +12,19 @@ import {
   ExternalLink,
   Plus,
   Check,
+  CheckCheck,
   User,
   Search,
   RefreshCw,
   Bell,
   BookOpen,
-  FileText
+  FileText,
+  ArrowLeft,
+  ChevronRight,
+  Phone,
+  Sparkles,
+  Paperclip,
+  Smile
 } from 'lucide-react'
 import {
   CHAT_CHANNELS,
@@ -42,6 +49,11 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sending, setSending] = useState(false)
 
+  // Mobile vs Desktop responsive navigation
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+  const [mobileChatView, setMobileChatView] = useState('list') // 'list' (daftar obrolan) | 'room' (ruang percakapan)
+  const [chatFilter, setChatFilter] = useState('all') // 'all' | 'groups' | 'direct'
+
   // Disposisi state
   const [dispositions, setDispositions] = useState([])
   const [loadingDispositions, setLoadingDispositions] = useState(false)
@@ -62,6 +74,23 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [unclockedTeachers, setUnclockedTeachers] = useState([])
   const [editableAnnouncementText, setEditableAnnouncementText] = useState('')
 
+  const messagesEndRef = useRef(null)
+  const sendingRef = useRef(false)
+  const currentUserId = user?.id
+
+  // Responsive window resize listener
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (!mobile) {
+        setMobileChatView('room')
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   // Sinkronisasi teks pengumuman yang dapat diedit dengan data pengumuman terbaru
   useEffect(() => {
     const latest = pengumumanList[0]
@@ -74,11 +103,6 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
     setEditableAnnouncementText(prev => prev ? prev : initialText)
   }, [schoolName, pengumumanList])
 
-  const messagesEndRef = useRef(null)
-  const sendingRef = useRef(false)
-
-  const currentUserId = user?.id
-
   // Helper deduplikasi pesan: hindari ID duplikat atau pengiriman ganda dalam selisih waktu sangat cepat
   const deduplicateMessages = (msgList) => {
     if (!Array.isArray(msgList)) return []
@@ -90,7 +114,6 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       if (!m || !m.id) continue
       if (seenIds.has(m.id)) continue
 
-      // Cek apakah pesan ini duplikat cepat dari pesan sebelumnya (teks sama, pengirim sama, channel sama, waktu <= 3 detik)
       const prev = result[result.length - 1]
       if (
         prev &&
@@ -188,7 +211,6 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               (newMsg.sender_id === selectedPartner?.id && newMsg.receiver_id === currentUserId)
             ) {
               setMessages(prev => {
-                // Jangan tambahkan jika ID pesan sudah ada (mencegah pesan double dari event realtime vs sendChatMessage)
                 if (prev.some(m => m.id === newMsg.id)) return prev
                 const last = prev[prev.length - 1]
                 if (
@@ -205,7 +227,6 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
             }
           } else if (newMsg.channel === activeChannel) {
             setMessages(prev => {
-              // Jangan tambahkan jika ID pesan sudah ada
               if (prev.some(m => m.id === newMsg.id)) return prev
               const last = prev[prev.length - 1]
               if (
@@ -257,7 +278,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
 
     sendingRef.current = true
     setSending(true)
-    setInputText('') // Segera kosongkan input form agar tidak dapat dikirim ganda
+    setInputText('')
 
     try {
       const sent = await sendChatMessage({
@@ -269,14 +290,13 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       })
       if (sent) {
         setMessages(prev => {
-          // Cegah double jika event realtime telah lebih dulu menambahkan pesan
           if (prev.some(m => m.id === sent.id)) return prev
           return [...prev, sent]
         })
         setTimeout(scrollToBottom, 50)
       }
     } catch (err) {
-      setInputText(textToSend) // Kembalikan isi teks jika pengiriman gagal
+      setInputText(textToSend)
       alert(`Gagal mengirim pesan: ${err.message}`)
     } finally {
       sendingRef.current = false
@@ -316,68 +336,158 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
     }
   }
 
-  // Filter teachers for private chat
+  // Filter teachers for direct message
   const filteredTeachers = teachersList.filter(t => {
     if (t.id === currentUserId) return false
     const q = teacherSearch.toLowerCase()
     return (
       (t.full_name || '').toLowerCase().includes(q) ||
       (t.email || '').toLowerCase().includes(q) ||
-      (t.nip || '').includes(q)
+      (t.nip || '').includes(q) ||
+      (t.jabatan || '').toLowerCase().includes(q)
     )
+  })
+
+  // Filtered channels
+  const filteredChannels = CHAT_CHANNELS.filter(ch => {
+    const q = teacherSearch.toLowerCase()
+    return ch.label.toLowerCase().includes(q) || ch.desc.toLowerCase().includes(q)
   })
 
   const isLeader = user?.role === 'admin' || user?.role === 'kepsek'
 
+  // Warna pengirim pesan bergaya Telegram/WhatsApp
+  const getSenderColor = (senderId, role) => {
+    if (role === 'kepsek') return '#D97706' // Amber
+    if (role === 'admin') return '#4F46E5' // Indigo
+    const colors = ['#059669', '#2563EB', '#7C3AED', '#DB2777', '#0891B2', '#EA580C']
+    if (!senderId) return colors[0]
+    let hash = 0
+    for (let i = 0; i < senderId.length; i++) hash += senderId.charCodeAt(i)
+    return colors[hash % colors.length]
+  }
+
+  // Buka room chat dari daftar
+  const openChatRoom = (channelId, partner = null) => {
+    setActiveChannel(channelId)
+    setSelectedPartner(partner)
+    if (isMobile) {
+      setMobileChatView('room')
+    }
+  }
+
   return (
-    <div className="fade-in" style={{ paddingBottom: '2rem' }}>
-      {/* HEADER SECTION */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '1.25rem' }}>
+    <div className="wa-telegram-root fade-in" style={{ paddingBottom: '2.5rem' }}>
+      {/* SCOPED CSS STYLES FOR WHATSAPP & TELEGRAM EXPERIENCE */}
+      <style>{`
+        .wa-telegram-root {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .wa-chat-wallpaper {
+          background-color: ${darkMode ? '#0B141A' : '#EFEAE2'};
+          background-image: ${darkMode 
+            ? `radial-gradient(#1E293B 1px, transparent 1px), radial-gradient(#1E293B 1px, #0B141A 1px)` 
+            : `radial-gradient(#CBD5E1 1px, transparent 1px), radial-gradient(#CBD5E1 1px, #EFEAE2 1px)`};
+          background-size: 24px 24px;
+          background-position: 0 0, 12px 12px;
+        }
+        .wa-chat-item:active, .wa-chat-item:hover {
+          background-color: ${darkMode ? '#1E293B' : '#F1F5F9'} !important;
+        }
+        .wa-bubble-out {
+          background: ${darkMode ? '#005C4B' : '#D9FDD3'} !important;
+          color: ${darkMode ? '#E9EDEF' : '#111B21'} !important;
+          border-radius: 14px 14px 2px 14px !important;
+          box-shadow: 0 1px 1.5px rgba(11, 20, 26, 0.13) !important;
+        }
+        .wa-bubble-in {
+          background: ${darkMode ? '#202C33' : '#FFFFFF'} !important;
+          color: ${darkMode ? '#E9EDEF' : '#111B21'} !important;
+          border-radius: 14px 14px 14px 2px !important;
+          box-shadow: 0 1px 1.5px rgba(11, 20, 26, 0.13) !important;
+        }
+        .wa-tab-btn {
+          position: relative;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .wa-tab-btn.active {
+          color: #25D366 !important;
+          font-weight: 700 !important;
+        }
+        .wa-tab-btn.active::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 12%;
+          right: 12%;
+          height: 3px;
+          background: #25D366;
+          border-radius: 3px 3px 0 0;
+        }
+        .wa-input-pill:focus-within {
+          box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.4) !important;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
+      {/* HEADER SECTION APP BAR */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '0.85rem' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <MessageSquare size={24} color="#4F46E5" />
-            Pusat Komunikasi & Koordinasi Sekolah
+          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '10px', background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)', color: 'white' }}>
+              <MessageSquare size={18} />
+            </span>
+            Pusat Komunikasi Staf
           </h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-            Ruang diskusi dewan guru, instruksi dinas pimpinan, dan integrasi WhatsApp cepat
+          <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+            Obrolan kilat WA/Telegram antar pendidik, disposisi pimpinan, dan kontak instan
           </p>
         </div>
 
-        {/* NOTIFIKASI RETENSI 14 HARI */}
+        {/* NOTIFIKASI RETENSI 14 HARI (CLEAN PILL) */}
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            borderRadius: '20px',
-            background: darkMode ? '#1E1B4B' : '#EEF2FF',
-            border: darkMode ? '1px solid #3730A3' : '1px solid #C7D2FE',
-            fontSize: '0.74rem',
-            color: darkMode ? '#C7D2FE' : '#3730A3',
-            fontWeight: 600
+            gap: '6px',
+            padding: '4px 10px',
+            borderRadius: '9999px',
+            background: darkMode ? '#064E3B' : '#ECFDF5',
+            border: darkMode ? '1px solid #059669' : '1px solid #A7F3D0',
+            fontSize: '0.7rem',
+            color: darkMode ? '#A7F3D0' : '#065F46',
+            fontWeight: 700
           }}
         >
-          <ShieldCheck size={14} color="#4F46E5" />
-          <span>Pembersihan Otomatis 14 Hari Aktif</span>
+          <ShieldCheck size={13} color="#10B981" />
+          <span>Privasi & Retensi 14 Hari</span>
         </div>
       </div>
 
-      {/* TAB NAVIGASI UTAMA */}
+      {/* TAB NAVIGASI UTAMA (WHATSAPP TOP TABS STYLE) */}
       <div
+        className="no-scrollbar"
         style={{
           display: 'flex',
-          gap: '8px',
-          borderBottom: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-          marginBottom: '1.25rem',
-          overflowX: 'auto',
-          paddingBottom: '4px'
+          background: darkMode ? '#1E293B' : '#FFFFFF',
+          borderRadius: '14px',
+          padding: '4px',
+          marginBottom: '1rem',
+          border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+          overflowX: 'auto'
         }}
       >
         {[
-          { id: 'chat', label: '💬 Obrolan Internal Staf', desc: 'Chat pribadi & grup dewan guru' },
-          { id: 'disposisi', label: '📌 Disposisi & Instruksi Pimpinan', desc: 'Lembar tugas kedinasan resmi' },
-          { id: 'wa_tools', label: '📲 Tombol WhatsApp Instan', desc: 'Pengingat presensi & pengumuman gratis' }
+          { id: 'chat', label: 'Obrolan Staf', icon: '💬' },
+          { id: 'disposisi', label: 'Disposisi Kedinasan', icon: '📌' },
+          { id: 'wa_tools', label: 'Tombol WhatsApp', icon: '📲' }
         ].map(tab => {
           const isActive = activeMainTab === tab.id
           return (
@@ -385,23 +495,26 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               key={tab.id}
               type="button"
               onClick={() => setActiveMainTab(tab.id)}
+              className={`wa-tab-btn ${isActive ? 'active' : ''}`}
               style={{
-                padding: '10px 16px',
-                borderRadius: '12px 12px 0 0',
+                flex: 1,
+                minWidth: '110px',
+                padding: '9px 12px',
                 border: 'none',
-                borderBottom: isActive ? '3px solid #4F46E5' : '3px solid transparent',
-                background: isActive ? (darkMode ? '#1E293B' : '#FFFFFF') : 'transparent',
-                color: isActive ? '#4F46E5' : (darkMode ? '#94A3B8' : '#64748B'),
-                fontWeight: isActive ? 700 : 500,
-                fontSize: '0.86rem',
+                background: isActive ? (darkMode ? '#0F172A' : '#F0FDF4') : 'transparent',
+                color: isActive ? '#15803D' : (darkMode ? '#94A3B8' : '#64748B'),
+                borderRadius: '10px',
+                fontWeight: isActive ? 700 : 600,
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
+                justifyContent: 'center',
+                gap: '6px',
+                whiteSpace: 'nowrap'
               }}
             >
+              <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           )
@@ -409,7 +522,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: OBROLAN INTERNAL SEKOLAH (CHAT ROOM) */}
+      {/* TAB 1: OBROLAN INTERNAL SEKOLAH (WHATSAPP & TELEGRAM FULL REDESIGN) */}
       {/* ========================================================================= */}
       {activeMainTab === 'chat' && (
         <div
@@ -417,282 +530,511 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
           style={{
             padding: 0,
             overflow: 'hidden',
-            display: 'grid',
-            gridTemplateColumns: 'minmax(240px, 300px) 1fr',
-            minHeight: '560px',
+            display: 'flex',
+            height: isMobile ? 'calc(100vh - 215px)' : '650px',
+            minHeight: isMobile ? '500px' : '580px',
+            maxHeight: '750px',
             background: darkMode ? '#1E293B' : '#FFFFFF',
             border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-            borderRadius: '16px'
+            borderRadius: '18px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+            position: 'relative'
           }}
         >
-          {/* KOLOM KIRI: DAFTAR RUANG / CHANNEL & KONTAK GURU */}
+          {/* ------------------------------------------------------------- */}
+          {/* PANE KIRI: DAFTAR CHAT / KONTAK (WHATSAPP CHAT LIST)           */}
+          {/* ------------------------------------------------------------- */}
           <div
             style={{
-              borderRight: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-              background: darkMode ? '#0F172A' : '#F8FAFC',
-              display: 'flex',
-              flexDirection: 'column'
+              width: isMobile ? '100%' : '330px',
+              minWidth: isMobile ? '100%' : '300px',
+              maxWidth: isMobile ? '100%' : '350px',
+              borderRight: isMobile ? 'none' : (darkMode ? '1px solid #334155' : '1px solid #E2E8F0'),
+              background: darkMode ? '#111B21' : '#FFFFFF',
+              display: (!isMobile || mobileChatView === 'list') ? 'flex' : 'none',
+              flexDirection: 'column',
+              height: '100%',
+              zIndex: 10
             }}
           >
-            {/* Header Kolom Kiri */}
-            <div style={{ padding: '1rem', borderBottom: darkMode ? '1px solid #334155' : '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: darkMode ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Ruang Diskusi Resmi
+            {/* Header Chat List */}
+            <div style={{ padding: '0.85rem 1rem 0.6rem 1rem', background: darkMode ? '#202C33' : '#F0F2F5', borderBottom: darkMode ? '1px solid #2A3942' : '1px solid #E2E8F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: darkMode ? '#E9EDEF' : '#111B21' }}>
+                  Obrolan PanritaEdu
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#10B981', background: darkMode ? '#064E3B' : '#DCFCE7', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                  ● Aktif
+                </span>
               </div>
-            </div>
 
-            {/* List Channels */}
-            <div style={{ padding: '8px' }}>
-              {CHAT_CHANNELS.map(ch => {
-                const isSelected = activeChannel === ch.id
-                return (
-                  <button
-                    key={ch.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveChannel(ch.id)
-                      setSelectedPartner(null)
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      background: isSelected ? '#4F46E5' : 'transparent',
-                      color: isSelected ? 'white' : (darkMode ? '#F8FAFC' : '#1E293B'),
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      marginBottom: '4px',
-                      transition: 'background 0.15s ease'
-                    }}
-                  >
-                    <span style={{ fontSize: '1.2rem' }}>{ch.icon}</span>
-                    <div style={{ overflow: 'hidden' }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                        {ch.label}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: isSelected ? 'rgba(255,255,255,0.8)' : (darkMode ? '#94A3B8' : '#64748B') }}>
-                        {ch.desc}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Header Chat Pribadi */}
-            <div style={{ padding: '10px 1rem 6px 1rem', borderTop: darkMode ? '1px solid #334155' : '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: darkMode ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                Obrolan Pribadi Staf
-              </div>
+              {/* Kotak Pencarian Chat / Guru */}
               <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#94A3B8' }} />
+                <Search size={15} style={{ position: 'absolute', left: '12px', top: '10px', color: '#8696A0' }} />
                 <input
                   type="text"
-                  placeholder="Cari guru / tendik..."
+                  placeholder="Cari ruang obrolan atau guru..."
                   value={teacherSearch}
                   onChange={(e) => setTeacherSearch(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '6px 10px 6px 30px',
-                    borderRadius: '8px',
-                    border: darkMode ? '1px solid #334155' : '1px solid #CBD5E1',
-                    background: darkMode ? '#1E293B' : 'white',
-                    color: darkMode ? '#F8FAFC' : '#1E293B',
-                    fontSize: '0.76rem'
+                    padding: '8px 12px 8px 34px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    background: darkMode ? '#111B21' : '#FFFFFF',
+                    color: darkMode ? '#E9EDEF' : '#111B21',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
                   }}
                 />
               </div>
-            </div>
 
-            {/* List Kontak Guru */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
-              {filteredTeachers.map(t => {
-                const isSelected = activeChannel === 'private' && selectedPartner?.id === t.id
-                return (
+              {/* WhatsApp Filter Chips */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '0.6rem' }}>
+                {[
+                  { id: 'all', label: 'Semua' },
+                  { id: 'groups', label: 'Grup Sekolah' },
+                  { id: 'direct', label: 'Pribadi' }
+                ].map(chip => (
                   <button
-                    key={t.id}
+                    key={chip.id}
                     type="button"
-                    onClick={() => {
-                      setActiveChannel('private')
-                      setSelectedPartner(t)
-                    }}
+                    onClick={() => setChatFilter(chip.id)}
                     style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '10px',
+                      padding: '4px 10px',
+                      borderRadius: '16px',
                       border: 'none',
-                      background: isSelected ? '#4F46E5' : 'transparent',
-                      color: isSelected ? 'white' : (darkMode ? '#F8FAFC' : '#1E293B'),
+                      background: chatFilter === chip.id ? '#00A884' : (darkMode ? '#111B21' : '#E9EDEF'),
+                      color: chatFilter === chip.id ? '#FFFFFF' : (darkMode ? '#8696A0' : '#54656F'),
+                      fontSize: '0.72rem',
+                      fontWeight: chatFilter === chip.id ? 700 : 500,
                       cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      marginBottom: '3px'
+                      transition: 'all 0.15s'
                     }}
                   >
-                    <div
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        background: isSelected ? 'rgba(255,255,255,0.2)' : '#E0E7FF',
-                        color: isSelected ? 'white' : '#4338CA',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 700,
-                        fontSize: '0.8rem',
-                        flexShrink: 0
-                      }}
-                    >
-                      {t.full_name ? t.full_name.charAt(0).toUpperCase() : 'U'}
-                    </div>
-                    <div style={{ overflow: 'hidden', flex: 1 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                        {t.full_name || t.email}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: isSelected ? 'rgba(255,255,255,0.8)' : (darkMode ? '#94A3B8' : '#64748B') }}>
-                        {t.role === 'admin' ? 'Administrator' : (t.role === 'kepsek' ? 'Kepala Sekolah' : 'Guru Pegawai')}
-                      </div>
-                    </div>
+                    {chip.label}
                   </button>
-                )
-              })}
+                ))}
+              </div>
+            </div>
+
+            {/* List Chat Channels & Guru */}
+            <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+              {/* Section 1: Grup Sekolah */}
+              {(chatFilter === 'all' || chatFilter === 'groups') && (
+                <div>
+                  <div style={{ padding: '8px 1rem 4px 1rem', fontSize: '0.7rem', fontWeight: 800, color: '#8696A0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Ruang Grup Kedinasan
+                  </div>
+                  {filteredChannels.map(ch => {
+                    const isSelected = activeChannel === ch.id
+                    return (
+                      <div
+                        key={ch.id}
+                        onClick={() => openChatRoom(ch.id, null)}
+                        className="wa-chat-item"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '10px 1rem',
+                          cursor: 'pointer',
+                          background: isSelected ? (darkMode ? '#2A3942' : '#F0F2F5') : 'transparent',
+                          borderLeft: isSelected ? '4px solid #25D366' : '4px solid transparent',
+                          borderBottom: darkMode ? '1px solid #1F2C34' : '1px solid #F1F5F9'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '50%',
+                            background: ch.id === 'umum' ? 'linear-gradient(135deg, #10B981, #059669)' : (ch.id === 'kkg' ? 'linear-gradient(135deg, #3B82F6, #1D4ED8)' : 'linear-gradient(135deg, #F59E0B, #B45309)'),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.25rem',
+                            color: 'white',
+                            flexShrink: 0,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}
+                        >
+                          {ch.icon}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: darkMode ? '#E9EDEF' : '#111B21', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {ch.label}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: '#8696A0' }}>Grup</span>
+                          </div>
+                          <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#8696A0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {ch.desc}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Section 2: Obrolan Pribadi Staf */}
+              {(chatFilter === 'all' || chatFilter === 'direct') && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div style={{ padding: '8px 1rem 4px 1rem', fontSize: '0.7rem', fontWeight: 800, color: '#8696A0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Obrolan Pribadi Staf ({filteredTeachers.length})
+                  </div>
+                  {filteredTeachers.length === 0 ? (
+                    <div style={{ padding: '1.5rem', textAlign: 'center', color: '#8696A0', fontSize: '0.78rem' }}>
+                      Tidak ada guru/pegawai yang cocok dengan kata kunci.
+                    </div>
+                  ) : (
+                    filteredTeachers.map(t => {
+                      const isSelected = activeChannel === 'private' && selectedPartner?.id === t.id
+                      const initial = t.full_name ? t.full_name.charAt(0).toUpperCase() : 'U'
+                      const roleLabel = t.role === 'admin' ? 'Administrator' : (t.role === 'kepsek' ? 'Kepala Sekolah' : (t.jabatan || 'Guru'))
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => openChatRoom('private', t)}
+                          className="wa-chat-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '10px 1rem',
+                            cursor: 'pointer',
+                            background: isSelected ? (darkMode ? '#2A3942' : '#F0F2F5') : 'transparent',
+                            borderLeft: isSelected ? '4px solid #25D366' : '4px solid transparent',
+                            borderBottom: darkMode ? '1px solid #1F2C34' : '1px solid #F1F5F9'
+                          }}
+                        >
+                          {/* Avatar WhatsApp Circle */}
+                          <div style={{ position: 'relative', flexShrink: 0 }}>
+                            {t.foto_profil ? (
+                              <img src={t.foto_profil} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+                            ) : (
+                              <div
+                                style={{
+                                  width: '44px',
+                                  height: '44px',
+                                  borderRadius: '50%',
+                                  background: getSenderColor(t.id, t.role),
+                                  color: 'white',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 800,
+                                  fontSize: '1.05rem',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                }}
+                              >
+                                {initial}
+                              </div>
+                            )}
+                            {/* Online green indicator dot */}
+                            <span
+                              style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                right: 0,
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '50%',
+                                background: '#10B981',
+                                border: `2px solid ${darkMode ? '#111B21' : '#FFFFFF'}`
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: darkMode ? '#E9EDEF' : '#111B21', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {t.full_name || t.email}
+                              </span>
+                              <span style={{ fontSize: '0.68rem', color: '#8696A0' }}>
+                                {t.role === 'kepsek' ? 'Kepsek' : (t.role === 'admin' ? 'Admin' : 'Guru')}
+                              </span>
+                            </div>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#8696A0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {roleLabel} {t.nip ? `• NIP: ${t.nip}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* KOLOM KANAN: FEED OBROLAN & INPUT PESAN */}
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '560px' }}>
-            {/* Header Chat Room */}
+          {/* ------------------------------------------------------------- */}
+          {/* PANE KANAN: RUANG CHAT AKTIF (WHATSAPP/TELEGRAM CANVAS)        */}
+          {/* ------------------------------------------------------------- */}
+          <div
+            style={{
+              flex: 1,
+              display: (!isMobile || mobileChatView === 'room') ? 'flex' : 'none',
+              flexDirection: 'column',
+              height: '100%',
+              background: darkMode ? '#0B141A' : '#EFEAE2',
+              position: 'relative'
+            }}
+          >
+            {/* Header Ruang Obrolan (WhatsApp Top Bar) */}
             <div
               style={{
-                padding: '0.85rem 1.25rem',
-                borderBottom: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
+                padding: '0.65rem 1rem',
+                background: darkMode ? '#202C33' : '#F0F2F5',
+                borderBottom: darkMode ? '1px solid #2A3942' : '1px solid #D1D7DB',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                background: darkMode ? '#1E293B' : '#FFFFFF'
+                zIndex: 20
               }}
             >
-              <div>
-                <strong style={{ fontSize: '0.95rem', color: darkMode ? '#F8FAFC' : '#1E293B' }}>
-                  {activeChannel === 'private'
-                    ? `💬 Obrolan Pribadi: ${selectedPartner?.full_name || selectedPartner?.email}`
-                    : CHAT_CHANNELS.find(c => c.id === activeChannel)?.label}
-                </strong>
-                <span style={{ display: 'block', fontSize: '0.72rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                  {activeChannel === 'private'
-                    ? `NIP: ${selectedPartner?.nip || '-'}`
-                    : CHAT_CHANNELS.find(c => c.id === activeChannel)?.desc}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                {/* Tombol Back di Mobile (Kembali ke Daftar Chat) */}
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={() => setMobileChatView('list')}
+                    title="Kembali ke Daftar Obrolan"
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: darkMode ? '#E9EDEF' : '#111B21',
+                      padding: '6px',
+                      marginRight: '-4px',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                )}
+
+                {/* Avatar Room */}
+                <div style={{ flexShrink: 0 }}>
+                  {activeChannel === 'private' ? (
+                    selectedPartner?.foto_profil ? (
+                      <img src={selectedPartner.foto_profil} alt="" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div
+                        style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '50%',
+                          background: getSenderColor(selectedPartner?.id, selectedPartner?.role),
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: '0.95rem'
+                        }}
+                      >
+                        {selectedPartner?.full_name ? selectedPartner.full_name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                    )
+                  ) : (
+                    <div
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '50%',
+                        background: activeChannel === 'umum' ? '#10B981' : (activeChannel === 'kkg' ? '#3B82F6' : '#F59E0B'),
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1.15rem'
+                      }}
+                    >
+                      {CHAT_CHANNELS.find(c => c.id === activeChannel)?.icon || '💬'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Nama & Status */}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, color: darkMode ? '#E9EDEF' : '#111B21', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {activeChannel === 'private'
+                      ? (selectedPartner?.full_name || selectedPartner?.email)
+                      : CHAT_CHANNELS.find(c => c.id === activeChannel)?.label}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>●</span>
+                    <span style={{ color: darkMode ? '#8696A0' : '#54656F' }}>
+                      {activeChannel === 'private'
+                        ? (selectedPartner?.jabatan || selectedPartner?.role || 'Staf Sekolah')
+                        : 'Semua Anggota Terhubung'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              {/* Tombol WhatsApp Rekan (Jika Obrolan Pribadi) */}
-              {activeChannel === 'private' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = `Halo Bapak/Ibu *${selectedPartner?.full_name}*, terkait koordinasi di aplikasi PanritaEdu...`
-                    openWhatsAppDirect(selectedPartner?.phone, text)
-                  }}
-                  className="btn"
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    background: '#25D366',
-                    color: 'white',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    border: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span>📲 Chat via WhatsApp</span>
-                </button>
-              )}
+              {/* Aksi Kanan (Direct WA Shortcut) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {activeChannel === 'private' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `Halo Bapak/Ibu *${selectedPartner?.full_name}*, terkait koordinasi tugas di PanritaEdu...`
+                      openWhatsAppDirect(selectedPartner?.phone, text)
+                    }}
+                    title="Buka Chat WhatsApp Resmi"
+                    style={{
+                      background: '#25D366',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '20px',
+                      padding: '5px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 6px rgba(37, 211, 102, 0.3)'
+                    }}
+                  >
+                    <Phone size={13} />
+                    <span>WhatsApp</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Pesan Feed */}
+            {/* Canvas Pesan WhatsApp (Wallpaper Pattern) */}
             <div
+              className="wa-chat-wallpaper"
               style={{
                 flex: 1,
                 overflowY: 'auto',
-                padding: '1rem',
-                background: darkMode ? '#0F172A' : '#F8FAFC',
+                padding: '0.85rem 1rem',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px'
+                gap: '8px'
               }}
             >
+              {/* Pill Tanggal Hari Ini (Tengah ala WhatsApp) */}
+              <div style={{ textAlign: 'center', margin: '6px 0 10px 0' }}>
+                <span
+                  style={{
+                    background: darkMode ? '#182229' : 'rgba(255, 255, 255, 0.9)',
+                    color: darkMode ? '#8696A0' : '#54656F',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '4px 12px',
+                    borderRadius: '8px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.3px'
+                  }}
+                >
+                  Pesan Terenkripsi • Retensi 14 Hari
+                </span>
+              </div>
+
               {loadingMessages ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#94A3B8', fontSize: '0.85rem' }}>
-                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 8px auto', display: 'block' }} />
-                  Memuat percakapan...
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#8696A0', fontSize: '0.82rem' }}>
+                  <RefreshCw size={22} className="spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#00A884' }} />
+                  Memuat obrolan...
                 </div>
               ) : messages.length === 0 ? (
-                <div style={{ textAlign: 'center', margin: 'auto', padding: '2rem', color: '#94A3B8' }}>
-                  <MessageSquare size={36} style={{ margin: '0 auto 10px auto', display: 'block', opacity: 0.5 }} />
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Belum ada pesan di ruang ini</div>
-                  <div style={{ fontSize: '0.78rem', marginTop: '4px' }}>Mulai percakapan santun kedinasan dengan rekan kerja Anda.</div>
+                <div style={{ textAlign: 'center', margin: 'auto', padding: '2rem', maxWidth: '320px' }}>
+                  <div
+                    style={{
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: '50%',
+                      background: darkMode ? '#202C33' : '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 12px auto',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+                    }}
+                  >
+                    <MessageSquare size={32} color="#00A884" />
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '0.92rem', color: darkMode ? '#E9EDEF' : '#111B21' }}>
+                    Belum Ada Pesan
+                  </div>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.76rem', color: '#8696A0', lineHeight: 1.4 }}>
+                    Mulai koordinasi kedinasan santun dengan rekan guru dan staf sekolah di ruang ini.
+                  </p>
                 </div>
               ) : (
                 messages.map(msg => {
                   const isMe = msg.sender_id === currentUserId
                   const senderObj = msg.sender || teachersList.find(t => t.id === msg.sender_id)
                   const senderName = isMe ? 'Saya' : (senderObj?.full_name || 'Rekan Kerja')
-                  const senderRole = senderObj?.role === 'admin' ? 'Admin' : (senderObj?.role === 'kepsek' ? 'Kepsek' : 'Guru/Tendik')
+                  const senderRole = senderObj?.role === 'admin' ? 'Admin' : (senderObj?.role === 'kepsek' ? 'Kepsek' : 'Guru')
                   const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
+                  const senderColor = getSenderColor(msg.sender_id, senderObj?.role)
 
                   return (
                     <div
                       key={msg.id}
                       style={{
                         alignSelf: isMe ? 'flex-end' : 'flex-start',
-                        maxWidth: '75%',
+                        maxWidth: isMobile ? '86%' : '75%',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: isMe ? 'flex-end' : 'flex-start'
                       }}
                     >
-                      {/* Nama Pengirim (Jika Pesan Orang Lain di Grup) */}
-                      {!isMe && activeChannel !== 'private' && (
-                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginBottom: '2px', paddingLeft: '4px' }}>
-                          <strong>{senderName}</strong> <span style={{ opacity: 0.7 }}>({senderRole})</span>
-                        </div>
-                      )}
-
-                      {/* Bubble Pesan */}
+                      {/* Bubble Chat WhatsApp/Telegram */}
                       <div
+                        className={isMe ? 'wa-bubble-out' : 'wa-bubble-in'}
                         style={{
-                          padding: '10px 14px',
-                          borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
-                          background: isMe ? '#4F46E5' : (darkMode ? '#1E293B' : '#FFFFFF'),
-                          color: isMe ? '#FFFFFF' : (darkMode ? '#F8FAFC' : '#1E293B'),
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                          border: isMe ? 'none' : (darkMode ? '1px solid #334155' : '1px solid #E2E8F0'),
-                          fontSize: '0.85rem',
-                          lineHeight: '1.45',
-                          wordBreak: 'break-word'
+                          padding: '7px 11px',
+                          fontSize: '0.86rem',
+                          lineHeight: '1.42',
+                          wordBreak: 'break-word',
+                          position: 'relative',
+                          minWidth: '90px'
                         }}
                       >
-                        {msg.message}
+                        {/* Nama Pengirim pada Bubble Lawan Bicara (Grup) */}
+                        {!isMe && activeChannel !== 'private' && (
+                          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: senderColor, marginBottom: '2px' }}>
+                            {senderName}
+                            <span style={{ fontSize: '0.66rem', fontWeight: 500, color: '#8696A0', marginLeft: '5px' }}>
+                              ({senderRole})
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Isi Teks Pesan */}
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {msg.message}
+                        </div>
+
+                        {/* Waktu & Tanda Centang Dua (✓✓) ala WhatsApp */}
                         <div
                           style={{
-                            textAlign: 'right',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: '3px',
+                            marginTop: '2px',
                             fontSize: '0.65rem',
-                            marginTop: '4px',
-                            color: isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8'
+                            color: isMe ? (darkMode ? '#8696A0' : '#667781') : '#8696A0'
                           }}
                         >
-                          {timeStr}
+                          <span>{timeStr}</span>
+                          {isMe && (
+                            <span style={{ color: '#53BDEB', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center' }}>
+                              <CheckCheck size={13} strokeWidth={2.5} />
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -702,51 +1044,72 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Kotak Input Pengetikan Pesan */}
+            {/* Kotak Input Pesan ala WhatsApp (Pill Input & Circular Send) */}
             <form
               onSubmit={handleSendMessage}
               style={{
-                padding: '0.75rem 1rem',
-                borderTop: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-                background: darkMode ? '#1E293B' : '#FFFFFF',
+                padding: '8px 10px',
+                background: darkMode ? '#202C33' : '#F0F2F5',
+                borderTop: darkMode ? '1px solid #2A3942' : '1px solid #D1D7DB',
                 display: 'flex',
-                gap: '8px'
+                alignItems: 'center',
+                gap: '8px',
+                zIndex: 20
               }}
             >
-              <input
-                type="text"
-                placeholder={activeChannel === 'private' ? `Tulis pesan pribadi ke ${selectedPartner?.full_name || 'rekan'}...` : 'Tulis pesan koordinasi di ruang ini...'}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+              <div
+                className="wa-input-pill"
                 style={{
                   flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  border: darkMode ? '1px solid #334155' : '1px solid #CBD5E1',
-                  background: darkMode ? '#0F172A' : '#F8FAFC',
-                  color: darkMode ? '#F8FAFC' : '#1E293B',
-                  fontSize: '0.85rem'
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: darkMode ? '#2A3942' : '#FFFFFF',
+                  borderRadius: '24px',
+                  padding: '2px 14px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
                 }}
-              />
+              >
+                <input
+                  type="text"
+                  placeholder={activeChannel === 'private' ? `Pesan ke ${selectedPartner?.full_name?.split(' ')[0] || 'rekan'}...` : 'Ketik pesan koordinasi...'}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '9px 4px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: darkMode ? '#E9EDEF' : '#111B21',
+                    fontSize: '0.86rem',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Tombol Kirim Bundar Hijau WhatsApp */}
               <button
                 type="submit"
                 disabled={sending || !inputText.trim()}
-                className="btn btn-primary"
+                title="Kirim Pesan"
                 style={{
-                  padding: '0 1.25rem',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  background: (!inputText.trim() || sending) 
+                    ? (darkMode ? '#2A3942' : '#CBD5E1') 
+                    : 'linear-gradient(135deg, #00A884 0%, #059669 100%)',
                   color: 'white',
-                  fontWeight: 600,
+                  border: 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  border: 'none',
-                  cursor: (sending || !inputText.trim()) ? 'not-allowed' : 'pointer'
+                  justifyContent: 'center',
+                  cursor: (!inputText.trim() || sending) ? 'not-allowed' : 'pointer',
+                  flexShrink: 0,
+                  boxShadow: inputText.trim() ? '0 2px 8px rgba(0, 168, 132, 0.4)' : 'none',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
               >
-                <Send size={16} />
-                <span>Kirim</span>
+                <Send size={18} style={{ marginLeft: '2px' }} />
               </button>
             </form>
           </div>
@@ -754,18 +1117,18 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: DISPOSISI & INSTRUKSI TUGAS KEDINASAN PIMPINAN */}
+      {/* TAB 2: DISPOSISI & INSTRUKSI TUGAS KEDINASAN PIMPINAN                     */}
       {/* ========================================================================= */}
       {activeMainTab === 'disposisi' && (
-        <div>
+        <div style={{ display: 'grid', gap: '1rem' }}>
           {/* Header Bar Disposisi */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
             <div>
-              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
-                Lembar Instruksi & Disposisi Tugas Kedinasan
+              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
+                Lembar Instruksi & Disposisi Kedinasan
               </h4>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                {isLeader ? 'Kelola dan pantau tugas kedinasan yang diberikan ke dewan guru' : 'Daftar instruksi dan tugas kedinasan dari Kepala Sekolah yang ditujukan kepada Anda'}
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                {isLeader ? 'Kelola dan pantau tugas kedinasan yang diberikan ke guru' : 'Daftar instruksi resmi dari Kepala Sekolah yang ditujukan kepada Anda'}
               </p>
             </div>
 
@@ -779,18 +1142,19 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '8px 16px',
+                  padding: '7px 14px',
                   borderRadius: '10px',
-                  background: '#4F46E5',
+                  background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
                   color: 'white',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
                   border: 'none',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(79, 70, 229, 0.3)'
                 }}
               >
-                <Plus size={16} />
-                <span>+ Buat Instruksi Tugas Baru</span>
+                <Plus size={15} />
+                <span>+ Buat Instruksi Tugas</span>
               </button>
             )}
           </div>
@@ -806,20 +1170,20 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               className="card"
               style={{
                 textAlign: 'center',
-                padding: '3rem',
+                padding: '2.5rem 1.5rem',
                 background: darkMode ? '#1E293B' : 'white',
                 border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
                 borderRadius: '16px'
               }}
             >
-              <CheckCircle2 size={40} color="#10B981" style={{ margin: '0 auto 10px auto', display: 'block' }} />
-              <strong style={{ fontSize: '1rem', color: darkMode ? '#F8FAFC' : '#1E293B' }}>Tidak ada tugas yang tertunda</strong>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                Seluruh instruksi kedinasan telah selesai atau belum ada tugas baru yang ditambahkan.
+              <CheckCircle2 size={38} color="#10B981" style={{ margin: '0 auto 10px auto', display: 'block' }} />
+              <strong style={{ fontSize: '0.95rem', color: darkMode ? '#F8FAFC' : '#1E293B' }}>Tidak Ada Tugas Tertunda</strong>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                Seluruh instruksi kedinasan telah selesai atau belum ada tugas baru yang ditugaskan.
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <div style={{ display: 'grid', gap: '10px' }}>
               {dispositions.map(disp => {
                 const isAssignedToMe = disp.to_user_id === currentUserId
                 return (
@@ -830,17 +1194,17 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                       background: darkMode ? '#1E293B' : 'white',
                       border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
                       borderRadius: '14px',
-                      padding: '1.25rem'
+                      padding: '1rem 1.25rem'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                      <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                           <span
                             style={{
-                              padding: '3px 10px',
+                              padding: '2px 8px',
                               borderRadius: '20px',
-                              fontSize: '0.72rem',
+                              fontSize: '0.68rem',
                               fontWeight: 700,
                               background: disp.status === 'selesai' ? '#ECFDF5' : (disp.status === 'proses' ? '#EFF6FF' : '#FFFBEB'),
                               color: disp.status === 'selesai' ? '#065F46' : (disp.status === 'proses' ? '#1E40AF' : '#92400E'),
@@ -851,28 +1215,28 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                           </span>
 
                           {disp.deadline && (
-                            <span style={{ fontSize: '0.74rem', color: '#EF4444', fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.72rem', color: '#EF4444', fontWeight: 600 }}>
                               Tenggat: {new Date(disp.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                           )}
                         </div>
 
-                        <h4 style={{ margin: '4px 0', fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
+                        <h4 style={{ margin: '4px 0', fontSize: '0.95rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
                           {disp.title}
                         </h4>
-                        <p style={{ margin: '4px 0 8px 0', fontSize: '0.82rem', color: darkMode ? '#CBD5E1' : '#475569', lineHeight: '1.5' }}>
+                        <p style={{ margin: '4px 0 8px 0', fontSize: '0.8rem', color: darkMode ? '#CBD5E1' : '#475569', lineHeight: '1.45' }}>
                           {disp.description || 'Tidak ada catatan tambahan.'}
                         </p>
 
-                        <div style={{ fontSize: '0.74rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                          Pemberi Tugas: <strong>{disp.from_user?.full_name || teachersList.find(t => t.id === disp.from_user_id)?.full_name || 'Kepala Sekolah'}</strong> &nbsp;|&nbsp;
-                          Penerima Tugas: <strong>{disp.to_user?.full_name || teachersList.find(t => t.id === disp.to_user_id)?.full_name || 'Guru'}</strong>
+                        <div style={{ fontSize: '0.72rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                          Pemberi: <strong>{disp.from_user?.full_name || teachersList.find(t => t.id === disp.from_user_id)?.full_name || 'Kepala Sekolah'}</strong> &nbsp;|&nbsp;
+                          Penerima: <strong>{disp.to_user?.full_name || teachersList.find(t => t.id === disp.to_user_id)?.full_name || 'Guru'}</strong>
                         </div>
                       </div>
 
                       {/* Aksi Guru Penerima Tugas */}
                       {isAssignedToMe && disp.status !== 'selesai' && (
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '6px', alignSelf: 'flex-start' }}>
                           {disp.status === 'menunggu' && (
                             <button
                               type="button"
@@ -882,12 +1246,12 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                               }}
                               className="btn"
                               style={{
-                                padding: '6px 12px',
+                                padding: '6px 10px',
                                 borderRadius: '8px',
                                 background: '#3B82F6',
                                 color: 'white',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
                                 border: 'none',
                                 cursor: 'pointer'
                               }}
@@ -910,8 +1274,8 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                               borderRadius: '8px',
                               background: '#10B981',
                               color: 'white',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
                               border: 'none',
                               cursor: 'pointer'
                             }}
@@ -947,26 +1311,27 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               <div
                 className="card"
                 style={{
-                  maxWidth: '500px',
+                  maxWidth: '480px',
                   width: '100%',
                   background: darkMode ? '#1E293B' : 'white',
                   borderRadius: '16px',
-                  padding: '1.5rem',
+                  padding: '1.25rem',
                   boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
                 }}
               >
-                <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
+                <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.05rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
                   Buat Disposisi / Instruksi Kedinasan
                 </h4>
 
                 <form onSubmit={handleCreateDisposition}>
-                  <div className="input-group" style={{ marginBottom: '1rem' }}>
-                    <label className="input-label" style={{ fontSize: '0.82rem' }}>Pilih Guru Penerima Tugas</label>
+                  <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="input-label" style={{ fontSize: '0.8rem' }}>Pilih Guru Penerima Tugas</label>
                     <select
                       className="input"
                       value={dispTargetId}
                       onChange={(e) => setDispTargetId(e.target.value)}
                       required
+                      style={{ fontSize: '0.82rem' }}
                     >
                       <option value="">-- Pilih Guru / Tendik --</option>
                       {teachersList.map(t => (
@@ -977,36 +1342,39 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                     </select>
                   </div>
 
-                  <div className="input-group" style={{ marginBottom: '1rem' }}>
-                    <label className="input-label" style={{ fontSize: '0.82rem' }}>Judul Tugas / Instruksi</label>
+                  <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="input-label" style={{ fontSize: '0.8rem' }}>Judul Tugas / Instruksi</label>
                     <input
                       type="text"
                       className="input"
-                      placeholder="Contoh: Pembuatan Kisi-Kisi Soal Asesmen Semester"
+                      placeholder="Contoh: Pembuatan Kisi-Kisi Soal Asesmen"
                       value={dispTitle}
                       onChange={(e) => setDispTitle(e.target.value)}
                       required
+                      style={{ fontSize: '0.82rem' }}
                     />
                   </div>
 
-                  <div className="input-group" style={{ marginBottom: '1rem' }}>
-                    <label className="input-label" style={{ fontSize: '0.82rem' }}>Rincian Arahan & Catatan</label>
+                  <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="input-label" style={{ fontSize: '0.8rem' }}>Rincian Arahan & Catatan</label>
                     <textarea
                       className="input"
                       rows="3"
                       placeholder="Tuliskan arahan detail mengenai tugas ini..."
                       value={dispDesc}
                       onChange={(e) => setDispDesc(e.target.value)}
+                      style={{ fontSize: '0.82rem' }}
                     />
                   </div>
 
-                  <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                    <label className="input-label" style={{ fontSize: '0.82rem' }}>Tenggat Waktu (Deadline)</label>
+                  <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                    <label className="input-label" style={{ fontSize: '0.8rem' }}>Tenggat Waktu (Deadline)</label>
                     <input
                       type="date"
                       className="input"
                       value={dispDeadline}
                       onChange={(e) => setDispDeadline(e.target.value)}
+                      style={{ fontSize: '0.82rem' }}
                     />
                   </div>
 
@@ -1015,7 +1383,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                       type="button"
                       onClick={() => setShowAddDispModal(false)}
                       className="btn"
-                      style={{ padding: '8px 16px', borderRadius: '10px', background: '#F1F5F9', color: '#1E293B' }}
+                      style={{ padding: '7px 14px', borderRadius: '10px', background: '#F1F5F9', color: '#1E293B', fontSize: '0.8rem', fontWeight: 600 }}
                     >
                       Batal
                     </button>
@@ -1023,7 +1391,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                       type="submit"
                       disabled={submittingDisp}
                       className="btn btn-primary"
-                      style={{ padding: '8px 16px', borderRadius: '10px', background: '#4F46E5', color: 'white' }}
+                      style={{ padding: '7px 16px', borderRadius: '10px', background: '#4F46E5', color: 'white', fontSize: '0.8rem', fontWeight: 700 }}
                     >
                       {submittingDisp ? 'Menyimpan...' : 'Kirim Instruksi'}
                     </button>
@@ -1036,10 +1404,10 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: TOMBOL WHATSAPP CEPAT (TANPA API - 100% GRATIS) */}
+      {/* TAB 3: TOMBOL WHATSAPP CEPAT (GRATIS - TANPA API)                         */}
       {/* ========================================================================= */}
       {activeMainTab === 'wa_tools' && (
-        <div style={{ display: 'grid', gap: '1.25rem' }}>
+        <div style={{ display: 'grid', gap: '1rem' }}>
           {/* Section A: Pengingat Presensi ke Grup WA */}
           <div
             className="card"
@@ -1047,16 +1415,16 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               background: darkMode ? '#1E293B' : 'white',
               border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
               borderRadius: '16px',
-              padding: '1.25rem'
+              padding: '1.2rem'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '0.85rem' }}>
               <div>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📢</span> Pengingat Presensi Pagi ke Grup WhatsApp Dewan Guru
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📢</span> Pengingat Presensi ke Grup WhatsApp Guru
                 </h4>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                  1-Klik menyusun teks resmi pengingat Clock In dan membuka WhatsApp ke Grup Guru Anda
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                  1-Klik menyusun pesan pengingat Clock In resmi dan membuka WhatsApp
                 </p>
               </div>
 
@@ -1071,30 +1439,30 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                   background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
                   color: 'white',
                   fontWeight: 700,
-                  fontSize: '0.82rem',
-                  padding: '8px 16px',
+                  fontSize: '0.78rem',
+                  padding: '7px 14px',
                   borderRadius: '10px',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)'
+                  boxShadow: '0 3px 10px rgba(37, 211, 102, 0.3)'
                 }}
               >
-                <Share2 size={15} />
-                <span>Kirim Pengingat ke Grup WhatsApp</span>
+                <Share2 size={14} />
+                <span>Kirim ke Grup WA</span>
               </button>
             </div>
 
             {/* Preview Teks Template */}
             <div
               style={{
-                padding: '0.85rem 1rem',
+                padding: '0.75rem 1rem',
                 borderRadius: '10px',
                 background: darkMode ? '#0F172A' : '#F8FAFC',
                 border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-                fontSize: '0.78rem',
+                fontSize: '0.75rem',
                 color: darkMode ? '#CBD5E1' : '#334155',
                 fontFamily: 'monospace',
                 whiteSpace: 'pre-wrap',
@@ -1112,24 +1480,24 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               background: darkMode ? '#1E293B' : 'white',
               border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
               borderRadius: '16px',
-              padding: '1.25rem'
+              padding: '1.2rem'
             }}
           >
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>⏰</span> Guru & Pegawai Belum Presensi Hari Ini ({unclockedTeachers.length} Orang)
+            <div style={{ marginBottom: '0.85rem' }}>
+              <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>⏰</span> Guru & Pegawai Belum Presensi ({unclockedTeachers.length} Orang)
               </h4>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                Kirim pesan WhatsApp santun secara personal ke masing-masing guru dengan 1-klik
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                Kirim pesan WhatsApp santun secara personal ke masing-masing guru
               </p>
             </div>
 
             {unclockedTeachers.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '1.5rem', color: '#10B981', fontSize: '0.85rem', fontWeight: 600 }}>
+              <div style={{ textAlign: 'center', padding: '1.25rem', color: '#10B981', fontSize: '0.82rem', fontWeight: 700 }}>
                 ✓ Luar biasa! Seluruh guru dan pegawai telah melakukan presensi hari ini.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
                 {unclockedTeachers.map(t => (
                   <div
                     key={t.id}
@@ -1144,12 +1512,12 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                       gap: '8px'
                     }}
                   >
-                    <div>
-                      <strong style={{ fontSize: '0.82rem', display: 'block', color: darkMode ? '#F8FAFC' : '#1E293B' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ fontSize: '0.8rem', display: 'block', color: darkMode ? '#F8FAFC' : '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {t.full_name}
                       </strong>
-                      <span style={{ fontSize: '0.7rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                        NIP: {t.nip || '-'}
+                      <span style={{ fontSize: '0.68rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                        {t.jabatan || (t.role === 'admin' ? 'Admin' : 'Guru')}
                       </span>
                     </div>
 
@@ -1161,19 +1529,21 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                       }}
                       className="btn"
                       style={{
-                        padding: '5px 10px',
+                        padding: '5px 9px',
                         borderRadius: '8px',
                         background: '#25D366',
                         color: 'white',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
                         border: 'none',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px'
+                        gap: '4px',
+                        flexShrink: 0
                       }}
                     >
+                      <Phone size={11} />
                       <span>Ingatkan WA</span>
                     </button>
                   </div>
@@ -1189,20 +1559,20 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               background: darkMode ? '#1E293B' : 'white',
               border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
               borderRadius: '16px',
-              padding: '1.25rem'
+              padding: '1.2rem'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '0.85rem' }}>
               <div>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: darkMode ? '#F8FAFC' : '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>📜</span> Bagikan Pengumuman Resmi Sekolah ke WhatsApp
                 </h4>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                  Pesan dapat diedit langsung sebelum dikirimkan ke WhatsApp grup guru atau paguyuban orang tua
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
+                  Edit pesan sebelum dikirim ke grup guru atau paguyuban orang tua
                 </p>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1220,18 +1590,18 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                     background: 'transparent',
                     border: darkMode ? '1px solid #475569' : '1px solid #CBD5E1',
                     color: darkMode ? '#CBD5E1' : '#64748B',
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px'
                   }}
                 >
-                  <RefreshCw size={12} />
-                  <span>Reset Template</span>
+                  <RefreshCw size={11} />
+                  <span>Reset Teks</span>
                 </button>
 
                 <button
@@ -1249,57 +1619,39 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                     background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
                     color: 'white',
                     fontWeight: 700,
-                    fontSize: '0.82rem',
-                    padding: '8px 16px',
+                    fontSize: '0.78rem',
+                    padding: '7px 14px',
                     borderRadius: '10px',
                     border: 'none',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)'
+                    boxShadow: '0 3px 10px rgba(37, 211, 102, 0.3)'
                   }}
                 >
-                  <Share2 size={15} />
-                  <span>Bagikan ke WhatsApp</span>
+                  <Share2 size={14} />
+                  <span>Bagikan ke WA</span>
                 </button>
               </div>
             </div>
 
-            {/* Info Sumber Pengumuman Aktif */}
-            {pengumumanList.length > 0 && (pengumumanList[0].pesan || pengumumanList[0].judul) && (
-              <div style={{ marginBottom: '0.6rem', fontSize: '0.78rem', color: darkMode ? '#94A3B8' : '#64748B' }}>
-                <span style={{ fontWeight: 600, color: darkMode ? '#F8FAFC' : '#1E293B' }}>
-                  Sumber Pengumuman Terkini ({new Date(pengumumanList[0].created_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}):
-                </span>{' '}
-                {pengumumanList[0].pesan || pengumumanList[0].isi || pengumumanList[0].judul}
-              </div>
-            )}
-
-            {/* Kotak Input / Textarea Pengumuman yang Dapat Diedit Langsung */}
+            {/* Kotak Input / Textarea Pengumuman */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: darkMode ? '#94A3B8' : '#64748B' }}>
-                  ✏️ Edit Teks Pesan WhatsApp Sebelum Dikirim:
-                </label>
-                <span style={{ fontSize: '0.7rem', color: darkMode ? '#64748B' : '#94A3B8' }}>
-                  Format tebal (*teks*), miring (_teks_), dll didukung di WhatsApp
-                </span>
-              </div>
               <textarea
                 value={editableAnnouncementText}
                 onChange={(e) => setEditableAnnouncementText(e.target.value)}
                 placeholder="Tulis atau sesuaikan pesan pengumuman resmi sekolah di sini..."
-                rows={9}
+                rows={7}
                 style={{
                   width: '100%',
-                  padding: '0.85rem 1rem',
+                  padding: '0.75rem 0.95rem',
                   borderRadius: '12px',
                   background: darkMode ? '#0F172A' : '#F8FAFC',
                   border: darkMode ? '1px solid #334155' : '1px solid #CBD5E1',
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   color: darkMode ? '#F8FAFC' : '#1E293B',
-                  lineHeight: '1.6',
+                  lineHeight: '1.5',
                   resize: 'vertical',
                   boxSizing: 'border-box',
                   fontFamily: 'monospace',
