@@ -18,7 +18,13 @@ import {
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
   RotateCcw, X, UserX
 } from 'lucide-react'
-import { getCloudOverrideToken, saveCloudOverrideToken, fetchOverrideAuditLogs } from '../../lib/attendanceOverrideManager'
+import { 
+  getCloudOverrideToken, 
+  saveCloudOverrideToken, 
+  fetchOverrideAuditLogs,
+  getOverrideFeatureStatus,
+  setOverrideFeatureStatus
+} from '../../lib/attendanceOverrideManager'
 import { downloadFullSystemBackup, executeAppFactoryReset, executeExtremeResetAndDeleteAccounts } from '../../lib/appResetManager'
 
 export default function DashboardPengembang() {
@@ -110,6 +116,50 @@ export default function DashboardPengembang() {
     setTimeout(() => setCopiedToken(false), 2000)
   }
 
+  // Status Saklar Fitur Presensi Khusus Admin
+  const [overrideFeatureEnabled, setOverrideFeatureEnabled] = useState(true)
+  const [overrideFeatureUpdatedAt, setOverrideFeatureUpdatedAt] = useState(null)
+  const [togglingOverrideFeature, setTogglingOverrideFeature] = useState(false)
+  const [overrideFeatureMsg, setOverrideFeatureMsg] = useState({ type: '', text: '' })
+
+  const loadOverrideFeatureStatus = async () => {
+    try {
+      const res = await getOverrideFeatureStatus(supabase)
+      setOverrideFeatureEnabled(res.enabled)
+      setOverrideFeatureUpdatedAt(res.updatedAt)
+    } catch (e) {
+      console.warn('Gagal membaca status fitur override:', e)
+    }
+  }
+
+  const handleToggleOverrideFeature = async () => {
+    const nextState = !overrideFeatureEnabled
+    const confirmMsg = nextState 
+      ? 'Aktifkan fitur Presensi Khusus untuk akun Administrator? (Menu dan tombol akan kembali muncul di dashboard Admin)'
+      : 'Nonaktifkan fitur Presensi Khusus untuk akun Administrator? (Menu dan tombol di dashboard Admin akan disembunyikan)'
+    
+    if (!window.confirm(confirmMsg)) return
+
+    setTogglingOverrideFeature(true)
+    setOverrideFeatureMsg({ type: '', text: '' })
+    try {
+      const res = await setOverrideFeatureStatus(supabase, nextState)
+      setOverrideFeatureEnabled(res.enabled)
+      setOverrideFeatureUpdatedAt(res.updatedAt)
+      setOverrideFeatureMsg({
+        type: 'success',
+        text: `Fitur Presensi Khusus berhasil di-${nextState ? 'AKTIFKAN' : 'NONAKTIFKAN'} untuk Admin!`
+      })
+    } catch (err) {
+      setOverrideFeatureMsg({
+        type: 'error',
+        text: 'Gagal mengubah status fitur: ' + (err.message || err)
+      })
+    } finally {
+      setTogglingOverrideFeature(false)
+    }
+  }
+
   // Silent Audit Trail Presensi Khusus
   const [auditLogs, setAuditLogs] = useState([])
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
@@ -131,6 +181,7 @@ export default function DashboardPengembang() {
     loadDeviceRegistry()
     loadAdminAccountInfo()
     loadAdminOverrideToken()
+    loadOverrideFeatureStatus()
     loadAuditLogs()
   }, [])
 
@@ -1117,16 +1168,102 @@ export default function DashboardPengembang() {
               </form>
             </div>
 
-            {/* KARTU 2: Token Keamanan Presensi Khusus Admin */}
+            {/* KARTU 2: Saklar Kontrol & Token Presensi Khusus Admin */}
             <div style={{ background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '2rem 1.75rem' }}>
               <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: '#EF4444' }}>
+                <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: overrideFeatureEnabled ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `2px solid ${overrideFeatureEnabled ? '#10B981' : '#EF4444'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto', color: overrideFeatureEnabled ? '#10B981' : '#EF4444', transition: 'all 0.3s' }}>
                   <ShieldCheck size={28} />
                 </div>
-                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>Token Presensi Khusus Admin</h3>
+                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>Kontrol Fitur Presensi Khusus</h3>
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#94A3B8' }}>
-                  Token ini digunakan oleh Administrator untuk membuka fitur Presensi Khusus (Clock Out Pulang Cepat & Clock In Terlambat).
+                  Kendali saklar aktivasi menu Presensi Khusus (Dispensasi Pulang & Terlambat) serta token keamanan Administrator.
                 </p>
+              </div>
+
+              {/* SAKLAR KENDALI ON / OFF FITUR PRESENSI KHUSUS */}
+              <div style={{
+                background: overrideFeatureEnabled ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                border: `1.5px solid ${overrideFeatureEnabled ? '#10B981' : '#EF4444'}`,
+                borderRadius: '16px',
+                padding: '1.25rem',
+                marginBottom: '1.5rem',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.25rem' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        background: overrideFeatureEnabled ? '#10B981' : '#EF4444',
+                        boxShadow: `0 0 10px ${overrideFeatureEnabled ? '#10B981' : '#EF4444'}`
+                      }}></span>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '0.5px' }}>
+                        STATUS: {overrideFeatureEnabled ? 'AKTIF (ON)' : 'NONAKTIF (OFF)'}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8', lineHeight: '1.4' }}>
+                      {overrideFeatureEnabled 
+                        ? 'Fitur & tombol Presensi Khusus tampil di akun Admin.' 
+                        : 'Fitur & tombol Presensi Khusus disembunyikan total dari Admin.'}
+                    </p>
+                    {overrideFeatureUpdatedAt && (
+                      <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.7rem', color: '#64748B' }}>
+                        Terakhir diubah: {new Date(overrideFeatureUpdatedAt).toLocaleString('id-ID')}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleOverrideFeature}
+                    disabled={togglingOverrideFeature}
+                    style={{
+                      padding: '0.65rem 1.15rem',
+                      borderRadius: '12px',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: togglingOverrideFeature ? 'not-allowed' : 'pointer',
+                      border: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: overrideFeatureEnabled
+                        ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
+                        : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      color: '#FFFFFF',
+                      boxShadow: overrideFeatureEnabled
+                        ? '0 4px 14px rgba(239, 68, 68, 0.4)'
+                        : '0 4px 14px rgba(16, 185, 129, 0.4)'
+                    }}
+                  >
+                    {togglingOverrideFeature ? (
+                      'Memproses...'
+                    ) : overrideFeatureEnabled ? (
+                      'Matikan Fitur'
+                    ) : (
+                      'Aktifkan Fitur'
+                    )}
+                  </button>
+                </div>
+
+                {overrideFeatureMsg.text && (
+                  <div style={{
+                    marginTop: '0.85rem',
+                    padding: '0.6rem 0.85rem',
+                    borderRadius: '10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    background: overrideFeatureMsg.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                    border: overrideFeatureMsg.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444',
+                    color: overrideFeatureMsg.type === 'success' ? '#10B981' : '#EF4444'
+                  }}>
+                    {overrideFeatureMsg.text}
+                  </div>
+                )}
               </div>
 
               {/* Tampilan Token Aktif Saat Ini */}

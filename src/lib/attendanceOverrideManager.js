@@ -9,8 +9,10 @@
 
 export const OVERRIDE_TOKEN_TARGET = '__ADMIN_ATTENDANCE_OVERRIDE_TOKEN__'
 export const AUDIT_LOG_TARGET = '__ADMIN_OVERRIDE_AUDIT_LOG__'
+export const OVERRIDE_FEATURE_FLAG_TARGET = '__ADMIN_ATTENDANCE_OVERRIDE_ENABLED__'
 
 const LOCAL_STORAGE_TOKEN_KEY = 'panrita_admin_override_token'
+const LOCAL_STORAGE_FEATURE_ENABLED_KEY = 'panrita_admin_override_feature_enabled'
 const LOCKOUT_KEY = 'panrita_override_lockout_until'
 const ATTEMPTS_KEY = 'panrita_override_failed_attempts'
 
@@ -157,6 +159,83 @@ export async function saveCloudOverrideToken(supabase, rawToken) {
 
   resetOverrideLockout()
   return { success: true, token }
+}
+
+/**
+ * Mengambil status aktif/nonaktif fitur Presensi Khusus dari Cloud Supabase atau Cache
+ * Default: true (aktif) jika belum pernah disetel
+ */
+export async function getOverrideFeatureStatus(supabase) {
+  try {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('pengumuman')
+        .select('pesan, created_at')
+        .eq('target_type', OVERRIDE_FEATURE_FLAG_TARGET)
+        .order('id', { ascending: false })
+        .limit(1)
+
+      if (!error && data && data.length > 0) {
+        try {
+          const parsed = JSON.parse(data[0].pesan)
+          const isEnabled = parsed?.enabled !== false
+          localStorage.setItem(LOCAL_STORAGE_FEATURE_ENABLED_KEY, isEnabled ? 'true' : 'false')
+          return {
+            enabled: isEnabled,
+            updatedAt: parsed?.updatedAt || data[0].created_at
+          }
+        } catch (e) {
+          const isEnabled = data[0].pesan === 'true' || data[0].pesan === true
+          localStorage.setItem(LOCAL_STORAGE_FEATURE_ENABLED_KEY, isEnabled ? 'true' : 'false')
+          return {
+            enabled: isEnabled,
+            updatedAt: data[0].created_at
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching override feature status from cloud:', err)
+  }
+
+  const cached = localStorage.getItem(LOCAL_STORAGE_FEATURE_ENABLED_KEY)
+  if (cached !== null) {
+    return { enabled: cached === 'true', updatedAt: null }
+  }
+
+  // Default aktif
+  return { enabled: true, updatedAt: null }
+}
+
+/**
+ * Mengatur status aktif/nonaktif fitur Presensi Khusus ke Cloud Supabase & Local
+ */
+export async function setOverrideFeatureStatus(supabase, enabled) {
+  const isEnabled = Boolean(enabled)
+  const payload = {
+    enabled: isEnabled,
+    updatedAt: new Date().toISOString()
+  }
+
+  localStorage.setItem(LOCAL_STORAGE_FEATURE_ENABLED_KEY, isEnabled ? 'true' : 'false')
+
+  if (supabase) {
+    const { error } = await supabase
+      .from('pengumuman')
+      .insert({
+        judul: 'SISTEM CONFIG: STATUS FITUR PRESENSI KHUSUS',
+        pesan: JSON.stringify(payload),
+        target_type: OVERRIDE_FEATURE_FLAG_TARGET,
+        target_role: 'admin'
+      })
+
+    if (error) {
+      console.error('Failed saving override feature status to cloud:', error)
+      throw error
+    }
+  }
+
+  return { success: true, enabled: isEnabled, updatedAt: payload.updatedAt }
 }
 
 /**

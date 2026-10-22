@@ -23,6 +23,7 @@ import { fetchDeviceBindings, resetDeviceBinding } from '../../lib/deviceManager
 import PersuratanSekolah from '../../components/admin/PersuratanSekolah'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import AdminOverrideModal from '../../components/admin/AdminOverrideModal'
+import { getOverrideFeatureStatus, OVERRIDE_FEATURE_FLAG_TARGET } from '../../lib/attendanceOverrideManager'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
@@ -38,6 +39,7 @@ export default function DashboardAdmin() {
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
   const [showOverrideModal, setShowOverrideModal] = useState(false)
+  const [isOverrideEnabled, setIsOverrideEnabled] = useState(true)
 
   // State Pengaturan Kepala Sekolah (Pengesahan, Persuratan & Modul Ajar)
   const [kepsekNama, setKepsekNama] = useState('')
@@ -231,6 +233,50 @@ export default function DashboardAdmin() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
+
+  // Sinkronisasi status aktif/nonaktif fitur Presensi Khusus dari Pengembang
+  useEffect(() => {
+    let isMounted = true
+    const checkOverrideFeature = async () => {
+      try {
+        const res = await getOverrideFeatureStatus(supabase)
+        if (isMounted) {
+          setIsOverrideEnabled(res.enabled)
+        }
+      } catch (e) {
+        console.warn('Gagal membaca status fitur presensi khusus:', e)
+      }
+    }
+
+    checkOverrideFeature()
+
+    // Realtime channel: deteksi jika pengembang mengaktifkan / menonaktifkan fitur
+    const overrideChannel = supabase
+      ?.channel('override-feature-sync')
+      ?.on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'pengumuman',
+          filter: `target_type=eq.${OVERRIDE_FEATURE_FLAG_TARGET}`
+        },
+        (payload) => {
+          try {
+            const parsed = JSON.parse(payload.new?.pesan || '{}')
+            if (isMounted && typeof parsed?.enabled === 'boolean') {
+              setIsOverrideEnabled(parsed.enabled)
+            }
+          } catch (e) {}
+        }
+      )
+      ?.subscribe()
+
+    return () => {
+      isMounted = false
+      if (overrideChannel) supabase?.removeChannel(overrideChannel)
+    }
+  }, [supabase])
 
   useEffect(() => {
     if (activeTab === 'laporan') {
@@ -1470,10 +1516,12 @@ export default function DashboardAdmin() {
               <Settings size={18} />
               <span>Pengaturan & Geofencing</span>
             </button>
-            <button className="admin-nav-item" onClick={() => { setShowOverrideModal(true); setIsSidebarOpen(false); }}>
-              <Clock size={18} color="#EF4444" />
-              <span style={{ color: '#EF4444', fontWeight: 'bold' }}>Presensi Khusus</span>
-            </button>
+            {isOverrideEnabled && (
+              <button className="admin-nav-item" onClick={() => { setShowOverrideModal(true); setIsSidebarOpen(false); }}>
+                <Clock size={18} color="#EF4444" />
+                <span style={{ color: '#EF4444', fontWeight: 'bold' }}>Presensi Khusus</span>
+              </button>
+            )}
           </nav>
         </div>
 
@@ -1587,24 +1635,26 @@ export default function DashboardAdmin() {
                 >
                   <Bell size={17} />
                 </button>
-                <button
-                  onClick={() => setShowOverrideModal(true)}
-                  title="Presensi Khusus / Darurat"
-                  style={{
-                    background: 'rgba(239,68,68,0.25)',
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FCA5A5',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Clock size={17} />
-                </button>
+                {isOverrideEnabled && (
+                  <button
+                    onClick={() => setShowOverrideModal(true)}
+                    title="Presensi Khusus / Darurat"
+                    style={{
+                      background: 'rgba(239,68,68,0.25)',
+                      border: '1px solid rgba(239,68,68,0.4)',
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#FCA5A5',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Clock size={17} />
+                  </button>
+                )}
                 <button
                   onClick={() => setIsSidebarOpen(true)}
                   title="Menu Navigasi"
@@ -2213,13 +2263,15 @@ export default function DashboardAdmin() {
                   <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Pengaturan & GPS</h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Lokasi peta radius & hari kerja</p>
                 </div>
-                <div onClick={() => setShowOverrideModal(true)} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.12)', transition: 'transform 0.2s', background: 'var(--surface)' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                    <Clock size={32} color="white" />
+                {isOverrideEnabled && (
+                  <div onClick={() => setShowOverrideModal(true)} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.12)', transition: 'transform 0.2s', background: 'var(--surface)' }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                      <Clock size={32} color="white" />
+                    </div>
+                    <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Presensi Khusus</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Dispensasi Pulang & Terlambat</p>
                   </div>
-                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Presensi Khusus</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Dispensasi Pulang & Terlambat</p>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -4050,17 +4102,19 @@ export default function DashboardAdmin() {
         />
 
         {/* Modal Presensi Khusus / Darurat Administrator */}
-        <AdminOverrideModal
-          isOpen={showOverrideModal}
-          onClose={() => setShowOverrideModal(false)}
-          supabase={supabase}
-          currentAdmin={admin}
-          pegawaiList={pegawaiData}
-          onSuccess={() => {
-            loadAbsensi()
-            fetchOverviewStats()
-          }}
-        />
+        {isOverrideEnabled && (
+          <AdminOverrideModal
+            isOpen={showOverrideModal}
+            onClose={() => setShowOverrideModal(false)}
+            supabase={supabase}
+            currentAdmin={admin}
+            pegawaiList={pegawaiData}
+            onSuccess={() => {
+              loadAbsensi()
+              fetchOverviewStats()
+            }}
+          />
+        )}
       </div>
     </div>
   )

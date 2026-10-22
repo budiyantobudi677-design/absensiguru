@@ -11,7 +11,8 @@ import {
   getLocalDateString,
   getLocalTimeString,
   checkOverrideLockout,
-  getTeacherMonthlyOverrideCount
+  getTeacherMonthlyOverrideCount,
+  getOverrideFeatureStatus
 } from '../../lib/attendanceOverrideManager'
 
 export default function AdminOverrideModal({ 
@@ -33,6 +34,7 @@ export default function AdminOverrideModal({
   const [tokenExists, setTokenExists] = useState(false)
   const [isTokenVerified, setIsTokenVerified] = useState(false)
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
+  const [featureActive, setFeatureActive] = useState(true)
   
   // State Buat Token Baru
   const [newToken, setNewToken] = useState('')
@@ -149,6 +151,9 @@ export default function AdminOverrideModal({
   const checkTokenStatus = async () => {
     setLoadingTokenCheck(true)
     try {
+      const feat = await getOverrideFeatureStatus(supabase)
+      setFeatureActive(feat.enabled !== false)
+
       const { exists } = await getCloudOverrideToken(supabase)
       setTokenExists(exists)
     } catch (e) {
@@ -397,7 +402,47 @@ export default function AdminOverrideModal({
           {loadingTokenCheck ? (
             <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748B' }}>
               <Loader2 className="animate-spin" size={32} style={{ margin: '0 auto 0.75rem auto', color: '#3B82F6' }} />
-              <p style={{ margin: 0, fontSize: '0.875rem' }}>Memeriksa keamanan token...</p>
+              <p style={{ margin: 0, fontSize: '0.875rem' }}>Memeriksa status fitur & keamanan token...</p>
+            </div>
+          ) : !featureActive ? (
+            /* SCREEN NONAKTIF: Fitur Dimatikan oleh Pengembang */
+            <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '20px',
+                background: '#FEE2E2',
+                color: '#EF4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem auto'
+              }}>
+                <AlertTriangle size={34} />
+              </div>
+              <h3 style={{ margin: '0 0 0.5rem 0', color: '#0F172A', fontSize: '1.15rem', fontWeight: 800 }}>
+                Fitur Presensi Khusus Dinonaktifkan
+              </h3>
+              <p style={{ color: '#64748B', fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1.75rem 0' }}>
+                Pengembang sistem telah menonaktifkan fitur Presensi Khusus untuk akun Administrator. Akses dispensasi jam presensi dikunci dari Panel Pengembang.
+              </p>
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                style={{
+                  width: '100%',
+                  padding: '0.85rem',
+                  borderRadius: '12px',
+                  background: '#0F172A',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Tutup Jendela
+              </button>
             </div>
           ) : !tokenExists ? (
             /* SCREEN 1: Buat Token Baru (Akses Pertama Kali) */
