@@ -1538,7 +1538,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
             </button>
             <button className={`admin-nav-item ${activeTab === 'pegawai' ? 'active' : ''}`} onClick={() => { handleMenuClick('pegawai'); setIsSidebarOpen(false); }}>
               <Users size={18} />
-              <span>Data Pegawai / Guru</span>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
+                <span>Data & Hapus Guru</span>
+                <span style={{ fontSize: '0.62rem', background: '#FEE2E2', color: '#DC2626', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>Hapus</span>
+              </span>
             </button>
             
             <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { handleMenuClick('kbm'); setIsSidebarOpen(false); }}>
@@ -2270,12 +2273,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
               <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Menu Akses Cepat</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
-                <div onClick={() => handleMenuClick('pegawai')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                <div onClick={() => handleMenuClick('pegawai')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s', position: 'relative' }}>
+                  <span style={{ position: 'absolute', top: '12px', right: '12px', background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '8px', border: '1px solid #FECACA' }}>
+                    Menu Hapus Guru
+                  </span>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
                     <Users size={32} color="white" />
                   </div>
-                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '600' }}>Data Pegawai</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>Kelola profil & data guru</p>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '700' }}>Data & Hapus Guru</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0', textAlign: 'center' }}>Kelola penugasan & hapus data guru</p>
                 </div>
                 <div onClick={() => handleMenuClick('laporan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
@@ -2327,11 +2333,29 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
         {activeTab === 'pegawai' && (
           <div className="fade-in">
-             <div className="flex items-center gap-3 mb-4">
+             <div className="flex items-center gap-3 mb-3">
                 <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px' }}>
                   <ArrowLeft size={20} />
                 </button>
-                <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Daftar Pegawai</h3>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 800 }}>Kelola & Hapus Data Guru</h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Daftar seluruh guru dan pegawai sekolah SDN 173 Gammara</p>
+                </div>
+             </div>
+
+             {/* Banner Menu Hapus Guru */}
+             <div style={{ background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '14px', padding: '0.85rem 1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', flexShrink: 0 }}>
+                   <Trash2 size={20} />
+                 </div>
+                 <div>
+                   <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#991B1B' }}>Menu Hapus Data Guru Tersedia</span>
+                   <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#B91C1C', lineHeight: 1.3 }}>
+                     Administrator dapat menghapus akun guru/tendik dengan menekan tombol merah <strong>"Hapus Guru"</strong> pada kartu pegawai. Pop-up peringatan konfirmasi akan muncul sebelum data dihapus.
+                   </p>
+                 </div>
+               </div>
              </div>
              
              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -2503,23 +2527,23 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                               disabled={deletingTeacherId === p.id}
                               onClick={() => handleDeleteTeacher(p)}
                               style={{
-                                padding: '0.45rem 0.65rem',
+                                padding: '0.45rem 0.75rem',
                                 borderRadius: '10px',
                                 background: '#FEF2F2',
-                                border: '1px solid #FECACA',
+                                border: '1.5px solid #FECACA',
                                 color: '#DC2626',
                                 fontSize: '0.75rem',
-                                fontWeight: '600',
+                                fontWeight: '700',
                                 cursor: deletingTeacherId === p.id ? 'not-allowed' : 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
+                                gap: '5px',
                                 flexShrink: 0
                               }}
                               title={`Hapus data guru ${p.full_name || p.email}`}
                             >
                               <Trash2 size={13} />
-                              <span>{deletingTeacherId === p.id ? 'Menghapus...' : 'Hapus'}</span>
+                              <span>{deletingTeacherId === p.id ? 'Menghapus...' : 'Hapus Guru'}</span>
                             </button>
                           )}
                         </div>
@@ -2768,6 +2792,41 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           {savingPegawai ? 'Menyimpan...' : 'Simpan Penugasan'}
                         </button>
                       </div>
+
+                      {/* Menu Hapus Data Guru di Dalam Modal Edit */}
+                      {(!editingPegawai.role || (editingPegawai.role !== 'admin' && editingPegawai.role !== 'kepsek')) && editingPegawai.id !== admin?.id && (
+                        <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#FFF5F5', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #FECACA' }}>
+                          <div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#DC2626' }}>Menu Hapus Data Guru</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Hapus akun guru ini dari sistem secara permanen</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = editingPegawai;
+                              setEditingPegawai(null);
+                              handleDeleteTeacher(target);
+                            }}
+                            style={{
+                              background: '#EF4444',
+                              color: 'white',
+                              border: 'none',
+                              padding: '0.5rem 0.85rem',
+                              borderRadius: '8px',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)'
+                            }}
+                          >
+                            <Trash2 size={13} />
+                            <span>Hapus Data Guru Ini</span>
+                          </button>
+                        </div>
+                      )}
                     </form>
                   </div>
                 </div>
