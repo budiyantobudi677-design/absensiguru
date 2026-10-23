@@ -223,7 +223,7 @@ export default function CetakKartuQrSiswaModal({
 
   // Helper pemformatan nama kelas: e.g. "VB" -> "Kelas VB", "5B" -> "Kelas 5B"
   const formatClassName = (rawName) => {
-    if (!rawName || rawName === 'Siswa') return 'Kelas Siswa'
+    if (!rawName || rawName === 'Siswa') return 'Kelas VB'
     const trimmed = String(rawName).trim()
     if (/^kelas\s+/i.test(trimmed)) return trimmed
     return `Kelas ${trimmed}`
@@ -616,8 +616,10 @@ export default function CetakKartuQrSiswaModal({
                     }}
                   >
                     {sheetStudents.map((st) => {
-                      const currentClassObj = classes.find(c => String(c.id) === String(st.class_id)) || classes.find(c => String(c.id) === String(activeClass))
-                      const rawClassName = currentClassObj?.name || 'Siswa'
+                      const currentClassObj = classes.find(c => String(c.id) === String(st.class_id)) || 
+                                              classes.find(c => String(c.id) === String(activeClass)) || 
+                                              classes[0]
+                      const rawClassName = currentClassObj?.name || st.class_name || st.className || st.kelas || 'VB'
                       const formattedClass = formatClassName(rawClassName)
                       const qrUrl = qrMap[st.id]
 
@@ -744,37 +746,24 @@ export default function CetakKartuQrSiswaModal({
 
                             {/* Info Siswa: Badge Kelas, Nama, NISN & Jenis Kelamin */}
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              {/* Badge Kelas (Modern, rapi & terpusat sempurna tanpa sentuh garis bawah) */}
+                              {/* Badge Kelas (Modern, rapi, terbaca jelas di canvas/PDF & terpusat sempurna) */}
                               <div style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
+                                display: 'inline-block',
+                                background: '#EFF6FF',
                                 border: '1.5px solid #93C5FD',
+                                color: '#1D4ED8',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                lineHeight: '1.45',
+                                letterSpacing: '0.3px',
+                                textTransform: 'uppercase',
                                 padding: '3px 12px',
                                 borderRadius: '8px',
                                 marginBottom: '6px',
-                                boxShadow: '0 1px 3px rgba(37, 99, 235, 0.08)',
+                                textAlign: 'center',
                                 boxSizing: 'border-box'
                               }}>
-                                <span style={{
-                                  width: '6px',
-                                  height: '6px',
-                                  borderRadius: '50%',
-                                  background: '#2563EB',
-                                  display: 'inline-block',
-                                  flexShrink: 0
-                                }} />
-                                <span style={{
-                                  fontSize: '0.74rem',
-                                  fontWeight: 800,
-                                  color: '#1E40AF',
-                                  lineHeight: '1.4',
-                                  letterSpacing: '0.25px',
-                                  textTransform: 'uppercase'
-                                }}>
-                                  {formattedClass}
-                                </span>
+                                {formattedClass}
                               </div>
 
                               {/* Nama Siswa (Bersih, rapi & tidak terpotong di canvas/PDF) */}

@@ -20,8 +20,13 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X, UserX, Edit3, ChevronRight
+  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop
 } from 'lucide-react'
+import { 
+  fetchActivityLogs, 
+  clearActivityLogs, 
+  recordActivityLog 
+} from '../../lib/activityLogManager'
 import { 
   getCloudOverrideToken, 
   saveCloudOverrideToken, 
@@ -179,6 +184,75 @@ export default function DashboardPengembang() {
   const [auditLogs, setAuditLogs] = useState([])
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
 
+  // Log Aktivitas & Login Pengguna
+  const [activityLogs, setActivityLogs] = useState([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [logSearchTerm, setLogSearchTerm] = useState('')
+  const [logRoleFilter, setLogRoleFilter] = useState('all')
+  const [logActionFilter, setLogActionFilter] = useState('all')
+  const [selectedLogDetail, setSelectedLogDetail] = useState(null)
+
+  const loadActivityLogsData = async () => {
+    setLoadingLogs(true)
+    try {
+      const logs = await fetchActivityLogs(supabase)
+      setActivityLogs(logs || [])
+    } catch (e) {
+      console.warn('Error loading activity logs:', e)
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
+
+  const handleClearAllLogs = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin membersihkan seluruh riwayat log aktivitas pengguna?')) return
+    const ok = await clearActivityLogs(supabase)
+    if (ok) {
+      setActivityLogs([])
+      alert('Seluruh log aktivitas berhasil dibersihkan.')
+    } else {
+      alert('Gagal membersihkan log aktivitas.')
+    }
+  }
+
+  const handleExportLogsCsv = () => {
+    if (!activityLogs || activityLogs.length === 0) {
+      alert('Tidak ada log untuk diekspor.')
+      return
+    }
+    const filtered = activityLogs.filter(item => {
+      const q = logSearchTerm.toLowerCase().trim()
+      const matchQuery = !q || 
+        (item.fullName || '').toLowerCase().includes(q) || 
+        (item.email || '').toLowerCase().includes(q) || 
+        (item.action || '').toLowerCase().includes(q) || 
+        (item.details || '').toLowerCase().includes(q)
+      const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
+      const matchAction = logActionFilter === 'all' || (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
+      return matchQuery && matchRole && matchAction
+    })
+
+    const headers = ['Waktu', 'Nama Akun', 'Email', 'Role', 'Aktivitas', 'Rincian', 'Perangkat', 'Status']
+    const rows = filtered.map(l => [
+      `"${new Date(l.timestamp).toLocaleString('id-ID')}"`,
+      `"${l.fullName || '-'}"`,
+      `"${l.email || '-'}"`,
+      `"${l.role || '-'}"`,
+      `"${l.action || '-'}"`,
+      `"${(l.details || '').replace(/"/g, '""')}"`,
+      `"${l.deviceType || '-'}"`,
+      `"${l.status || 'success'}"`
+    ])
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `Log_Aktivitas_GammaraApp_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const loadAuditLogs = async () => {
     setLoadingAuditLogs(true)
     try {
@@ -198,7 +272,14 @@ export default function DashboardPengembang() {
     loadAdminOverrideToken()
     loadOverrideFeatureStatus()
     loadAuditLogs()
+    loadActivityLogsData()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'activity_logs') {
+      loadActivityLogsData()
+    }
+  }, [activeTab])
 
   const handleChangeUserRole = async (targetUserId, targetUserName, newRole) => {
     if (!window.confirm(`Ubah peran ${targetUserName} menjadi '${newRole.toUpperCase()}'?`)) return
@@ -787,6 +868,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
         <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem', marginBottom: '1.5rem', overflowX: 'auto' }}>
           {[
             { id: 'telemetry', label: 'Ringkasan & Metrik Sistem', icon: Activity },
+            { id: 'activity_logs', label: '📜 Log Aktivitas & Login Pengguna', icon: FileText },
             { id: 'admin_account', label: '🏛️ Menu Admin & Kepsek (Ganti Email/Pass & Hapus)', icon: UserCheck },
             { id: 'devices', label: `Kunci HP (${Object.keys(deviceMap).length} Terikat)`, icon: Smartphone },
             { id: 'security', label: 'Ganti Kode Kunci Pengembang', icon: Key },
@@ -1973,6 +2055,499 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB LOG AKTIVITAS & LOGIN PENGGUNA */}
+        {activeTab === 'activity_logs' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header Tab */}
+            <div style={{
+              background: '#0B2545',
+              border: '1.5px solid rgba(0, 180, 216, 0.35)',
+              borderRadius: '20px',
+              padding: '1.5rem 1.75rem',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #0284C7 0%, #00B4D8 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#071C35',
+                    boxShadow: '0 4px 15px rgba(0, 180, 216, 0.35)'
+                  }}>
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Log Aktivitas & Riwayat Login Pengguna
+                    </h3>
+                    <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', color: '#94A3B8' }}>
+                      Inspeksi mendalam akun-akun yang masuk ke sistem, waktu akses, tipe perangkat, dan rincian aktivitas pengguna.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={loadActivityLogsData}
+                    disabled={loadingLogs}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'rgba(0, 180, 216, 0.15)',
+                      color: '#38BDF8',
+                      border: '1px solid rgba(0, 180, 216, 0.4)',
+                      padding: '0.55rem 1rem',
+                      borderRadius: '10px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: loadingLogs ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <RefreshCw size={14} className={loadingLogs ? 'animate-spin' : ''} />
+                    <span>{loadingLogs ? 'Memuat...' : 'Segarkan Log'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportLogsCsv}
+                    disabled={activityLogs.length === 0}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.55rem 1rem',
+                      borderRadius: '10px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: activityLogs.length === 0 ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    <Download size={14} />
+                    <span>Ekspor CSV</span>
+                  </button>
+
+                  <button
+                    onClick={handleClearAllLogs}
+                    disabled={activityLogs.length === 0}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#F87171',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      padding: '0.55rem 1rem',
+                      borderRadius: '10px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: activityLogs.length === 0 ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>Bersihkan</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Kartu Metrik Ringkasan */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Total Riwayat Log</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#38BDF8', marginTop: '0.2rem' }}>
+                    {activityLogs.length}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Tersinkronisasi Cloud</div>
+                </div>
+
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Login Tercatat</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#10B981', marginTop: '0.2rem' }}>
+                    {activityLogs.filter(l => (l.action || '').toLowerCase().includes('login')).length}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Sesi masuk pengguna</div>
+                </div>
+
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Aktivitas Presensi</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#F59E0B', marginTop: '0.2rem' }}>
+                    {activityLogs.filter(l => (l.action || '').toLowerCase().includes('presensi')).length}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Absensi masuk & pulang</div>
+                </div>
+
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Akun Pengguna Unik</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#A78BFA', marginTop: '0.2rem' }}>
+                    {new Set(activityLogs.map(l => l.email || l.userId)).size}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Guru, Tendik, Pimpinan</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div style={{
+              background: '#0B2545',
+              border: '1px solid rgba(0, 180, 216, 0.25)',
+              borderRadius: '16px',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '260px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                  <input
+                    type="text"
+                    value={logSearchTerm}
+                    onChange={(e) => setLogSearchTerm(e.target.value)}
+                    placeholder="Cari berdasarkan nama akun, email, atau aktivitas..."
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 1rem 0.6rem 2.4rem',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#FFFFFF',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <select
+                  value={logRoleFilter}
+                  onChange={(e) => setLogRoleFilter(e.target.value)}
+                  style={{
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: '#E2E8F0',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all" style={{ background: '#0B2545' }}>Semua Peran / Role</option>
+                  <option value="admin" style={{ background: '#0B2545' }}>🛡️ Administrator</option>
+                  <option value="kepsek" style={{ background: '#0B2545' }}>🎓 Kepala Sekolah</option>
+                  <option value="guru" style={{ background: '#0B2545' }}>👨‍🏫 Guru</option>
+                  <option value="tendik" style={{ background: '#0B2545' }}>💼 Tendik</option>
+                  <option value="operator" style={{ background: '#0B2545' }}>💻 Operator</option>
+                </select>
+
+                <select
+                  value={logActionFilter}
+                  onChange={(e) => setLogActionFilter(e.target.value)}
+                  style={{
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: '#E2E8F0',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all" style={{ background: '#0B2545' }}>Semua Tipe Aktivitas</option>
+                  <option value="login" style={{ background: '#0B2545' }}>🔑 Login Aplikasi</option>
+                  <option value="presensi" style={{ background: '#0B2545' }}>📍 Presensi Kehadiran</option>
+                  <option value="registrasi" style={{ background: '#0B2545' }}>📝 Registrasi Akun</option>
+                </select>
+              </div>
+            </div>
+
+            {/* List Log Feed */}
+            <div style={{
+              background: '#0B2545',
+              border: '1.5px solid rgba(0, 180, 216, 0.25)',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.15)'
+            }}>
+              {loadingLogs ? (
+                <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#94A3B8' }}>
+                  <RefreshCw className="animate-spin" size={32} style={{ margin: '0 auto 0.75rem auto', color: '#00B4D8' }} />
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Memuat riwayat log aktivitas pengguna...</p>
+                </div>
+              ) : (() => {
+                const filtered = activityLogs.filter(item => {
+                  const q = logSearchTerm.toLowerCase().trim()
+                  const matchQuery = !q || 
+                    (item.fullName || '').toLowerCase().includes(q) || 
+                    (item.email || '').toLowerCase().includes(q) || 
+                    (item.action || '').toLowerCase().includes(q) || 
+                    (item.details || '').toLowerCase().includes(q)
+                  const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
+                  const matchAction = logActionFilter === 'all' || (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
+                  return matchQuery && matchRole && matchAction
+                })
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#94A3B8' }}>
+                      <FileText size={40} style={{ margin: '0 auto 0.75rem auto', opacity: 0.4 }} />
+                      <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>Belum ada log aktivitas yang cocok</p>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.82rem' }}>
+                        Cobalah ubah filter pencarian atau tunggu akun pengguna melakukan aktivitas login dan presensi.
+                      </p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    {filtered.map((log) => {
+                      const isLogin = (log.action || '').toLowerCase().includes('login')
+                      const isAbsen = (log.action || '').toLowerCase().includes('presensi')
+                      const roleColor = log.role === 'admin' ? '#38BDF8' : (log.role === 'kepsek' ? '#C4B5FD' : '#34D399')
+                      const roleBg = log.role === 'admin' ? 'rgba(0,180,216,0.2)' : (log.role === 'kepsek' ? 'rgba(167,139,250,0.2)' : 'rgba(16,185,129,0.2)')
+                      const roleBorder = log.role === 'admin' ? '#00B4D8' : (log.role === 'kepsek' ? '#8B5CF6' : '#10B981')
+                      
+                      const dateObj = new Date(log.timestamp)
+                      const timeStr = !isNaN(dateObj.getTime()) 
+                        ? dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : '-'
+                      const dateStr = !isNaN(dateObj.getTime())
+                        ? dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : '-'
+
+                      return (
+                        <div
+                          key={log.id}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '14px',
+                            padding: '1.1rem 1.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '1rem',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '280px', flex: 1 }}>
+                            <div style={{
+                              width: '42px',
+                              height: '42px',
+                              borderRadius: '12px',
+                              background: isLogin ? 'rgba(16, 185, 129, 0.2)' : (isAbsen ? 'rgba(0, 180, 216, 0.2)' : 'rgba(245, 158, 11, 0.2)'),
+                              border: `1.5px solid ${isLogin ? '#10B981' : (isAbsen ? '#00B4D8' : '#F59E0B')}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: isLogin ? '#10B981' : (isAbsen ? '#00B4D8' : '#F59E0B'),
+                              flexShrink: 0
+                            }}>
+                              {isLogin ? <Key size={20} /> : (isAbsen ? <MapPin size={20} /> : <FileText size={20} />)}
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#FFFFFF' }}>
+                                  {log.fullName || log.email || 'Pengguna'}
+                                </span>
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 800,
+                                  background: roleBg,
+                                  color: roleColor,
+                                  border: `1px solid ${roleBorder}`,
+                                  textTransform: 'uppercase'
+                                }}>
+                                  {log.role}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#38BDF8', marginTop: '2px', wordBreak: 'break-all' }}>
+                                {log.email}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ flex: 1.5, minWidth: '240px' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 9px', borderRadius: '6px', background: isLogin ? 'rgba(16,185,129,0.15)' : 'rgba(0,180,216,0.15)', border: `1px solid ${isLogin ? 'rgba(16,185,129,0.3)' : 'rgba(0,180,216,0.3)'}`, color: isLogin ? '#34D399' : '#38BDF8', fontSize: '0.78rem', fontWeight: 800, marginBottom: '4px' }}>
+                              <CheckCircle2 size={13} />
+                              <span>{log.action}</span>
+                            </div>
+                            <div style={{ fontSize: '0.82rem', color: '#CBD5E1', lineHeight: '1.4' }}>
+                              {log.details}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-end', minWidth: '180px' }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#FFFFFF' }}>
+                                {timeStr}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                {dateStr}
+                              </div>
+                            </div>
+
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '8px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              color: '#E2E8F0',
+                              border: '1px solid rgba(255, 255, 255, 0.15)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              {log.deviceType === 'iphone' ? '🍏 iPhone' : (log.deviceType === 'android' ? '🤖 Android' : '💻 Web')}
+                            </span>
+
+                            <button
+                              onClick={() => setSelectedLogDetail(log)}
+                              title="Inspeksi detail log"
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.08)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                color: '#38BDF8',
+                                padding: '6px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Eye size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DETAIL LOG AKTIVITAS */}
+        {selectedLogDetail && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7, 28, 53, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1rem'
+          }}>
+            <div style={{
+              background: '#0B2545',
+              border: '1.5px solid rgba(0, 180, 216, 0.4)',
+              borderRadius: '24px',
+              maxWidth: '540px',
+              width: '100%',
+              padding: '1.75rem',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              color: '#FFFFFF'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(0, 180, 216, 0.2)', color: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Detail Log Aktivitas
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8' }}>
+                      ID: {selectedLogDetail.id}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLogDetail(null)}
+                  style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.84rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Waktu Akses:</span>
+                  <span style={{ fontWeight: 700, color: '#FFFFFF' }}>{new Date(selectedLogDetail.timestamp).toLocaleString('id-ID')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Nama Pengguna:</span>
+                  <span style={{ fontWeight: 700, color: '#FFFFFF' }}>{selectedLogDetail.fullName}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Email Akun:</span>
+                  <span style={{ fontWeight: 700, color: '#38BDF8' }}>{selectedLogDetail.email}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Peran / Role:</span>
+                  <span style={{ fontWeight: 800, color: '#F59E0B', textTransform: 'uppercase' }}>{selectedLogDetail.role}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Tipe Aktivitas:</span>
+                  <span style={{ fontWeight: 700, color: '#10B981' }}>{selectedLogDetail.action}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <span style={{ color: '#94A3B8' }}>Perangkat:</span>
+                  <span style={{ fontWeight: 700, color: '#FFFFFF' }}>{selectedLogDetail.deviceType}</span>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <div style={{ color: '#94A3B8', marginBottom: '4px' }}>Deskripsi Rincian:</div>
+                  <div style={{ color: '#CBD5E1', lineHeight: '1.4' }}>{selectedLogDetail.details}</div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLogDetail(null)}
+                  style={{
+                    padding: '0.6rem 1.4rem',
+                    borderRadius: '10px',
+                    background: '#00B4D8',
+                    color: '#071C35',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         )}

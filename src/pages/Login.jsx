@@ -19,6 +19,7 @@ import {
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../lib/deletedAccountsManager'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
 import { saveActiveSession, cacheUserProfile, clearActiveSession } from '../lib/offlineManager'
+import { recordActivityLog } from '../lib/activityLogManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -159,6 +160,18 @@ export default function Login() {
             localStorage.setItem('panrita_developer_session', JSON.stringify(adminSessionData))
             localStorage.setItem(`panrita_role_${adminSessionData.user.id}`, 'admin')
             window.dispatchEvent(new Event('developer_session_updated'))
+            
+            // Catat log aktivitas login admin
+            recordActivityLog({
+              userId: adminSessionData.user.id,
+              email: adminSessionData.user.email,
+              role: 'admin',
+              fullName: adminSessionData.user.full_name,
+              action: 'Login Aplikasi',
+              details: 'Login sukses sebagai Administrator Sekolah',
+              supabase
+            }).catch(() => {})
+
             navigate('/admin')
             return
           }
@@ -186,6 +199,18 @@ export default function Login() {
             localStorage.setItem('panrita_developer_session', JSON.stringify(kepsekSessionData))
             localStorage.setItem(`panrita_role_${kepsekSessionData.user.id}`, 'kepsek')
             window.dispatchEvent(new Event('developer_session_updated'))
+            
+            // Catat log aktivitas login kepsek
+            recordActivityLog({
+              userId: kepsekSessionData.user.id,
+              email: kepsekSessionData.user.email,
+              role: 'kepsek',
+              fullName: kepsekSessionData.user.full_name,
+              action: 'Login Aplikasi',
+              details: 'Login sukses sebagai Kepala Sekolah',
+              supabase
+            }).catch(() => {})
+
             navigate('/kepsek')
             return
           }
@@ -283,6 +308,17 @@ export default function Login() {
         if (profile) {
           cacheUserProfile(data.user.id, profile)
         }
+
+        // Catat log aktivitas login akun pengguna
+        recordActivityLog({
+          userId: data.user.id,
+          email: data.user.email,
+          role: userRole,
+          fullName: profile?.full_name || data.user.email,
+          action: 'Login Aplikasi',
+          details: `Login sukses sebagai ${userRole.toUpperCase()}${effectiveJabatan ? ` (${effectiveJabatan})` : ''}`,
+          supabase
+        }).catch(() => {})
 
         // Arahkan ke dashboard sesuai peran akun sebenarnya
         if (isAdmin) {
