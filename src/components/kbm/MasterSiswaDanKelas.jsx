@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info, Image as ImageIcon, Camera, Loader2, CheckSquare, Square } from 'lucide-react'
+import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info, Image as ImageIcon, Camera, Loader2, CheckSquare, Square, QrCode } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
+import CetakKartuQrSiswaModal from './CetakKartuQrSiswaModal'
 
 export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh, isOperatorMode = false }) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
@@ -59,6 +60,7 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const [aiExtractedStudents, setAiExtractedStudents] = useState([])
   const [aiSaving, setAiSaving] = useState(false)
   const [aiUsedModel, setAiUsedModel] = useState('')
+  const [showCetakQrModal, setShowCetakQrModal] = useState(false)
 
   // State Mata Pelajaran
   const [subjectsList, setSubjectsList] = useState([])
@@ -579,6 +581,28 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                   >
                     <Plus size={15} />
                     <span>Tambah Siswa</span>
+                  </button>
+                  <button
+                    onClick={() => setShowCetakQrModal(true)}
+                    type="button"
+                    className="btn"
+                    style={{
+                      width: 'auto',
+                      padding: '0.5rem 0.85rem',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                      color: 'white',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+                    }}
+                    title="Cetak Kartu QR Presensi Siswa"
+                  >
+                    <QrCode size={15} />
+                    <span>Cetak Kartu QR</span>
                   </button>
                 </>
               ) : (
@@ -1607,6 +1631,17 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
           </div>
         </div>
       )}
+
+      {/* Modal Cetak Kartu QR Siswa */}
+      <CetakKartuQrSiswaModal
+        isOpen={showCetakQrModal}
+        onClose={() => setShowCetakQrModal(false)}
+        classes={classes}
+        selectedClassId={selectedClassId}
+        students={students}
+        schoolInfo={schoolInfo}
+        supabase={supabase}
+      />
     </div>
   )
 }

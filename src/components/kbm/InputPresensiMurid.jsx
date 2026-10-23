@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Search, CheckCheck, ShieldAlert } from 'lucide-react'
+import { Calendar, CheckCircle2, UserCheck, AlertCircle, Save, Check, Users, Sparkles, Search, CheckCheck, ShieldAlert, Camera, QrCode } from 'lucide-react'
+import ScanQrPresensiModal from './ScanQrPresensiModal'
+import CetakKartuQrSiswaModal from './CetakKartuQrSiswaModal'
 
 export default function InputPresensiMurid({ selectedClass, classes, user, profile, schoolInfo }) {
   const [activeClassId, setActiveClassId] = useState(selectedClass?.id || (classes?.[0]?.id || ''))
@@ -15,6 +17,22 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
   const [holidayReason, setHolidayReason] = useState('')
   const [message, setMessage] = useState(null)
   const [searchFilter, setSearchFilter] = useState('')
+
+  // State Modal QR Presensi & Cetak Kartu
+  const [showScanQrModal, setShowScanQrModal] = useState(false)
+  const [showCetakQrModal, setShowCetakQrModal] = useState(false)
+
+  const handleAttendanceUpdatedFromScan = (studentId, status, studentObj) => {
+    setAttendanceMap(prev => ({
+      ...prev,
+      [studentId]: status
+    }))
+    setMessage({
+      type: 'success',
+      text: `✓ Presensi ${studentObj?.name || 'Siswa'} berhasil dicatat Hadir via Scan QR!`
+    })
+    setTimeout(() => setMessage(null), 3500)
+  }
 
   useEffect(() => {
     if (classes && classes.length > 0 && !activeClassId) {
@@ -175,7 +193,51 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
             </span>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--text)', margin: '4px 0 0 0' }}>Input Presensi Harian</h3>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setShowScanQrModal(true)}
+              disabled={isHoliday}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '12px',
+                background: isHoliday ? '#94A3B8' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: isHoliday ? 'not-allowed' : 'pointer',
+                boxShadow: isHoliday ? 'none' : '0 4px 12px rgba(16, 185, 129, 0.28)'
+              }}
+            >
+              <Camera size={15} />
+              <span>Scan QR Presensi</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCetakQrModal(true)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '12px',
+                background: '#FFFFFF',
+                color: '#0284C7',
+                border: '1.5px solid #BAE6FD',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              <QrCode size={15} />
+              <span>Cetak Kartu QR</span>
+            </button>
+
             <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4F46E5', background: '#EEF2FF', padding: '5px 12px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Sparkles size={13} /> {attendanceRate}% Kehadiran
             </span>
@@ -523,6 +585,31 @@ export default function InputPresensiMurid({ selectedClass, classes, user, profi
           </button>
         </div>
       </div>
+
+      {/* Modal Scanner QR Presensi Siswa */}
+      <ScanQrPresensiModal
+        isOpen={showScanQrModal}
+        onClose={() => setShowScanQrModal(false)}
+        students={students}
+        classes={classes}
+        activeClassId={activeClassId}
+        selectedDate={selectedDate}
+        attendanceMap={attendanceMap}
+        onAttendanceUpdated={handleAttendanceUpdatedFromScan}
+        supabase={supabase}
+        user={user}
+      />
+
+      {/* Modal Cetak Kartu QR Siswa */}
+      <CetakKartuQrSiswaModal
+        isOpen={showCetakQrModal}
+        onClose={() => setShowCetakQrModal(false)}
+        classes={classes}
+        selectedClassId={activeClassId}
+        students={students}
+        schoolInfo={schoolInfo}
+        supabase={supabase}
+      />
     </div>
   )
 }
