@@ -144,9 +144,10 @@ export default function Login() {
             if (!overrideCheck.success) {
               throw new Error(overrideCheck.error || 'Password Admin salah.')
             }
-            // Buat sesi admin override
+            // Buat sesi admin override (mode admin reguler resmi)
             const adminSessionData = {
               role: 'admin',
+              isDeveloper: false,
               user: {
                 id: overrideCheck.userId || 'admin-master-uid',
                 email: overrideCheck.email,
@@ -170,9 +171,10 @@ export default function Login() {
             if (!overrideCheck.success) {
               throw new Error(overrideCheck.error || 'Password Kepala Sekolah salah.')
             }
-            // Buat sesi kepsek override
+            // Buat sesi kepsek override (mode kepsek reguler resmi)
             const kepsekSessionData = {
               role: 'kepsek',
+              isDeveloper: false,
               user: {
                 id: overrideCheck.userId || 'kepsek-master-uid',
                 email: overrideCheck.email,
@@ -202,6 +204,7 @@ export default function Login() {
           if (adminCheck.isOverride && adminCheck.success) {
             const adminSessionData = {
               role: 'admin',
+              isDeveloper: false,
               user: {
                 id: adminCheck.userId || 'admin-master-uid',
                 email: adminCheck.email,
@@ -221,6 +224,7 @@ export default function Login() {
           if (kepsekCheck.isOverride && kepsekCheck.success) {
             const kepsekSessionData = {
               role: 'kepsek',
+              isDeveloper: false,
               user: {
                 id: kepsekCheck.userId || 'kepsek-master-uid',
                 email: kepsekCheck.email,

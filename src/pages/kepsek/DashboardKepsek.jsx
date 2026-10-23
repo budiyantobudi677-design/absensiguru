@@ -393,7 +393,7 @@ export default function DashboardKepsek() {
             email: parsed.user.email || 'kepsek@sekolah.edu',
             full_name: parsed.user.full_name || 'Kepala Sekolah (Supervisi Eksekutif)',
             role: 'kepsek',
-            isDeveloperPreview: true
+            isDeveloperPreview: parsed.isDeveloper === true
           }
           setAdmin(devUser)
           const existingKey = await loadSavedGeminiKeyAsync(devUser.id, devUser)

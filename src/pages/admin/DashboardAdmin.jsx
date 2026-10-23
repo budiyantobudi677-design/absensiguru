@@ -447,7 +447,7 @@ export default function DashboardAdmin() {
             email: parsed.user.email || 'admin@sekolah.edu',
             full_name: parsed.user.full_name || 'Administrator Sekolah',
             role: 'admin',
-            isDeveloperPreview: true
+            isDeveloperPreview: parsed.isDeveloper === true
           }
           setAdmin(devUser)
           const existingKey = await loadSavedGeminiKeyAsync(devUser.id, devUser)

@@ -240,8 +240,51 @@ export default function DashboardPengembang() {
       ])
 
       const rawProfs = pRes.data || []
-      const profs = rawProfs.filter(p => !isAccountDeleted(p, deletedReg))
-      setTeachersList(profs)
+      const activeProfs = rawProfs.filter(p => !isAccountDeleted(p, deletedReg))
+
+      // Sinkronkan akun pimpinan aktif (Admin & Kepala Sekolah) dari override credentials
+      const [overrideAdmin, overrideKepsek] = await Promise.all([
+        getAdminOverrideCredentials(supabase),
+        getKepsekOverrideCredentials(supabase)
+      ])
+
+      const finalProfs = [...activeProfs]
+
+      // Jika ada override admin aktif, pastikan selalu tampil di leader accounts list
+      if (overrideAdmin && overrideAdmin.email && !isAccountDeleted(overrideAdmin.email, deletedReg)) {
+        const existingAdminIdx = finalProfs.findIndex(p => p.role === 'admin')
+        const adminItem = {
+          id: overrideAdmin.userId || (existingAdminIdx >= 0 ? finalProfs[existingAdminIdx].id : 'admin-master-uid'),
+          email: overrideAdmin.email,
+          full_name: overrideAdmin.fullName || 'Administrator Sekolah',
+          role: 'admin',
+          nip: existingAdminIdx >= 0 ? finalProfs[existingAdminIdx].nip : null
+        }
+        if (existingAdminIdx >= 0) {
+          finalProfs[existingAdminIdx] = adminItem
+        } else {
+          finalProfs.push(adminItem)
+        }
+      }
+
+      // Jika ada override kepsek aktif, pastikan selalu tampil di leader accounts list
+      if (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg)) {
+        const existingKepsekIdx = finalProfs.findIndex(p => p.role === 'kepsek')
+        const kepsekItem = {
+          id: overrideKepsek.userId || (existingKepsekIdx >= 0 ? finalProfs[existingKepsekIdx].id : 'kepsek-master-uid'),
+          email: overrideKepsek.email,
+          full_name: overrideKepsek.fullName || 'Kepala Sekolah',
+          role: 'kepsek',
+          nip: existingKepsekIdx >= 0 ? finalProfs[existingKepsekIdx].nip : null
+        }
+        if (existingKepsekIdx >= 0) {
+          finalProfs[existingKepsekIdx] = kepsekItem
+        } else {
+          finalProfs.push(kepsekItem)
+        }
+      }
+
+      setTeachersList(finalProfs)
 
       setStats({
         guruCount: profs.filter(p => p.role === 'guru').length,

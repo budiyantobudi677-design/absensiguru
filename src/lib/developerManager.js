@@ -325,6 +325,43 @@ export async function updateLeaderAccountCredentials({
 
   const mainTarget = cleanRole === 'kepsek' ? KEPSEK_CREDENTIALS_TARGET : ADMIN_CREDENTIALS_TARGET
 
+  // Deteksi email lama yang akan digantikan agar langsung dinonaktifkan permanen dan diblokir login
+  let oldEmail = null
+  try {
+    if (targetUserId) {
+      const { data: prof } = await supabase.from('profiles').select('email').eq('id', targetUserId).maybeSingle()
+      if (prof?.email) oldEmail = prof.email
+    }
+    if (!oldEmail) {
+      const existingMain = cleanRole === 'kepsek' 
+        ? await getKepsekOverrideCredentials(supabase) 
+        : await getAdminOverrideCredentials(supabase)
+      if (existingMain?.email) oldEmail = existingMain.email
+    }
+    if (!oldEmail) {
+      const { data: matchedProf } = await supabase.from('profiles').select('email').eq('role', cleanRole).limit(1)
+      if (matchedProf?.[0]?.email) oldEmail = matchedProf[0].email
+    }
+  } catch (e) {
+    console.warn('Could not determine old leader email:', e)
+  }
+
+  // Jika email baru berbeda dengan email lama, masukkan email lama ke Deleted Accounts Registry seketika
+  if (oldEmail && oldEmail.trim().toLowerCase() !== cleanEmail) {
+    try {
+      await markAccountAsDeletedInCloud({
+        userId: targetUserId || `old-${cleanRole}-${Date.now()}`,
+        email: oldEmail.trim().toLowerCase(),
+        role: cleanRole,
+        fullName: cleanFullName,
+        deletedBy: 'Pengembang Sistem (Penggantian Email Akun)',
+        supabase
+      })
+    } catch (delErr) {
+      console.warn('Gagal mencatat email lama ke Deleted Registry:', delErr)
+    }
+  }
+
   // 1. Jika targetUserId ada, simpan juga kredensial spesifik akun ini
   if (targetUserId) {
     const specificTarget = `${LEADER_CREDENTIALS_PREFIX}${targetUserId}`
