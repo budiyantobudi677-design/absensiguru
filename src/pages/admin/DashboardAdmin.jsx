@@ -15,7 +15,7 @@ import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
-import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
+import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap, cleanupDeletedTeacherClassLocks } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
@@ -913,8 +913,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
         deletedBy: admin?.full_name || admin?.email || 'Administrator',
         supabase
       })
+      await cleanupDeletedTeacherClassLocks(supabase)
       alert(`Data guru "${teacherName}" berhasil dihapus dari sistem.`)
-      await loadPegawai()
+      await Promise.all([loadPegawai(), loadKbmClasses()])
     } catch (err) {
       console.error('Error saat menghapus data guru:', err)
       alert('Gagal menghapus data guru: ' + (err.message || 'Terjadi kesalahan sistem.'))
@@ -1025,6 +1026,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
   const loadKbmClasses = async () => {
     try {
+      await cleanupDeletedTeacherClassLocks(supabase)
       const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (!error && data) {
         setKbmClasses(data)

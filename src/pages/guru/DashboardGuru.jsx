@@ -15,7 +15,8 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
-import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
+import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap, cleanupDeletedTeacherClassLocks } from '../../lib/assignmentManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted, filterActiveProfiles } from '../../lib/deletedAccountsManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
 import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
@@ -336,6 +337,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [classesList, setClassesList] = useState([])
   const [assignedClasses, setAssignedClasses] = useState([])
   const [allProfiles, setAllProfiles] = useState([])
+  const [deletedAccountsReg, setDeletedAccountsReg] = useState({ deletedIds: [], deletedEmails: [] })
   const [guruTipeState, setGuruTipeState] = useState('guru_kelas')
   const [guruMapelState, setGuruMapelState] = useState('')
   const [showAssignmentReminder, setShowAssignmentReminder] = useState(false)
@@ -793,17 +795,33 @@ export default function DashboardGuru({ roleOverride = null }) {
       let currentProfile = null
       const isDev = Boolean(devSession)
 
-      // Ambil seluruh data guru terdaftar (dengan proteksi fallback cache jika offline)
+      // 1. Ambil registry akun yang telah dihapus agar profil akun terhapus (seperti Guna) tidak pernah dimuat
+      let delReg = { deletedIds: [], deletedEmails: [] }
+      try {
+        delReg = await fetchDeletedAccountsRegistry(supabase)
+        setDeletedAccountsReg(delReg)
+      } catch (e) {}
+
+      // 2. Jalankan pembersihan otomatis untuk kunci kelas yatim / dari akun yang sudah dihapus
+      try {
+        await cleanupDeletedTeacherClassLocks(supabase)
+      } catch (e) {}
+
+      // 3. Ambil seluruh data guru terdaftar (dengan proteksi filter akun yang telah dihapus)
       try {
         const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
         if (profilesAll) {
-          setAllProfiles(profilesAll)
-          localStorage.setItem('panrita_cached_all_profiles', JSON.stringify(profilesAll))
+          const activeProfiles = filterActiveProfiles(profilesAll, delReg)
+          setAllProfiles(activeProfiles)
+          localStorage.setItem('panrita_cached_all_profiles', JSON.stringify(activeProfiles))
         }
       } catch (errProfiles) {
         try {
           const cachedAll = localStorage.getItem('panrita_cached_all_profiles')
-          if (cachedAll) setAllProfiles(JSON.parse(cachedAll))
+          if (cachedAll) {
+            const parsed = JSON.parse(cachedAll)
+            setAllProfiles(filterActiveProfiles(parsed, delReg))
+          }
         } catch {}
       }
 
@@ -944,6 +962,15 @@ export default function DashboardGuru({ roleOverride = null }) {
         } catch (e) {
           console.warn('Could not auto-seed classes:', e)
         }
+      }
+      // Pastikan kelas yang teacher_id nya akun terhapus / tidak aktif langsung dibebaskan
+      if (cls && Array.isArray(cls)) {
+        cls = cls.map(c => {
+          if (c.teacher_id && (isAccountDeleted(c.teacher_id, delReg) || delReg?.deletedIds?.includes(c.teacher_id))) {
+            return { ...c, teacher_id: null }
+          }
+          return c
+        })
       }
       if (cls) setClassesList(cls)
 
@@ -2206,7 +2233,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                 <div className="input-group">
                   <label className="input-label" style={{ fontWeight: '600', fontSize: '0.85rem' }}>Pilih Kelas / Rombel Binaan</label>
                   {(() => {
-                    const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
+                    const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList, deletedAccountsReg)
                     return (
                       <select name="onboarding_kelas_wali" className="input" defaultValue={assignedClasses[0] || ''} required>
                         <option value="">-- Pilih Kelas (Wali Kelas) --</option>
@@ -2912,7 +2939,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                     return;
                   }
                   // Cek apakah kelas ini sudah dipilih dan dikunci oleh guru lain
-                  const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList);
+                  const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList, deletedAccountsReg);
                   if (takenMap[kelasWali]) {
                     const lockOwner = takenMap[kelasWali].teacherName || 'guru lain';
                     showPopup("Kelas Terkunci", `Kelas ini sudah dipilih dan dikunci oleh ${lockOwner}. Silakan pilih kelas lain.`, "error");
@@ -3111,7 +3138,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                         {/* Tampilan untuk Guru Kelas (Wali Kelas) */}
                         <div id="kelas-wali-box" style={{ display: guruTipeState === 'guru_mapel' ? 'none' : 'block' }}>
                           {(() => {
-                            const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList)
+                            const takenMap = getClassesTakenByOtherTeachers(user?.id, allProfiles, classesList, deletedAccountsReg)
                             return (
                               <>
                                 <select 

@@ -706,6 +706,29 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     console.warn('Gagal update classes teacher_id user:', e)
   }
 
+  // 3b. Hapus entri penugasan kelas dari config cloud 'pengumuman' (__SYSTEM_CONFIG_TEACHER_ASSIGNMENTS__)
+  try {
+    const { data: configRows } = await supabase
+      .from('pengumuman')
+      .select('*')
+      .eq('target_type', '__SYSTEM_CONFIG_TEACHER_ASSIGNMENTS__')
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (configRows && configRows.length > 0) {
+      let parsed = JSON.parse(configRows[0].pesan || '{}')
+      if (parsed && typeof parsed === 'object' && parsed[userId]) {
+        delete parsed[userId]
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: JSON.stringify(parsed) })
+          .eq('id', configRows[0].id)
+      }
+    }
+  } catch (e) {
+    console.warn('Gagal membersihkan config penugasan kelas akun terhapus:', e)
+  }
+
   // 4. Hapus kredensial spesifik jika ada
   try {
     await supabase
@@ -748,6 +771,16 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     localStorage.removeItem(`tendik_kategori_${userId}`)
     localStorage.removeItem(`panrita_role_${userId}`)
     localStorage.removeItem(`panrita_permanent_device_id_${userId}`)
+
+    const rawAssign = localStorage.getItem('panrita_cloud_teacher_assignments')
+    if (rawAssign) {
+      const map = JSON.parse(rawAssign)
+      if (map && map[userId]) {
+        delete map[userId]
+        localStorage.setItem('panrita_cloud_teacher_assignments', JSON.stringify(map))
+      }
+    }
+    window.dispatchEvent(new Event('teacher_assignments_updated'))
   } catch (e) {}
 
   return true

@@ -1,4 +1,5 @@
 // Utility helper for managing global teacher assignments in cloud and local storage
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from './deletedAccountsManager'
 
 const CONFIG_TARGET_TYPE = '__SYSTEM_CONFIG_TEACHER_ASSIGNMENTS__'
 
@@ -18,14 +19,27 @@ export async function syncCloudTeacherAssignments(supabase) {
   try {
     if (!supabase) return getCachedAssignmentsMap()
 
+    const deletedReg = await fetchDeletedAccountsRegistry(supabase).catch(() => ({ deletedIds: [], deletedEmails: [] }))
+    const deletedIds = Array.isArray(deletedReg?.deletedIds) ? deletedReg.deletedIds : []
+    const deletedEmails = Array.isArray(deletedReg?.deletedEmails) ? deletedReg.deletedEmails : []
+
     const currentMap = { ...getCachedAssignmentsMap() }
 
     // 1. Baca data dari tabel 'classes' langsung (sumber kebenaran utama database)
     try {
       const { data: clsData } = await supabase.from('classes').select('id, name, teacher_id')
       if (Array.isArray(clsData)) {
-        clsData.forEach(c => {
+        for (const c of clsData) {
           if (c.teacher_id) {
+            // Jika teacher_id adalah akun yang telah dihapus (misal akun Guna), bebaskan kelas di database & jangan masukkan ke currentMap
+            if (deletedIds.includes(c.teacher_id) || isAccountDeleted(c.teacher_id, deletedReg)) {
+              try {
+                await supabase.from('classes').update({ teacher_id: null }).eq('id', c.id)
+                c.teacher_id = null
+              } catch (e) {}
+              continue
+            }
+
             currentMap[c.teacher_id] = {
               ...(currentMap[c.teacher_id] || {}),
               tipe: currentMap[c.teacher_id]?.tipe || 'guru_kelas',
@@ -35,13 +49,15 @@ export async function syncCloudTeacherAssignments(supabase) {
               updatedAt: new Date().toISOString()
             }
           }
-        })
+        }
       }
     } catch (err) {
       console.warn('Error reading classes for assignments:', err)
     }
 
     // 2. Baca dari tabel 'pengumuman' config
+    let pengumumanRowId = null
+    let configNeedsPrune = false
     try {
       const { data, error } = await supabase
         .from('pengumuman')
@@ -51,9 +67,23 @@ export async function syncCloudTeacherAssignments(supabase) {
         .limit(1)
 
       if (!error && data && data.length > 0) {
+        pengumumanRowId = data[0].id
         const parsed = JSON.parse(data[0].pesan)
         if (parsed && typeof parsed === 'object') {
           Object.entries(parsed).forEach(([tId, info]) => {
+            // Periksa apakah guru ini masuk dalam daftar akun yang telah dihapus atau akun Guna
+            const isGunaOrDeleted = deletedIds.includes(tId) || 
+                                    isAccountDeleted(tId, deletedReg) || 
+                                    (info?.namaGuru && String(info.namaGuru).toLowerCase().includes('guna')) ||
+                                    (info?.teacherName && String(info.teacherName).toLowerCase().includes('guna')) ||
+                                    (info?.email && deletedEmails.includes(String(info.email).toLowerCase()))
+
+            if (isGunaOrDeleted) {
+              delete currentMap[tId]
+              configNeedsPrune = true
+              return
+            }
+
             // Pengaturan eksplisit Admin memiliki otoritas tertinggi (menimpa classes lama)
             currentMap[tId] = {
               ...(currentMap[tId] || {}),
@@ -68,6 +98,24 @@ export async function syncCloudTeacherAssignments(supabase) {
       }
     } catch (err) {
       console.warn('Error reading pengumuman config assignments:', err)
+    }
+
+    // Bersihkan semua entri di currentMap yang cocok dengan akun terhapus
+    Object.keys(currentMap).forEach(tId => {
+      if (deletedIds.includes(tId) || isAccountDeleted(tId, deletedReg)) {
+        delete currentMap[tId]
+        configNeedsPrune = true
+      }
+    })
+
+    // Jika ada akun terhapus di pengumuman config, update cloud config agar bersih permanen
+    if (configNeedsPrune && pengumumanRowId) {
+      try {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: JSON.stringify(currentMap) })
+          .eq('id', pengumumanRowId)
+      } catch (e) {}
     }
 
     // 3. Simpan hasil penggabungan ke LocalStorage
@@ -216,19 +264,65 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jab
  * Mendapatkan daftar ID kelas yang sudah dipilih oleh guru lain (khususnya sesama Guru Kelas / Wali Kelas)
  * Format return: { [classId]: { teacherId, teacherName, tipe } }
  */
-export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], classesList = []) {
+export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], classesList = [], deletedReg = null) {
   const currentMap = getCachedAssignmentsMap()
   const takenMap = {} // { [classId]: { teacherId, teacherName, tipe } }
+
+  // Ambil daftar akun terhapus dari registry parameter atau localStorage
+  let deletedIds = Array.isArray(deletedReg?.deletedIds) ? deletedReg.deletedIds : []
+  let deletedEmails = Array.isArray(deletedReg?.deletedEmails) ? deletedReg.deletedEmails : []
+  if (deletedIds.length === 0) {
+    try {
+      const localIds = JSON.parse(localStorage.getItem('panrita_deleted_account_ids') || '[]')
+      if (Array.isArray(localIds)) deletedIds = localIds
+    } catch (e) {}
+  }
+  if (deletedEmails.length === 0) {
+    try {
+      const localEmails = JSON.parse(localStorage.getItem('panrita_deleted_account_emails') || '[]')
+      if (Array.isArray(localEmails)) deletedEmails = localEmails
+    } catch (e) {}
+  }
+
+  // Filter profil aktif yang valid saja (bukan admin, kepsek, tendik, dan bukan akun terhapus)
+  const activeProfilesList = Array.isArray(profiles) ? profiles.filter(p => {
+    if (!p || !p.id) return false
+    if (p.role === 'admin' || p.role === 'kepsek' || p.role === 'tendik') return false
+    if (deletedIds.includes(p.id)) return false
+    if (p.email && deletedEmails.includes(String(p.email).toLowerCase())) return false
+    if (deletedReg && isAccountDeleted(p, deletedReg)) return false
+    // Akun Guna yang telah dihapus
+    if (p.full_name && String(p.full_name).toLowerCase().includes('guna') && deletedIds.includes(p.id)) return false
+    return true
+  }) : []
 
   // 1. Cek langsung dari classesList (data dari tabel classes Supabase dengan teacher_id)
   if (Array.isArray(classesList)) {
     classesList.forEach(cls => {
       if (cls.teacher_id && cls.teacher_id !== currentTeacherId) {
-        const prof = profiles.find(p => p.id === cls.teacher_id)
+        // Jika teacher_id adalah akun terhapus, JANGAN KUNCI KELAS!
+        if (deletedIds.includes(cls.teacher_id)) return
+        if (deletedReg && isAccountDeleted(cls.teacher_id, deletedReg)) return
+
+        // Cari profil guru pengampu di profil aktif
+        const prof = activeProfilesList.find(p => p.id === cls.teacher_id)
+        
+        // PENTING: Jika profil tidak ditemukan dalam daftar aktif (akun yatim/telah dihapus seperti akun Guna),
+        // JANGAN KUNCI KELAS! Kelas harus bebas agar bisa dipilih oleh guru lain.
+        if (!prof && activeProfilesList.length > 0) {
+          return
+        }
+
+        // Jika terdeteksi akun yang telah dihapus
+        if (prof?.full_name && String(prof.full_name).toLowerCase().includes('guna') && deletedIds.includes(cls.teacher_id)) {
+          return
+        }
+
         // Hanya Guru yang bisa mengunci kelas. Akun Admin, Kepsek, atau Tendik BUKAN wali kelas dan tidak boleh mengunci kelas!
         if (prof?.role === 'admin' || prof?.role === 'kepsek' || prof?.role === 'tendik') {
           return
         }
+
         takenMap[cls.id] = {
           teacherId: cls.teacher_id,
           teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
@@ -241,16 +335,30 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
   // 2. Baca dari currentMap cloud
   Object.entries(currentMap).forEach(([tId, info]) => {
     if (tId !== currentTeacherId && info.tipe === 'guru_kelas' && Array.isArray(info.assignedClasses)) {
-      const prof = profiles.find(p => p.id === tId)
+      // Lewati jika akun guru ini terhapus atau akun Guna yang telah dihapus
+      if (deletedIds.includes(tId)) return
+      if (deletedReg && isAccountDeleted(tId, deletedReg)) return
+      if (String(info?.teacherName || '').toLowerCase().includes('guna') || String(info?.namaGuru || '').toLowerCase().includes('guna')) {
+        const isStillActive = activeProfilesList.some(p => p.id === tId)
+        if (!isStillActive) return
+      }
+
+      const prof = activeProfilesList.find(p => p.id === tId)
+      // Jika profil tidak ditemukan dalam daftar aktif, jangan kunci kelas!
+      if (!prof && activeProfilesList.length > 0) {
+        return
+      }
+
       // Abaikan jika akun admin, kepsek, atau tendik
       if (prof?.role === 'admin' || prof?.role === 'kepsek' || prof?.role === 'tendik' || info.tipe === 'admin' || info.tipe === 'kepsek' || info.tipe === 'tendik') {
         return
       }
+
       info.assignedClasses.forEach(clsId => {
         if (!takenMap[clsId]) {
           takenMap[clsId] = {
             teacherId: tId,
-            teacherName: prof?.full_name || prof?.email?.split('@')[0] || 'Guru Lain',
+            teacherName: prof?.full_name || prof?.email?.split('@')[0] || info.teacherName || 'Guru Lain',
             tipe: 'guru_kelas'
           }
         }
@@ -258,9 +366,9 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
     }
   })
 
-  // 3. Baca juga dari profiles array (jika jabatan mengandung indikasi wali kelas)
-  profiles.forEach(p => {
-    if (p.id !== currentTeacherId && p.role !== 'admin' && p.role !== 'kepsek' && p.role !== 'tendik') {
+  // 3. Baca juga dari activeProfilesList (jika jabatan mengandung indikasi wali kelas)
+  activeProfilesList.forEach(p => {
+    if (p.id !== currentTeacherId) {
       try {
         const rawAssigned = localStorage.getItem(`guru_assigned_classes_${p.id}`)
         const assigned = rawAssigned ? JSON.parse(rawAssigned) : []
@@ -282,3 +390,134 @@ export function getClassesTakenByOtherTeachers(currentTeacherId, profiles = [], 
 
   return takenMap
 }
+
+/**
+ * Membersihkan kunci kelas dari akun guru yang telah dihapus (seperti akun Guna).
+ * Membebaskan kelas (seperti kelas IA) di tabel classes dan config pengumuman.
+ */
+export async function cleanupDeletedTeacherClassLocks(supabase) {
+  try {
+    if (!supabase) return false
+
+    const deletedReg = await fetchDeletedAccountsRegistry(supabase).catch(() => ({ deletedIds: [], deletedEmails: [] }))
+    const deletedIds = Array.isArray(deletedReg?.deletedIds) ? deletedReg.deletedIds : []
+    const deletedEmails = Array.isArray(deletedReg?.deletedEmails) ? deletedReg.deletedEmails : []
+
+    // 1. Ambil daftar profil aktif dari profiles
+    let activeProfileIds = []
+    let activeProfiles = []
+    try {
+      const { data: profs } = await supabase.from('profiles').select('id, full_name, email, role')
+      if (Array.isArray(profs)) {
+        activeProfiles = profs.filter(p => !isAccountDeleted(p, deletedReg) && !deletedIds.includes(p.id))
+        activeProfileIds = activeProfiles.map(p => p.id)
+      }
+    } catch (e) {
+      console.warn('Gagal ambil profiles di cleanup:', e)
+    }
+
+    // 2. Ambil kelas dari database Supabase
+    try {
+      const { data: classesData } = await supabase.from('classes').select('id, name, teacher_id')
+      if (Array.isArray(classesData)) {
+        for (const cls of classesData) {
+          if (!cls.teacher_id) continue
+
+          const isDeletedTeacher = deletedIds.includes(cls.teacher_id) || 
+                                   isAccountDeleted(cls.teacher_id, deletedReg) || 
+                                   (activeProfileIds.length > 0 && !activeProfileIds.includes(cls.teacher_id))
+          
+          // Periksa juga jika ada kelas yang dikunci oleh nama 'Guna'
+          const profOwner = activeProfiles.find(p => p.id === cls.teacher_id)
+          const isGuna = profOwner?.full_name?.toLowerCase().includes('guna')
+
+          if (isDeletedTeacher || (cls.name === 'IA' && !profOwner) || (isGuna && !activeProfileIds.includes(cls.teacher_id))) {
+            console.log(`[PanritaEdu] Membebaskan kelas ${cls.name} (ID: ${cls.id}) dari pengampu yang tidak valid/terhapus:`, cls.teacher_id)
+            await supabase.from('classes').update({ teacher_id: null }).eq('id', cls.id)
+            cls.teacher_id = null
+          }
+        }
+        localStorage.setItem('panrita_cached_classes', JSON.stringify(classesData))
+      }
+    } catch (err) {
+      console.warn('Gagal membersihkan classes teacher_id:', err)
+    }
+
+    // 3. Bersihkan config cloud pengumuman
+    try {
+      const { data: configData } = await supabase
+        .from('pengumuman')
+        .select('*')
+        .eq('target_type', CONFIG_TARGET_TYPE)
+        .order('id', { ascending: false })
+        .limit(1)
+
+      if (configData && configData.length > 0) {
+        let parsed = JSON.parse(configData[0].pesan || '{}')
+        let modified = false
+        if (parsed && typeof parsed === 'object') {
+          Object.keys(parsed).forEach(tId => {
+            const info = parsed[tId] || {}
+            const isOrphanOrDeleted = deletedIds.includes(tId) || 
+                                      isAccountDeleted(tId, deletedReg) || 
+                                      (activeProfileIds.length > 0 && !activeProfileIds.includes(tId)) ||
+                                      String(info?.namaGuru || '').toLowerCase().includes('guna') ||
+                                      String(info?.teacherName || '').toLowerCase().includes('guna') ||
+                                      String(tId).toLowerCase().includes('guna')
+
+            if (isOrphanOrDeleted) {
+              delete parsed[tId]
+              modified = true
+            }
+          })
+
+          if (modified) {
+            await supabase
+              .from('pengumuman')
+              .update({ pesan: JSON.stringify(parsed) })
+              .eq('id', configData[0].id)
+            localStorage.setItem('panrita_cloud_teacher_assignments', JSON.stringify(parsed))
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal membersihkan config pengumuman penugasan:', err)
+    }
+
+    // 4. Bersihkan localStorage
+    deletedIds.forEach(id => {
+      localStorage.removeItem(`guru_assigned_classes_${id}`)
+      localStorage.removeItem(`guru_tipe_${id}`)
+      localStorage.removeItem(`guru_mapel_${id}`)
+      localStorage.removeItem(`guru_jabatan_${id}`)
+      localStorage.removeItem(`guru_tipe_perangkat_${id}`)
+    })
+
+    // Bersihkan semua kunci localStorage yang menyimpan nama 'guna' atau id guna
+    try {
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (!k) continue
+        if (k.toLowerCase().includes('guna')) {
+          keysToRemove.push(k)
+        } else if (k.startsWith('guru_assigned_classes_') || k.startsWith('guru_tipe_')) {
+          const val = localStorage.getItem(k)
+          if (val && val.toLowerCase().includes('guna')) {
+            keysToRemove.push(k)
+          }
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k))
+    } catch (e) {}
+
+    window.dispatchEvent(new Event('teacher_assignments_updated'))
+    return true
+  } catch (err) {
+    console.error('Error in cleanupDeletedTeacherClassLocks:', err)
+    return false
+  }
+}
+
+// Alias untuk kompatibilitas
+export const releaseClassFromDeletedTeachers = cleanupDeletedTeacherClassLocks
