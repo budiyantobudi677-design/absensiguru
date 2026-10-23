@@ -124,6 +124,28 @@ export default function MasterSiswaDanKelas({
     }
   }
 
+  // Helper pencocokan kelas yang fleksibel (mendukung integer ID, string ID, nama kelas, atau teacher_id)
+  const isClassMatchingAssigned = (c, assignedList, teacherId) => {
+    if (!c) return false
+    if (teacherId && String(c.teacher_id) === String(teacherId)) return true
+    if (!Array.isArray(assignedList) || assignedList.length === 0) return false
+
+    const cIdStr = String(c.id).trim()
+    const cNameStr = String(c.name || '').trim().toLowerCase()
+    const cleanCName = cNameStr.replace(/^kelas\s+/i, '').trim()
+
+    return assignedList.some(assignedItem => {
+      if (assignedItem === null || assignedItem === undefined) return false
+      const aStr = String(assignedItem).trim()
+      const aLower = aStr.toLowerCase()
+      const cleanALower = aLower.replace(/^kelas\s+/i, '').trim()
+
+      if (aStr === cIdStr) return true
+      if (cNameStr && (aLower === cNameStr || cleanALower === cleanCName || cleanALower === cNameStr)) return true
+      return false
+    })
+  }
+
   const fetchClasses = async () => {
     try {
       const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
@@ -138,7 +160,8 @@ export default function MasterSiswaDanKelas({
         if (assigned.length === 0) {
           try {
             const raw = localStorage.getItem(`guru_assigned_classes_${uId}`)
-            if (raw) assigned = JSON.parse(raw)
+            if (raw) assigned = typeof raw === 'string' ? JSON.parse(raw) : raw
+            if (!Array.isArray(assigned)) assigned = []
           } catch (e) {}
         }
 
@@ -156,19 +179,34 @@ export default function MasterSiswaDanKelas({
         }
 
         // Cek juga kelas yang memiliki teacher_id = uId di tabel classes Supabase
-        const dbTeacherClassIds = filtered.filter(c => c.teacher_id === uId).map(c => c.id)
-        const allAssigned = Array.from(new Set([...assigned, ...dbTeacherClassIds]))
+        const dbTeacherClassIds = filtered.filter(c => String(c.teacher_id) === String(uId)).map(c => c.id)
+        let allAssigned = Array.from(new Set([...assigned, ...dbTeacherClassIds]))
+
+        // Jika masih kosong, coba periksa dari profil jabatan guru (misal: "Guru Kelas 5" atau "Guru Kelas • Wali 5")
+        if (allAssigned.length === 0) {
+          const jab = String(activeProfile?.jabatan || user?.jabatan || '').toLowerCase().trim()
+          const matched = filtered.find(c => {
+            const cName = String(c.name || '').trim().toLowerCase()
+            return jab.includes(`wali ${cName}`) || jab.includes(`kelas ${cName}`) || jab.endsWith(` ${cName}`)
+          })
+          if (matched) {
+            allAssigned = [matched.id]
+          }
+        }
 
         if (allAssigned.length > 0) {
-          filtered = filtered.filter(c => allAssigned.includes(c.id))
+          const matchedClasses = filtered.filter(c => isClassMatchingAssigned(c, allAssigned, uId))
+          if (matchedClasses.length > 0) {
+            filtered = matchedClasses
+          }
         } else if (Array.isArray(propClasses) && propClasses.length > 0) {
-          filtered = filtered.filter(c => propClasses.some(pc => pc.id === c.id))
+          filtered = filtered.filter(c => propClasses.some(pc => String(pc.id) === String(c.id) || String(pc.name).toLowerCase() === String(c.name).toLowerCase()))
         }
       }
 
       setClasses(filtered)
       if (filtered && filtered.length > 0) {
-        if (!selectedClassId || !filtered.some(c => c.id === selectedClassId)) {
+        if (!selectedClassId || !filtered.some(c => String(c.id) === String(selectedClassId))) {
           setSelectedClassId(filtered[0].id)
         }
       } else {
@@ -549,7 +587,7 @@ export default function MasterSiswaDanKelas({
     (s.nisn && s.nisn.includes(searchTerm))
   )
 
-  const activeClassName = classes.find(c => c.id === selectedClassId)?.name || 'Kelas'
+  const activeClassName = classes.find(c => String(c.id) === String(selectedClassId))?.name || 'Kelas'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>

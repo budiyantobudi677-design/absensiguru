@@ -538,7 +538,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     if (user?.id) {
       try {
         const raw = localStorage.getItem(`guru_assigned_classes_${user.id}`)
-        userAssignedIds = raw ? JSON.parse(raw) : []
+        userAssignedIds = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : []
         if (!Array.isArray(userAssignedIds)) userAssignedIds = []
       } catch (e) {
         userAssignedIds = []
@@ -547,9 +547,47 @@ export default function DashboardGuru({ roleOverride = null }) {
       userAssignedIds = []
     }
   }
-  
-  const filteredClassesList = userAssignedIds.length > 0
-    ? classesList.filter(c => userAssignedIds.includes(c.id))
+
+  // Jika belum ada di state/local, cari dari profile jabatan guru (contoh: "Guru Kelas 5" atau "Guru Kelas • Wali 5")
+  if (userAssignedIds.length === 0 && profile?.jabatan && classesList.length > 0) {
+    const jabLower = String(profile.jabatan).toLowerCase()
+    const matched = classesList.find(c => {
+      const cName = String(c.name || '').toLowerCase().trim()
+      return jabLower.includes(`wali ${cName}`) || jabLower.includes(`kelas ${cName}`) || jabLower.endsWith(` ${cName}`)
+    })
+    if (matched) {
+      userAssignedIds = [matched.id]
+    }
+  }
+
+  // Cari juga kelas yang memiliki teacher_id milik guru ini di classesList
+  const dbTeacherClassIds = classesList.filter(c => c.teacher_id === user?.id).map(c => c.id)
+  const combinedAssignedIds = Array.from(new Set([...userAssignedIds, ...dbTeacherClassIds]))
+
+  // Helper pencocokan kelas yang fleksibel (mendukung integer id, string id, nama kelas, atau teacher_id)
+  const isClassAssignedToTeacher = (c, assignedList, teacherId) => {
+    if (!c) return false
+    if (teacherId && String(c.teacher_id) === String(teacherId)) return true
+    if (!Array.isArray(assignedList) || assignedList.length === 0) return false
+
+    const cIdStr = String(c.id).trim()
+    const cNameStr = String(c.name || '').trim().toLowerCase()
+    const cleanCName = cNameStr.replace(/^kelas\s+/i, '').trim()
+
+    return assignedList.some(assignedItem => {
+      if (assignedItem === null || assignedItem === undefined) return false
+      const aStr = String(assignedItem).trim()
+      const aLower = aStr.toLowerCase()
+      const cleanALower = aLower.replace(/^kelas\s+/i, '').trim()
+
+      if (aStr === cIdStr) return true
+      if (cNameStr && (aLower === cNameStr || cleanALower === cleanCName || cleanALower === cNameStr)) return true
+      return false
+    })
+  }
+
+  const filteredClassesList = combinedAssignedIds.length > 0
+    ? classesList.filter(c => isClassAssignedToTeacher(c, combinedAssignedIds, user?.id))
     : classesList
 
   useEffect(() => {
@@ -880,7 +918,25 @@ export default function DashboardGuru({ roleOverride = null }) {
           console.error('Error parsing assigned classes:', err)
         }
       }
+
+      // Jika masih kosong, coba periksa dari profile jabatan guru
+      if (storedAssigned.length === 0 && currentProfile?.jabatan && cls && cls.length > 0) {
+        const jab = String(currentProfile.jabatan).toLowerCase()
+        const matched = cls.find(c => {
+          const cName = String(c.name || '').toLowerCase().trim()
+          return jab.includes(`wali ${cName}`) || jab.includes(`kelas ${cName}`) || jab.endsWith(` ${cName}`)
+        })
+        if (matched) {
+          storedAssigned = [matched.id]
+        }
+      }
+
       setAssignedClasses(storedAssigned)
+      if (storedAssigned.length > 0) {
+        try {
+          localStorage.setItem(`guru_assigned_classes_${currentUser.id}`, JSON.stringify(storedAssigned))
+        } catch (e) {}
+      }
 
       // Cek apakah tipe dan mapel penugasan sudah diatur di cloud atau local
       const userTipe = isTendikFromCloud ? 'tendik' : (myCloudAssignment?.tipe || (dbMyClass ? 'guru_kelas' : await getLocalPref(`guru_tipe_${currentUser.id}`, currentProfile?.penugasan_tipe || (currentProfile?.role === 'guru_mapel' ? 'guru_mapel' : 'guru_kelas'))))

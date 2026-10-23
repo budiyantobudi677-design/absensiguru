@@ -1550,10 +1550,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
             </button>
             <button className={`admin-nav-item ${activeTab === 'pegawai' ? 'active' : ''}`} onClick={() => { handleMenuClick('pegawai'); setIsSidebarOpen(false); }}>
               <Users size={18} />
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
-                <span>Data & Hapus Guru</span>
-                <span style={{ fontSize: '0.62rem', background: '#FEE2E2', color: '#DC2626', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>Hapus</span>
-              </span>
+              <span>Data Guru dan Tendik</span>
             </button>
             
             <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { handleMenuClick('kbm'); setIsSidebarOpen(false); }}>
@@ -1778,7 +1775,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
                   {activeTab === 'absensi' && 'Presensi Mandiri Pimpinan'}
                   {activeTab === 'riwayat' && 'Riwayat Kehadiran Pimpinan'}
-                  {activeTab === 'pegawai' && 'Manajemen Data Pegawai & Guru'}
+                  {activeTab === 'pegawai' && 'Data Guru dan Tendik'}
                   {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                   {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
                   {activeTab === 'persuratan' && 'Administrasi & Pembuatan Persuratan Resmi'}
@@ -2288,14 +2285,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
               <h3 style={{ marginBottom: '1rem', fontSize: '1.15rem' }}>Menu Akses Cepat</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
                 <div onClick={() => handleMenuClick('pegawai')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s', position: 'relative' }}>
-                  <span style={{ position: 'absolute', top: '12px', right: '12px', background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '8px', border: '1px solid #FECACA' }}>
-                    Menu Hapus Guru
-                  </span>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
                     <Users size={32} color="white" />
                   </div>
-                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '700' }}>Data & Hapus Guru</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0', textAlign: 'center' }}>Kelola penugasan & hapus data guru</p>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: '700' }}>Data Guru dan Tendik</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0', textAlign: 'center' }}>Kelola penugasan, akun & data pegawai</p>
                 </div>
                 <div onClick={() => handleMenuClick('laporan')} className="card" style={{ cursor: 'pointer', border: 'none', padding: '1.75rem 1rem', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
@@ -2352,26 +2346,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   <ArrowLeft size={20} />
                 </button>
                 <div>
-                  <h3 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 800 }}>Kelola & Hapus Data Guru</h3>
+                  <h3 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 800 }}>Data Guru dan Tendik</h3>
                   <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     {namaSekolah && namaSekolah !== 'HR Dashboard' ? `Daftar seluruh guru dan pegawai ${namaSekolah}` : 'Daftar seluruh guru dan pegawai sekolah'}
                   </p>
                 </div>
-             </div>
-
-             {/* Banner Menu Hapus Guru */}
-             <div style={{ background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '14px', padding: '0.85rem 1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', flexShrink: 0 }}>
-                   <Trash2 size={20} />
-                 </div>
-                 <div>
-                   <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#991B1B' }}>Menu Hapus Data Guru Tersedia</span>
-                   <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#B91C1C', lineHeight: 1.3 }}>
-                     Administrator dapat menghapus akun guru/tendik dengan menekan tombol merah <strong>"Hapus Guru"</strong> pada kartu pegawai. Pop-up peringatan konfirmasi akan muncul sebelum data dihapus.
-                   </p>
-                 </div>
-               </div>
              </div>
              
              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
