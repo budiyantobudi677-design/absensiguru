@@ -3174,7 +3174,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   <MasterSiswaDanKelas
                     user={{ ...admin, role: 'admin' }}
                     profile={{ ...admin, role: 'admin' }}
-                    schoolInfo={{ schoolName: namaSekolah }}
+                    schoolInfo={{ 
+                      schoolName: namaSekolah, 
+                      nama_sekolah: namaSekolah, 
+                      logo_sekolah: logoSekolah, 
+                      schoolLogo: logoSekolah 
+                    }}
                     onRefresh={loadKbmClasses}
                   />
                 )}

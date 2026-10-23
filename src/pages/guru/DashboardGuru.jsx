@@ -1098,6 +1098,10 @@ export default function DashboardGuru({ roleOverride = null }) {
       setSchoolInfoData(prev => ({
         ...prev,
         schoolName: settings?.nama_sekolah || prev.schoolName,
+        nama_sekolah: settings?.nama_sekolah || prev.schoolName,
+        school_name: settings?.nama_sekolah || prev.schoolName,
+        logo_sekolah: settings?.logo_sekolah || prev.logo_sekolah,
+        schoolLogo: settings?.logo_sekolah || prev.schoolLogo,
         principalName: pName || prev.principalName,
         principalNIP: pNip || prev.principalNIP,
         teacherName: profile?.full_name || user?.full_name || prev.teacherName,
