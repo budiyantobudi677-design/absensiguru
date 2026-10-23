@@ -150,6 +150,14 @@ export default function Login() {
             if (!overrideCheck.success) {
               throw new Error(overrideCheck.error || 'Password Admin salah.')
             }
+            // Coba login ke Supabase Auth secara simultan agar mendapatkan sesi resmi 'authenticated' jika ada di auth.users
+            try {
+              const authRes = await supabase.auth.signInWithPassword({ email, password })
+              if (authRes?.data?.session) {
+                await saveActiveSession(authRes.data.session, authRes.data.user, 'admin')
+              }
+            } catch (e) {}
+
             // Buat sesi admin override (mode admin reguler resmi)
             const resolvedAdminId = (overrideCheck.userId && isValidUUID(overrideCheck.userId)) ? overrideCheck.userId : generateUUID()
             const adminSessionData = {
@@ -190,6 +198,14 @@ export default function Login() {
             if (!overrideCheck.success) {
               throw new Error(overrideCheck.error || 'Password Kepala Sekolah salah.')
             }
+            // Coba login ke Supabase Auth secara simultan agar mendapatkan sesi resmi 'authenticated' jika ada di auth.users
+            try {
+              const authRes = await supabase.auth.signInWithPassword({ email, password })
+              if (authRes?.data?.session) {
+                await saveActiveSession(authRes.data.session, authRes.data.user, 'kepsek')
+              }
+            } catch (e) {}
+
             // Buat sesi kepsek override (mode kepsek reguler resmi)
             const resolvedKepsekId = (overrideCheck.userId && isValidUUID(overrideCheck.userId)) ? overrideCheck.userId : generateUUID()
             const kepsekSessionData = {

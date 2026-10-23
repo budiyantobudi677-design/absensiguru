@@ -26,6 +26,7 @@ import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
+import { saveAttendanceRecord, getTodayUserAttendance, fetchAttendanceRecords } from '../../lib/attendanceCloudManager'
 import { 
   saveActiveSession, 
   getActiveSession, 
@@ -1175,8 +1176,7 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       let absensi = null
       try {
-        const { data: absensiList } = await supabase.from('absensi').select('*').eq('user_id', currentUser.id).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
-        absensi = absensiList && absensiList.length > 0 ? absensiList[0] : null
+        absensi = await getTodayUserAttendance({ userId: currentUser.id, today, supabase })
       } catch (e) {}
 
       // Periksa juga antrean presensi luring lokal untuk hari ini
@@ -1308,14 +1308,27 @@ export default function DashboardGuru({ roleOverride = null }) {
         .order('tanggal', { ascending: false })
         .order('waktu_masuk', { ascending: false })
 
-      if (!error && data) {
+      let effectiveData = (!error && data) ? data : []
+      if (effectiveData.length === 0) {
+        try {
+          const cloudList = await fetchAttendanceRecords({
+            supabase,
+            laporanTipe: 'bulanan',
+            bulan: targetMonth,
+            profiles: allProfiles
+          })
+          effectiveData = cloudList.filter(r => r.user_id === activeUser.id)
+        } catch {}
+      }
+
+      if (effectiveData.length > 0) {
         const regAt = localStorage.getItem(`account_registered_at_${activeUser.id}`)
         const regTime = regAt ? new Date(regAt).getTime() : 0
         const seenDates = new Set()
         const duplicateIds = []
         const cleaned = []
 
-        for (const row of data) {
+        for (const row of effectiveData) {
           // Saring baris uji coba lama pada akun Tendik (Operator & Non-Operator)
           if (isCurrentUserTendik && row.tanggal <= '2026-10-09') {
             if (row.id) duplicateIds.push(row.id)
@@ -1718,38 +1731,32 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
 
       try {
+        const res = await saveAttendanceRecord({
+          userId: user.id,
+          jenis,
+          now,
+          today,
+          loc,
+          status: (jenis === 'sakit' || jenis === 'izin') ? jenis : 'hadir',
+          keterangan,
+          supabase,
+          userProfile: profile || user
+        })
+
+        const insData = res.data
+
         if (jenis === 'masuk') {
-          const { data: existRows } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).limit(1)
-          let insData = existRows?.[0] || null
-          if (!insData) {
-            const { data: createdRows, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' }).select().limit(1)
-            if (error) throw error
-            insData = createdRows?.[0] || null
-          }
           setHasCheckedIn(true)
           setTodayStatus('hadir')
-          setTodayAbsensi(insData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+          setTodayAbsensi(insData)
           showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
         } else if (jenis === 'pulang') {
-          const { data: updRows, error } = await supabase.from('absensi').update({ waktu_pulang: now, lokasi_pulang: loc }).eq('user_id', user.id).eq('tanggal', today).select().limit(1)
-          if (error) throw error
-          setTodayAbsensi(prev => ({ ...(prev || {}), ...(updRows?.[0] || {}), waktu_pulang: now, lokasi_pulang: loc }))
+          setTodayAbsensi(prev => ({ ...(prev || {}), ...(insData || {}), waktu_pulang: now, lokasi_pulang: loc }))
           showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
         } else if (jenis === 'sakit' || jenis === 'izin') {
-          const { data: existRows } = await supabase.from('absensi').select('*').eq('user_id', user.id).eq('tanggal', today).limit(1)
-          let izinData = null
-          if (existRows && existRows.length > 0) {
-            const { data: updRows, error } = await supabase.from('absensi').update({ waktu_masuk: now, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).eq('id', existRows[0].id).select().limit(1)
-            if (error) throw error
-            izinData = updRows?.[0] || null
-          } else {
-            const { data: createdRows, error } = await supabase.from('absensi').insert({ user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan }).select().limit(1)
-            if (error) throw error
-            izinData = createdRows?.[0] || null
-          }
           setHasCheckedIn(true)
           setTodayStatus(jenis)
-          setTodayAbsensi(izinData || { user_id: user.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: jenis, keterangan: keterangan })
+          setTodayAbsensi(insData)
           setIzinMode(null)
           showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
         }
@@ -1900,36 +1907,25 @@ export default function DashboardGuru({ roleOverride = null }) {
     }
 
     try {
-      const payload = {
-        user_id: user.id,
-        waktu_masuk: waktuMasuk,
-        waktu_pulang: waktuPulang,
-        tanggal: today,
-        lokasi_masuk: loc,
-        lokasi_pulang: loc,
+      const res = await saveAttendanceRecord({
+        userId: user.id,
+        jenis: 'tugas_luar',
+        now: getSecureServerIsoString(),
+        today,
+        loc,
+        waktuMasuk,
+        waktuPulang,
         status: 'hadir',
-        keterangan: keteranganLengkap
-      }
+        keterangan: keteranganLengkap,
+        supabase,
+        userProfile: profile || user
+      })
 
-      const { data: existing } = await supabase.from('absensi').select('id').eq('user_id', user.id).eq('tanggal', today).maybeSingle()
-      let dbError = null
-      let inserted = null
-
-      if (existing) {
-        const { data: upd, error } = await supabase.from('absensi').update(payload).eq('id', existing.id).select().maybeSingle()
-        dbError = error
-        inserted = upd
-      } else {
-        const { data: ins, error } = await supabase.from('absensi').insert(payload).select().maybeSingle()
-        dbError = error
-        inserted = ins
-      }
-
-      if (dbError) throw dbError
+      const inserted = res.data
 
       setHasCheckedIn(true)
       setTodayStatus('hadir')
-      setTodayAbsensi(inserted || payload)
+      setTodayAbsensi(inserted)
       setShowTugasLuarModal(false)
       showPopup("Presensi Berhasil!", "Presensi Tugas Luar tersimpan. Anda otomatis tercatat HADIR (07:00 - 14:00).", "success")
       loadHistory()

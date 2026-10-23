@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences'
+import { saveAttendanceRecord } from './attendanceCloudManager'
 
 const OFFLINE_QUEUE_KEY = 'offlineAbsensi'
 const LAST_USER_KEY = 'panrita_last_active_user'
@@ -205,98 +206,23 @@ export async function syncOfflineAttendanceQueue(supabase, currentUser = null) {
     }
 
     try {
-      if (record.jenis === 'masuk') {
-        const { data: exist } = await supabase
-          .from('absensi')
-          .select('id')
-          .eq('user_id', record.user_id)
-          .eq('tanggal', record.tanggal)
-          .limit(1)
+      const res = await saveAttendanceRecord({
+        userId: record.user_id,
+        jenis: record.jenis,
+        now: record.waktu,
+        today: record.tanggal,
+        loc: record.loc,
+        waktuMasuk: record.waktu_masuk || record.waktu,
+        waktuPulang: record.waktu_pulang || (record.jenis === 'pulang' ? record.waktu : null),
+        status: record.status || (record.jenis === 'masuk' ? 'hadir' : record.jenis),
+        keterangan: record.keterangan || '',
+        supabase
+      })
 
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({
-            user_id: record.user_id,
-            waktu_masuk: record.waktu,
-            tanggal: record.tanggal,
-            lokasi_masuk: record.loc,
-            status: 'hadir'
-          })
-          if (!error) {
-            successCount++
-          } else {
-            remaining.push(record)
-          }
-        } else {
-          // Sudah ada di server, tandai sukses
-          successCount++
-        }
-      } else if (record.jenis === 'pulang') {
-        const { error } = await supabase
-          .from('absensi')
-          .update({
-            waktu_pulang: record.waktu,
-            lokasi_pulang: record.loc
-          })
-          .eq('user_id', record.user_id)
-          .eq('tanggal', record.tanggal)
-
-        if (!error) {
-          successCount++
-        } else {
-          remaining.push(record)
-        }
-      } else if (record.jenis === 'sakit' || record.jenis === 'izin') {
-        const { data: exist } = await supabase
-          .from('absensi')
-          .select('id')
-          .eq('user_id', record.user_id)
-          .eq('tanggal', record.tanggal)
-          .limit(1)
-
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({
-            user_id: record.user_id,
-            waktu_masuk: record.waktu,
-            tanggal: record.tanggal,
-            lokasi_masuk: record.loc,
-            status: record.jenis,
-            keterangan: record.keterangan
-          })
-          if (!error) {
-            successCount++
-          } else {
-            remaining.push(record)
-          }
-        } else {
-          successCount++
-        }
-      } else if (record.jenis === 'tugas_luar') {
-        const { data: exist } = await supabase
-          .from('absensi')
-          .select('id')
-          .eq('user_id', record.user_id)
-          .eq('tanggal', record.tanggal)
-          .limit(1)
-
-        if (!exist || exist.length === 0) {
-          const { error } = await supabase.from('absensi').insert({
-            user_id: record.user_id,
-            waktu_masuk: record.waktu_masuk || record.waktu,
-            waktu_pulang: record.waktu_pulang || record.waktu,
-            tanggal: record.tanggal,
-            lokasi_masuk: record.loc,
-            lokasi_pulang: record.loc,
-            status: 'hadir',
-            keterangan: record.keterangan
-          })
-          if (!error) {
-            successCount++
-          } else {
-            remaining.push(record)
-          }
-        } else {
-          successCount++
-        }
+      if (res && res.success) {
+        successCount++
+      } else {
+        remaining.push(record)
       }
     } catch (errRecord) {
       console.warn('Gagal sinkron data presensi luring:', errRecord)

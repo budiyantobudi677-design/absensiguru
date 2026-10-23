@@ -35,6 +35,7 @@ import { isValidUUID, generateUUID, updateLeaderAccountCredentials, deleteUserAc
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
+import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -557,11 +558,15 @@ export default function DashboardAdmin() {
 
   const loadKepsekTodayAbsensi = async (userId) => {
     const today = getSecureLocalDateString()
-    const { data } = await supabase.from('absensi').select('*').eq('user_id', userId).eq('tanggal', today).order('waktu_masuk', { ascending: false }).limit(1)
-    if (data && data.length > 0) {
-      setKepsekTodayAbsensi(data[0])
+    const att = await getTodayUserAttendance({ userId, today, supabase })
+    if (att) {
+      setKepsekTodayAbsensi(att)
       setKepsekHasCheckedIn(true)
-      setKepsekTodayStatus(data[0].status)
+      setKepsekTodayStatus(att.status || 'hadir')
+    } else {
+      setKepsekTodayAbsensi(null)
+      setKepsekHasCheckedIn(false)
+      setKepsekTodayStatus(null)
     }
   }
 
@@ -677,31 +682,24 @@ export default function DashboardAdmin() {
       : (webpPhoto ? `${finalCatatan} [FOTO_WEBP:${webpPhoto}]` : finalCatatan)
 
     try {
-      const { data, error } = await supabase.from('absensi').insert({
-        user_id: admin.id,
-        waktu_masuk: waktuMasuk,
-        waktu_pulang: waktuPulang,
-        tanggal: today,
-        lokasi_masuk: loc,
-        lokasi_pulang: loc,
+      const res = await saveAttendanceRecord({
+        userId: admin.id,
+        jenis: 'tugas_luar',
+        now: getSecureServerIsoString(),
+        today,
+        loc,
+        waktuMasuk,
+        waktuPulang,
         status: 'hadir',
-        keterangan: keteranganLengkap
-      }).select().maybeSingle()
+        keterangan: keteranganLengkap,
+        supabase,
+        userProfile: admin
+      })
 
-      if (error) throw error
-
+      const data = res.data
       setKepsekHasCheckedIn(true)
       setKepsekTodayStatus('hadir')
-      setKepsekTodayAbsensi(data || {
-        user_id: admin.id,
-        waktu_masuk: waktuMasuk,
-        waktu_pulang: waktuPulang,
-        tanggal: today,
-        lokasi_masuk: loc,
-        lokasi_pulang: loc,
-        status: 'hadir',
-        keterangan: keteranganLengkap
-      })
+      setKepsekTodayAbsensi(data)
       setShowTugasLuarModal(false)
       setTugasLuarCatatan('')
       setKepsekPopup({
@@ -710,6 +708,7 @@ export default function DashboardAdmin() {
         message: "Presensi tugas luar tercatat: Hadir otomatis Jam 07.00 - 14.00.",
         type: "success"
       })
+      await loadAbsensi()
     } catch (err) {
       setKepsekPopup({ show: true, title: "Gagal Menyimpan", message: err.message, type: "error" })
     } finally {
@@ -774,42 +773,51 @@ export default function DashboardAdmin() {
       const now = getSecureServerIsoString()
 
       if (jenis === 'masuk') {
-        const { data, error } = await supabase.from('absensi').insert({
-          user_id: admin.id,
-          waktu_masuk: now,
-          tanggal: today,
-          lokasi_masuk: loc,
-          status: 'hadir'
-        }).select().maybeSingle()
-        if (error) throw error
+        const res = await saveAttendanceRecord({
+          userId: admin.id,
+          jenis: 'masuk',
+          now,
+          today,
+          loc,
+          status: 'hadir',
+          supabase,
+          userProfile: admin
+        })
+        const data = res.data
         setKepsekHasCheckedIn(true)
         setKepsekTodayStatus('hadir')
-        setKepsekTodayAbsensi(data || { user_id: admin.id, waktu_masuk: now, tanggal: today, lokasi_masuk: loc, status: 'hadir' })
+        setKepsekTodayAbsensi(data)
         setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'pulang') {
-        const { data, error } = await supabase.from('absensi').update({
-          waktu_pulang: now,
-          lokasi_pulang: loc
-        }).eq('user_id', admin.id).eq('tanggal', today).select().maybeSingle()
-        if (error) throw error
-        setKepsekTodayAbsensi(prev => ({ ...prev, waktu_pulang: now, lokasi_pulang: loc }))
+        const res = await saveAttendanceRecord({
+          userId: admin.id,
+          jenis: 'pulang',
+          now,
+          today,
+          loc,
+          status: 'hadir',
+          supabase,
+          userProfile: admin
+        })
+        setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_pulang: now, lokasi_pulang: loc }))
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'sakit' || jenis === 'izin') {
         const note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
-        const { data, error } = await supabase.from('absensi').insert({
-          user_id: admin.id,
-          waktu_masuk: now,
-          waktu_pulang: now,
-          tanggal: today,
-          lokasi_masuk: loc,
-          lokasi_pulang: loc,
+        const res = await saveAttendanceRecord({
+          userId: admin.id,
+          jenis,
+          now,
+          today,
+          loc,
           status: jenis,
-          keterangan: note
-        }).select().maybeSingle()
-        if (error) throw error
+          keterangan: note,
+          supabase,
+          userProfile: admin
+        })
+        const data = res.data
         setKepsekHasCheckedIn(true)
         setKepsekTodayStatus(jenis)
-        setKepsekTodayAbsensi(data || { user_id: admin.id, waktu_masuk: now, waktu_pulang: now, tanggal: today, status: jenis, keterangan: note })
+        setKepsekTodayAbsensi(data)
         setKepsekIzinMode(null)
         setKepsekKeterangan('')
         setKepsekPopup({
@@ -819,27 +827,35 @@ export default function DashboardAdmin() {
           type: "success"
         })
       }
+      await loadAbsensi()
     } catch (err) {
-      setKepsekPopup({ show: true, title: "Gagal Mengambil Lokasi", message: err.message || "Pastikan GPS aktif dan izin diberikan.", type: "error" })
+      setKepsekPopup({ show: true, title: "Gagal Menyimpan Presensi", message: err.message || "Pastikan GPS aktif dan izin diberikan.", type: "error" })
     } finally {
       setKepsekAbsenLoading(false)
     }
   }
 
   const fetchOverviewStats = async () => {
-    const todayStr = new Date().toLocaleDateString('en-CA')
-    const { data } = await supabase.from('absensi').select('*').eq('tanggal', todayStr)
-    if (data) {
-       let hadir = 0
-       let tidakHadir = 0
-       data.forEach(a => {
-          if (a.status === 'hadir') {
-             hadir++
-          } else {
-             tidakHadir++
-          }
-       })
-       setOverviewStats({ hadir, tidakHadir })
+    const todayStr = getSecureLocalDateString()
+    try {
+      const todayRecords = await fetchAttendanceRecords({
+        supabase,
+        laporanTipe: 'harian',
+        tanggal: todayStr,
+        profiles: pegawaiData
+      })
+      let hadir = 0
+      let tidakHadir = 0
+      todayRecords.forEach(a => {
+        if (a.status === 'hadir' || a.waktu_masuk) {
+          hadir++
+        } else {
+          tidakHadir++
+        }
+      })
+      setOverviewStats({ hadir, tidakHadir })
+    } catch (e) {
+      console.warn('Error fetching overview stats:', e)
     }
   }
 
@@ -927,30 +943,22 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
   const loadAbsensi = async () => {
     setLoadingData(true)
-    let query = supabase.from('absensi').select('*, profiles(full_name, email, foto_profil, jabatan, nip)')
-    
-    if (laporanTipe === 'harian') {
-       query = query.eq('tanggal', laporanTanggal)
-    } else if (laporanTipe === 'bulanan') {
-       const [year, month] = laporanBulan.split('-')
-       const firstDay = new Date(year, month - 1, 1).toLocaleDateString('en-CA')
-       const lastDay = new Date(year, month, 0).toLocaleDateString('en-CA')
-       query = query.gte('tanggal', firstDay).lte('tanggal', lastDay)
-    } else if (laporanTipe === 'semester') {
-       const year = parseInt(laporanTahun)
-       const startMonth = laporanSemester === 'ganjil' ? 6 : 0 // Ganjil = Jul-Dec, Genap = Jan-Jun
-       const endMonth = laporanSemester === 'ganjil' ? 11 : 5
-       const firstDay = new Date(year, startMonth, 1).toLocaleDateString('en-CA')
-       const lastDay = new Date(year, endMonth + 1, 0).toLocaleDateString('en-CA')
-       query = query.gte('tanggal', firstDay).lte('tanggal', lastDay)
+    try {
+      const records = await fetchAttendanceRecords({
+        supabase,
+        laporanTipe,
+        tanggal: laporanTanggal,
+        bulan: laporanBulan,
+        tahun: laporanTahun,
+        semester: laporanSemester,
+        profiles: pegawaiData
+      })
+      setAbsensiData(records)
+    } catch (err) {
+      console.warn('Error loading attendance records in Admin:', err)
+    } finally {
+      setLoadingData(false)
     }
-    
-    const { data } = await query.order('waktu_masuk', { ascending: false }).limit(2000)
-    if (data) {
-      const delReg = await fetchDeletedAttendanceRegistry(supabase)
-      setAbsensiData(filterActiveAttendance(data, delReg))
-    }
-    setLoadingData(false)
   }
 
   const loadPengumuman = async () => {

@@ -118,6 +118,26 @@ export async function recordDeletedAttendance(supabase, idsToDelete = [], metada
             target_users: ''
           }])
       }
+
+      // Bersihkan juga dari Cloud Mirroring Layer (__SYSTEM_ATTENDANCE_LATEST__)
+      try {
+        const { data: latestRows } = await supabase
+          .from('pengumuman')
+          .select('*')
+          .eq('target_type', '__SYSTEM_ATTENDANCE_LATEST__')
+          .limit(1)
+
+        if (latestRows && latestRows.length > 0) {
+          const list = JSON.parse(latestRows[0].pesan || '[]')
+          if (Array.isArray(list)) {
+            const filtered = list.filter(item => !combined.includes(String(item.id)))
+            await supabase
+              .from('pengumuman')
+              .update({ pesan: JSON.stringify(filtered) })
+              .eq('id', latestRows[0].id)
+          }
+        }
+      } catch (e) {}
     } catch (err) {
       console.warn('Gagal menyimpan registry absensi terhapus ke cloud:', err)
     }
