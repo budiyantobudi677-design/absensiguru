@@ -226,6 +226,37 @@ const ADMIN_CREDENTIALS_TARGET = '__SYSTEM_ADMIN_CREDENTIALS__'
 const KEPSEK_CREDENTIALS_TARGET = '__SYSTEM_KEPSEK_CREDENTIALS__'
 const LEADER_CREDENTIALS_PREFIX = '__SYSTEM_LEADER_CREDENTIALS_'
 
+export function isValidUUID(str) {
+  return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
+}
+
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+async function resolveRealLeaderUUID(supabase, email, role, providedUserId) {
+  if (isValidUUID(providedUserId)) return providedUserId
+  if (supabase) {
+    try {
+      if (email) {
+        const { data: prof } = await supabase.from('profiles').select('id').eq('email', email.toLowerCase().trim()).maybeSingle()
+        if (prof?.id && isValidUUID(prof.id)) return prof.id
+      }
+      if (role) {
+        const { data: profRole } = await supabase.from('profiles').select('id').eq('role', role).limit(1).maybeSingle()
+        if (profRole?.id && isValidUUID(profRole.id)) return profRole.id
+      }
+    } catch (e) {}
+  }
+  return generateUUID()
+}
+
 /**
  * Mengambil kredensial kustom admin jika diatur oleh pengembang
  */
@@ -498,12 +529,13 @@ export async function verifyAdminOverrideLogin(email, password, supabase) {
   if (override && override.email && override.passwordHash) {
     if (inputEmail === override.email.toLowerCase()) {
       if (inputHash === override.passwordHash) {
+        const validId = await resolveRealLeaderUUID(supabase, override.email, 'admin', override.userId)
         return {
           isOverride: true,
           success: true,
           email: override.email,
           fullName: override.fullName || 'Administrator Sekolah',
-          userId: override.userId || 'admin-master-uid'
+          userId: validId
         }
       } else {
         return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
@@ -525,12 +557,13 @@ export async function verifyAdminOverrideLogin(email, password, supabase) {
           const parsed = JSON.parse(item.pesan)
           if (parsed?.role === 'admin' && parsed?.email?.toLowerCase() === inputEmail) {
             if (parsed.passwordHash && inputHash === parsed.passwordHash) {
+              const validId = await resolveRealLeaderUUID(supabase, parsed.email, 'admin', parsed.userId)
               return {
                 isOverride: true,
                 success: true,
                 email: parsed.email,
                 fullName: parsed.fullName || 'Administrator Sekolah',
-                userId: parsed.userId || 'admin-master-uid'
+                userId: validId
               }
             } else {
               return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
@@ -559,12 +592,13 @@ export async function verifyKepsekOverrideLogin(email, password, supabase) {
   if (override && override.email && override.passwordHash) {
     if (inputEmail === override.email.toLowerCase()) {
       if (inputHash === override.passwordHash) {
+        const validId = await resolveRealLeaderUUID(supabase, override.email, 'kepsek', override.userId)
         return {
           isOverride: true,
           success: true,
           email: override.email,
           fullName: override.fullName || 'Kepala Sekolah',
-          userId: override.userId || 'kepsek-master-uid'
+          userId: validId
         }
       } else {
         return { isOverride: true, success: false, error: 'Password Kepala Sekolah tidak sesuai.' }
@@ -586,12 +620,13 @@ export async function verifyKepsekOverrideLogin(email, password, supabase) {
           const parsed = JSON.parse(item.pesan)
           if (parsed?.role === 'kepsek' && parsed?.email?.toLowerCase() === inputEmail) {
             if (parsed.passwordHash && inputHash === parsed.passwordHash) {
+              const validId = await resolveRealLeaderUUID(supabase, parsed.email, 'kepsek', parsed.userId)
               return {
                 isOverride: true,
                 success: true,
                 email: parsed.email,
                 fullName: parsed.fullName || 'Kepala Sekolah',
-                userId: parsed.userId || 'kepsek-master-uid'
+                userId: validId
               }
             } else {
               return { isOverride: true, success: false, error: 'Password Kepala Sekolah tidak sesuai.' }

@@ -26,6 +26,7 @@ import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
+import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { playNotificationSound } from '../../lib/soundNotification'
@@ -324,23 +325,27 @@ export default function DashboardKepsek() {
   }
 
   const fetchSettings = async () => {
-    const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
     let currentHariKerja = 5
-    if (data) {
-      if (data.nama_sekolah) {
-        setNamaSekolah(data.nama_sekolah)
-        localStorage.setItem('gammara_school_name', data.nama_sekolah)
+    try {
+      const data = await fetchSchoolSettings(supabase)
+      if (data) {
+        if (data.nama_sekolah) {
+          setNamaSekolah(data.nama_sekolah)
+          localStorage.setItem('gammara_school_name', data.nama_sekolah)
+        }
+        if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+        if (data.hari_kerja) {
+          setHariKerja(data.hari_kerja)
+          currentHariKerja = data.hari_kerja
+        }
+        if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
+        if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
+        if (data.school_lat) setSchoolLat(data.school_lat)
+        if (data.school_lng) setSchoolLng(data.school_lng)
+        if (data.school_radius) setSchoolRadius(data.school_radius)
       }
-      if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
-      if (data.hari_kerja) {
-        setHariKerja(data.hari_kerja)
-        currentHariKerja = data.hari_kerja
-      }
-      if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
-      if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
-      if (data.school_lat) setSchoolLat(data.school_lat)
-      if (data.school_lng) setSchoolLng(data.school_lng)
-      if (data.school_radius) setSchoolRadius(data.school_radius)
+    } catch (e) {
+      console.warn('Gagal memuat pengaturan sekolah di Kepsek:', e)
     }
 
     try {
@@ -1142,8 +1147,7 @@ export default function DashboardKepsek() {
       const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, compressedFile)
       if (uploadError) throw uploadError
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
-      const { error: updateError } = await supabase.from('settings').upsert({ id: 1, logo_sekolah: publicUrl }, { onConflict: 'id' })
-      if (updateError) throw updateError
+      await saveSchoolSettings({ logo_sekolah: publicUrl }, supabase)
       setLogoSekolah(publicUrl)
       alert("Logo berhasil diperbarui!")
     } catch (err) {
@@ -3122,10 +3126,18 @@ export default function DashboardKepsek() {
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Profil Sekolah</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
+                 setLoadingData(true);
                  const formData = new FormData(e.target);
-                 const { error } = await supabase.from('settings').upsert({ id: 1, nama_sekolah: formData.get('nama_sekolah'), logo_sekolah: logoSekolah }, { onConflict: 'id' });
-                 if (error) alert('Error: ' + error.message);
-                 else { setNamaSekolah(formData.get('nama_sekolah')); alert('Tersimpan!'); }
+                 const sName = formData.get('nama_sekolah')?.toString().trim();
+                 try {
+                   await saveSchoolSettings({ nama_sekolah: sName, logo_sekolah: logoSekolah }, supabase);
+                   setNamaSekolah(sName);
+                   alert('Pengaturan Profil Sekolah berhasil disimpan!');
+                 } catch (err) {
+                   alert('Gagal menyimpan profil sekolah: ' + err.message);
+                 } finally {
+                   setLoadingData(false);
+                 }
                }}>
                  <div className="input-group">
                    <label className="input-label">Nama Sekolah / Instansi</label>
@@ -3153,14 +3165,15 @@ export default function DashboardKepsek() {
                  e.preventDefault();
                  setLoadingData(true);
                  const val = parseInt(e.target.hari_kerja.value);
-                 const { error } = await supabase.from('settings').upsert({ id: 1, hari_kerja: val }, { onConflict: 'id' });
-                 if (!error) {
-                    setHariKerja(val);
-                    alert("Sistem Hari Kerja berhasil diperbarui!");
-                 } else {
-                    alert("Error update: " + error.message);
+                 try {
+                   await saveSchoolSettings({ hari_kerja: val }, supabase);
+                   setHariKerja(val);
+                   alert("Sistem Hari Kerja berhasil diperbarui!");
+                 } catch (err) {
+                   alert("Gagal memperbarui hari kerja: " + err.message);
+                 } finally {
+                   setLoadingData(false);
                  }
-                 setLoadingData(false);
                }}>
                  <div className="input-group">
                    <select name="hari_kerja" className="input" defaultValue={hariKerja}>
@@ -3178,14 +3191,15 @@ export default function DashboardKepsek() {
                  e.preventDefault();
                  setLoadingData(true);
                  const val = e.target.rekap_tampil_jam.value === 'true';
-                 const { error } = await supabase.from('settings').upsert({ id: 1, rekap_tampil_jam: val }, { onConflict: 'id' });
-                 if (!error) {
-                    setRekapTampilJam(val);
-                    alert("Format Rekapitulasi berhasil diperbarui!");
-                 } else {
-                    alert("Error update: " + error.message);
+                 try {
+                   await saveSchoolSettings({ rekap_tampil_jam: val }, supabase);
+                   setRekapTampilJam(val);
+                   alert("Format Rekapitulasi berhasil diperbarui!");
+                 } catch (err) {
+                   alert("Gagal memperbarui format rekap: " + err.message);
+                 } finally {
+                   setLoadingData(false);
                  }
-                 setLoadingData(false);
                }}>
                  <div className="input-group">
                    <select name="rekap_tampil_jam" className="input" defaultValue={rekapTampilJam.toString()}>
@@ -3212,24 +3226,24 @@ export default function DashboardKepsek() {
                   const radius = parseInt(e.target.school_radius.value) || 100;
 
                   const payload = {
-                    id: 1,
                     geofence_enabled: isEnabled,
                     school_lat: lat,
                     school_lng: lng,
                     school_radius: radius
                   };
 
-                  const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' });
-                  if (!error) {
+                  try {
+                    await saveSchoolSettings(payload, supabase);
                     setGeofenceEnabled(isEnabled);
                     setSchoolLat(lat);
                     setSchoolLng(lng);
                     setSchoolRadius(radius);
                     alert("Pengaturan Geofencing berhasil disimpan!");
-                  } else {
-                    alert("Error: " + error.message);
+                  } catch (err) {
+                    alert("Gagal menyimpan geofencing: " + err.message);
+                  } finally {
+                    setLoadingData(false);
                   }
-                  setLoadingData(false);
                 }}>
                   <div className="input-group">
                     <label className="input-label" style={{ fontSize: '0.85rem' }}>Status Geofencing</label>

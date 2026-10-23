@@ -30,7 +30,8 @@ import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
-import { deleteUserAccountSafely } from '../../lib/developerManager'
+import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
+import { isValidUUID, generateUUID, updateLeaderAccountCredentials, deleteUserAccountSafely } from '../../lib/developerManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
@@ -377,23 +378,27 @@ export default function DashboardAdmin() {
   }
 
   const fetchSettings = async () => {
-    const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
     let currentHariKerja = 5
-    if (data) {
-      if (data.nama_sekolah) {
-        setNamaSekolah(data.nama_sekolah)
-        localStorage.setItem('gammara_school_name', data.nama_sekolah)
+    try {
+      const data = await fetchSchoolSettings(supabase)
+      if (data) {
+        if (data.nama_sekolah) {
+          setNamaSekolah(data.nama_sekolah)
+          localStorage.setItem('gammara_school_name', data.nama_sekolah)
+        }
+        if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
+        if (data.hari_kerja) {
+          setHariKerja(data.hari_kerja)
+          currentHariKerja = data.hari_kerja
+        }
+        if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
+        if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
+        if (data.school_lat) setSchoolLat(data.school_lat)
+        if (data.school_lng) setSchoolLng(data.school_lng)
+        if (data.school_radius) setSchoolRadius(data.school_radius)
       }
-      if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
-      if (data.hari_kerja) {
-        setHariKerja(data.hari_kerja)
-        currentHariKerja = data.hari_kerja
-      }
-      if (data.rekap_tampil_jam !== undefined) setRekapTampilJam(data.rekap_tampil_jam)
-      if (data.geofence_enabled !== undefined) setGeofenceEnabled(data.geofence_enabled)
-      if (data.school_lat) setSchoolLat(data.school_lat)
-      if (data.school_lng) setSchoolLng(data.school_lng)
-      if (data.school_radius) setSchoolRadius(data.school_radius)
+    } catch (e) {
+      console.warn('Gagal memuat pengaturan sekolah:', e)
     }
 
     try {
@@ -442,8 +447,35 @@ export default function DashboardAdmin() {
       try {
         const parsed = JSON.parse(devSession)
         if (parsed && parsed.user && parsed.expiresAt > Date.now()) {
+          let resolvedId = parsed.user.id
+          if (!isValidUUID(resolvedId)) {
+            try {
+              if (parsed.user.email) {
+                const { data: profByEmail } = await supabase.from('profiles').select('id, full_name, nip, jabatan, foto_profil').eq('email', parsed.user.email.toLowerCase().trim()).maybeSingle()
+                if (profByEmail?.id && isValidUUID(profByEmail.id)) {
+                  resolvedId = profByEmail.id
+                  parsed.user.id = profByEmail.id
+                  localStorage.setItem('panrita_developer_session', JSON.stringify(parsed))
+                }
+              }
+              if (!isValidUUID(resolvedId)) {
+                const { data: profByRole } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).maybeSingle()
+                if (profByRole?.id && isValidUUID(profByRole.id)) {
+                  resolvedId = profByRole.id
+                  parsed.user.id = profByRole.id
+                  localStorage.setItem('panrita_developer_session', JSON.stringify(parsed))
+                }
+              }
+            } catch (e) {}
+          }
+          if (!isValidUUID(resolvedId)) {
+            resolvedId = generateUUID()
+            parsed.user.id = resolvedId
+            localStorage.setItem('panrita_developer_session', JSON.stringify(parsed))
+          }
+
           const devUser = {
-            id: parsed.user.id || 'admin-master-uid',
+            id: resolvedId,
             email: parsed.user.email || 'admin@sekolah.edu',
             full_name: parsed.user.full_name || 'Administrator Sekolah',
             role: 'admin',
@@ -846,7 +878,7 @@ export default function DashboardAdmin() {
     const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin'
     
     if (isKepsek || isAdmin) {
-      alert('Administrator tidak memiliki akses untuk menghapus akun Kepala Sekolah atau Administrator. Penghapusan akun Pimpinan hanya dapat dilakukan oleh Pengembang Sistem.')
+      alert('Administrator tidak memiliki akses untuk menghapus akun Kepala Sekolah atau Administrator. Penghapusan akun Administrator atau Kepala Sekolah hanya dapat dilakukan oleh Pengembang Sistem.')
       return
     }
 
@@ -1256,8 +1288,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
       const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, compressedFile)
       if (uploadError) throw uploadError
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
-      const { error: updateError } = await supabase.from('settings').upsert({ id: 1, logo_sekolah: publicUrl }, { onConflict: 'id' })
-      if (updateError) throw updateError
+      await saveSchoolSettings({ logo_sekolah: publicUrl }, supabase)
       setLogoSekolah(publicUrl)
       alert("Logo berhasil diperbarui!")
     } catch (err) {
@@ -1844,8 +1875,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
                   {activeTab === 'overview' && 'Ringkasan Kehadiran & Aktivitas'}
-                  {activeTab === 'absensi' && 'Presensi Mandiri Pimpinan'}
-                  {activeTab === 'riwayat' && 'Riwayat Kehadiran Pimpinan'}
+                  {activeTab === 'absensi' && 'Presensi Mandiri Administrator'}
+                  {activeTab === 'riwayat' && 'Riwayat Kehadiran Administrator'}
                   {activeTab === 'pegawai' && 'Data Guru dan Tendik'}
                   {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                   {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
@@ -1914,7 +1945,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
         {/* Content Canvas */}
         <main className="admin-content">
-          {/* Tab Presensi Mandiri Pimpinan */}
+          {/* Tab Presensi Mandiri Administrator */}
           {activeTab === 'absensi' && (() => {
             const platformCheck = verifyAttendancePlatform(admin, isIncognito)
 
@@ -2081,7 +2112,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 </div>
 
                 <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#1E40AF', lineHeight: '1.4' }}>
-                  💡 <strong>Ketentuan:</strong> Form khusus pimpinan bertugas di luar/kedinasan. Setelah dikirim, Anda langsung tercatat <strong>HADIR</strong> lengkap masuk (07:00) dan pulang (14:00) tanpa batas radius sekolah.
+                  💡 <strong>Ketentuan:</strong> Form khusus administrator bertugas di luar/kedinasan. Setelah dikirim, Anda langsung tercatat <strong>HADIR</strong> lengkap masuk (07:00) dan pulang (14:00) tanpa batas radius sekolah.
                 </div>
 
                 {/* Foto Timemark */}
@@ -2253,8 +2284,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         <ShieldCheck size={28} color="#A5B4FC" />
                       </div>
                       <div>
-                        <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#C7D2FE', fontWeight: 'bold' }}>Presensi Mandiri Pimpinan</span>
-                        <h3 style={{ margin: '2px 0 0 0', fontSize: '1.15rem', color: 'white' }}>{admin?.full_name || 'Kepala Sekolah'}</h3>
+                        <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#C7D2FE', fontWeight: 'bold' }}>Presensi Mandiri Administrator</span>
+                        <h3 style={{ margin: '2px 0 0 0', fontSize: '1.15rem', color: 'white' }}>{admin?.full_name || 'Administrator'}</h3>
                         <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#E0E7FF' }}>
                           Status Hari Ini: {kepsekTodayAbsensi ? `Tercatat Hadir (Masuk: ${kepsekTodayAbsensi.waktu_masuk ? new Date(kepsekTodayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'})` : 'Belum Melakukan Presensi'}
                         </p>
@@ -3197,38 +3228,117 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 <h3 style={{ fontSize: '1.125rem', margin: 0 }}>Pengaturan</h3>
              </div>
              
-             {/* Profil Akun Pimpinan (Admin / Kepala Sekolah) */}
+             {/* Profil Akun Administrator */}
              <div className="card" style={{ border: 'none', background: 'white', marginBottom: '2rem' }}>
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                 <UserCircle size={20} color="var(--primary)" /> Profil Akun Pimpinan
+                 <UserCircle size={20} color="var(--primary)" /> Profil Akun Administrator
                </h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
                  setProfileSaving(true);
                  const formData = new FormData(e.target);
-                 const newFullName = formData.get('full_name');
-                 const newNip = formData.get('nip');
-                 const newJabatan = formData.get('jabatan');
-                 const newRole = formData.get('role');
+                 const newFullName = formData.get('full_name')?.toString().trim();
+                 const newNip = formData.get('nip')?.toString().trim();
+                 const newJabatan = formData.get('jabatan')?.toString().trim();
+                 const newRole = formData.get('role')?.toString().trim();
                  const newTipePerangkat = formData.get('tipe_perangkat');
 
                  const updates = {
                    full_name: newFullName,
                    nip: newNip,
                    jabatan: newJabatan,
-                   role: newRole
+                   role: newRole || 'admin'
                  };
 
                  try {
-                   const { error } = await supabase.from('profiles').update(updates).eq('id', admin.id);
-                   if (error) throw error;
-                   
-                   setAdmin(prev => ({ ...prev, ...updates, tipe_perangkat: newTipePerangkat }));
-                   localStorage.setItem(`guru_tipe_perangkat_${admin.id}`, newTipePerangkat);
+                   let targetUserId = admin?.id;
+                   const isValidId = isValidUUID(targetUserId);
+
+                   if (!isValidId) {
+                     try {
+                       if (admin?.email) {
+                         const { data: profByEmail } = await supabase.from('profiles').select('id').eq('email', admin.email.toLowerCase().trim()).maybeSingle();
+                         if (profByEmail?.id && isValidUUID(profByEmail.id)) {
+                           targetUserId = profByEmail.id;
+                         }
+                       }
+                       if (!isValidUUID(targetUserId)) {
+                         const { data: profByRole } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+                         if (profByRole?.id && isValidUUID(profByRole.id)) {
+                           targetUserId = profByRole.id;
+                         }
+                       }
+                     } catch (e) {}
+
+                     if (!isValidUUID(targetUserId)) {
+                       targetUserId = generateUUID();
+                     }
+                   }
+
+                   // Lakukan update profil di PostgreSQL Supabase
+                   let profileUpdated = false;
+                   try {
+                     const { data: existingRow } = await supabase.from('profiles').select('id').eq('id', targetUserId).maybeSingle();
+                     if (existingRow) {
+                       const { error } = await supabase.from('profiles').update(updates).eq('id', targetUserId);
+                       if (!error) profileUpdated = true;
+                     } else {
+                       const { error: insErr } = await supabase.from('profiles').insert([{
+                         id: targetUserId,
+                         email: admin?.email || 'admin@sekolah.edu',
+                         ...updates
+                       }]);
+                       if (!insErr) profileUpdated = true;
+                     }
+                   } catch (errDb) {
+                     console.warn('Update profiles direct error (handled):', errDb);
+                   }
+
+                   // Fallback update jika berdasarkan email
+                   if (!profileUpdated && admin?.email) {
+                     try {
+                       await supabase.from('profiles').update(updates).eq('email', admin.email.toLowerCase().trim());
+                     } catch (e) {}
+                   }
+
+                   // Sinkronkan ke kredensial pimpinan di Cloud Pengumuman & Pengembang
+                   try {
+                     await updateLeaderAccountCredentials({
+                       role: 'admin',
+                       email: admin?.email,
+                       fullName: newFullName,
+                       targetUserId: targetUserId,
+                       supabase
+                     });
+                   } catch (e) {
+                     console.warn('Sync leader credentials warning:', e);
+                   }
+
+                   // Update state lokal admin & storage
+                   setAdmin(prev => ({ ...prev, id: targetUserId, ...updates, tipe_perangkat: newTipePerangkat }));
+                   localStorage.setItem(`guru_tipe_perangkat_${targetUserId}`, newTipePerangkat);
+                   if (targetUserId !== admin?.id) {
+                     localStorage.setItem(`guru_tipe_perangkat_${admin?.id}`, newTipePerangkat);
+                   }
+
+                   // Update sesi lokal (panrita_developer_session)
+                   const devSession = localStorage.getItem('panrita_developer_session');
+                   if (devSession) {
+                     try {
+                       const parsed = JSON.parse(devSession);
+                       if (parsed && parsed.user) {
+                         parsed.user.id = targetUserId;
+                         parsed.user.full_name = newFullName;
+                         parsed.user.role = newRole || 'admin';
+                         localStorage.setItem('panrita_developer_session', JSON.stringify(parsed));
+                       }
+                     } catch (e) {}
+                   }
+
                    try {
                      await saveTeacherAssignmentToCloud({
-                       teacherId: admin.id,
-                       tipe: newRole || admin.role,
+                       teacherId: targetUserId,
+                       tipe: newRole || admin?.role || 'admin',
                        mapel: '',
                        jabatan: newJabatan,
                        assignedClasses: [],
@@ -3238,7 +3348,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                    } catch (e) {
                      console.warn('Sync admin assignment warning:', e);
                    }
-                   alert("Profil akun pimpinan berhasil diperbarui!");
+
+                   alert("Profil akun administrator berhasil diperbarui!");
                  } catch (err) {
                    alert("Gagal memperbarui profil: " + err.message);
                  } finally {
@@ -3274,11 +3385,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                  const webp = await convertToWebP(ev.target.result, 0.8, 600);
                                  const res = await fetch(webp);
                                  const blob = await res.blob();
-                                 const fileName = `avatar-${admin.id}-${Date.now()}.webp`;
+                                 const targetId = isValidUUID(admin?.id) ? admin.id : 'admin';
+                                 const fileName = `avatar-${targetId}-${Date.now()}.webp`;
                                  const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType: 'image/webp' });
                                  if (upErr) throw upErr;
                                  const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-                                 await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', admin.id);
+                                 if (isValidUUID(admin?.id)) {
+                                   await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('id', admin.id);
+                                 } else if (admin?.email) {
+                                   await supabase.from('profiles').update({ foto_profil: publicUrl }).eq('email', admin.email.toLowerCase().trim());
+                                 }
                                  setAdmin(prev => ({ ...prev, foto_profil: publicUrl }));
                                  alert("Foto profil berhasil diperbarui!");
                                } catch (uploadErr) {
@@ -3335,7 +3451,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                  </div>
 
                  <button type="submit" disabled={profileSaving} className="btn btn-primary" style={{ padding: '0.85rem 1.5rem', background: '#2563EB', color: 'white', fontWeight: 'bold', borderRadius: '12px', width: '100%' }}>
-                   {profileSaving ? 'Menyimpan Profil...' : 'Simpan Profil Pimpinan'}
+                   {profileSaving ? 'Menyimpan Profil...' : 'Simpan Profil Administrator'}
                  </button>
                </form>
              </div>
@@ -3419,14 +3535,17 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Profil Sekolah</h4>
                <form onSubmit={async (e) => {
                  e.preventDefault();
+                 setLoadingData(true);
                  const formData = new FormData(e.target);
-                 const { error } = await supabase.from('settings').upsert({ id: 1, nama_sekolah: formData.get('nama_sekolah'), logo_sekolah: logoSekolah }, { onConflict: 'id' });
-                 if (error) alert('Error: ' + error.message);
-                 else { 
-                   const sName = formData.get('nama_sekolah');
-                   setNamaSekolah(sName); 
-                   if (sName) localStorage.setItem('gammara_school_name', sName);
-                   alert('Tersimpan!'); 
+                 const sName = formData.get('nama_sekolah')?.toString().trim();
+                 try {
+                   await saveSchoolSettings({ nama_sekolah: sName, logo_sekolah: logoSekolah }, supabase);
+                   setNamaSekolah(sName);
+                   alert('Pengaturan Profil Sekolah berhasil disimpan!');
+                 } catch (err) {
+                   alert('Gagal menyimpan profil sekolah: ' + err.message);
+                 } finally {
+                   setLoadingData(false);
                  }
                }}>
                  <div className="input-group">
@@ -3455,14 +3574,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                  e.preventDefault();
                  setLoadingData(true);
                  const val = parseInt(e.target.hari_kerja.value);
-                 const { error } = await supabase.from('settings').upsert({ id: 1, hari_kerja: val }, { onConflict: 'id' });
-                 if (!error) {
-                    setHariKerja(val);
-                    alert("Sistem Hari Kerja berhasil diperbarui!");
-                 } else {
-                    alert("Error update: " + error.message);
+                 try {
+                   await saveSchoolSettings({ hari_kerja: val }, supabase);
+                   setHariKerja(val);
+                   alert("Sistem Hari Kerja berhasil diperbarui!");
+                 } catch (err) {
+                   alert("Gagal memperbarui hari kerja: " + err.message);
+                 } finally {
+                   setLoadingData(false);
                  }
-                 setLoadingData(false);
                }}>
                  <div className="input-group">
                    <select name="hari_kerja" className="input" defaultValue={hariKerja}>
@@ -3480,14 +3600,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                  e.preventDefault();
                  setLoadingData(true);
                  const val = e.target.rekap_tampil_jam.value === 'true';
-                 const { error } = await supabase.from('settings').upsert({ id: 1, rekap_tampil_jam: val }, { onConflict: 'id' });
-                 if (!error) {
-                    setRekapTampilJam(val);
-                    alert("Format Rekapitulasi berhasil diperbarui!");
-                 } else {
-                    alert("Error update: " + error.message);
+                 try {
+                   await saveSchoolSettings({ rekap_tampil_jam: val }, supabase);
+                   setRekapTampilJam(val);
+                   alert("Format Rekapitulasi berhasil diperbarui!");
+                 } catch (err) {
+                   alert("Gagal memperbarui format rekap: " + err.message);
+                 } finally {
+                   setLoadingData(false);
                  }
-                 setLoadingData(false);
                }}>
                  <div className="input-group">
                    <select name="rekap_tampil_jam" className="input" defaultValue={rekapTampilJam.toString()}>
@@ -3514,24 +3635,24 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   const radius = parseInt(e.target.school_radius.value) || 100;
 
                   const payload = {
-                    id: 1,
                     geofence_enabled: isEnabled,
                     school_lat: lat,
                     school_lng: lng,
                     school_radius: radius
                   };
 
-                  const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' });
-                  if (!error) {
+                  try {
+                    await saveSchoolSettings(payload, supabase);
                     setGeofenceEnabled(isEnabled);
                     setSchoolLat(lat);
                     setSchoolLng(lng);
                     setSchoolRadius(radius);
                     alert("Pengaturan Geofencing berhasil disimpan!");
-                  } else {
-                    alert("Error: " + error.message);
+                  } catch (err) {
+                    alert("Gagal menyimpan geofencing: " + err.message);
+                  } finally {
+                    setLoadingData(false);
                   }
-                  setLoadingData(false);
                 }}>
                   <div className="input-group">
                     <label className="input-label" style={{ fontSize: '0.85rem' }}>Status Geofencing</label>
@@ -3885,13 +4006,13 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
           </div>
         )}
 
-        {/* Tab Riwayat Kehadiran Pimpinan (Admin / Kepsek) */}
+        {/* Tab Riwayat Kehadiran Administrator */}
         {activeTab === 'riwayat' && (
           <div className="fade-in">
             <div style={{ marginBottom: '1.25rem' }}>
               <h3 style={{ fontSize: '1.25rem', margin: 0, fontWeight: '700' }}>Riwayat Kehadiran Saya</h3>
               <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Catatan presensi pribadi Anda sebagai pimpinan sekolah
+                Catatan presensi pribadi Anda sebagai administrator sekolah
               </p>
             </div>
 

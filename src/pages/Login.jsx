@@ -14,8 +14,11 @@ import {
   checkBruteForceLockout,
   getDeveloperSession,
   verifyAdminOverrideLogin,
-  verifyKepsekOverrideLogin
+  verifyKepsekOverrideLogin,
+  generateUUID,
+  isValidUUID
 } from '../lib/developerManager'
+import { fetchSchoolSettings } from '../lib/schoolSettingsManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../lib/deletedAccountsManager'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
 import { saveActiveSession, cacheUserProfile, clearActiveSession } from '../lib/offlineManager'
@@ -88,10 +91,12 @@ export default function Login() {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-      if (data && data.nama_sekolah) {
-        setNamaSekolah(data.nama_sekolah)
-      }
+      try {
+        const s = await fetchSchoolSettings(supabase)
+        if (s && s.nama_sekolah) {
+          setNamaSekolah(s.nama_sekolah)
+        }
+      } catch (e) {}
     }
     fetchSettings()
   }, [])
@@ -146,11 +151,12 @@ export default function Login() {
               throw new Error(overrideCheck.error || 'Password Admin salah.')
             }
             // Buat sesi admin override (mode admin reguler resmi)
+            const resolvedAdminId = (overrideCheck.userId && isValidUUID(overrideCheck.userId)) ? overrideCheck.userId : generateUUID()
             const adminSessionData = {
               role: 'admin',
               isDeveloper: false,
               user: {
-                id: overrideCheck.userId || 'admin-master-uid',
+                id: resolvedAdminId,
                 email: overrideCheck.email,
                 role: 'admin',
                 full_name: overrideCheck.fullName || 'Administrator Sekolah'
@@ -185,11 +191,12 @@ export default function Login() {
               throw new Error(overrideCheck.error || 'Password Kepala Sekolah salah.')
             }
             // Buat sesi kepsek override (mode kepsek reguler resmi)
+            const resolvedKepsekId = (overrideCheck.userId && isValidUUID(overrideCheck.userId)) ? overrideCheck.userId : generateUUID()
             const kepsekSessionData = {
               role: 'kepsek',
               isDeveloper: false,
               user: {
-                id: overrideCheck.userId || 'kepsek-master-uid',
+                id: resolvedKepsekId,
                 email: overrideCheck.email,
                 role: 'kepsek',
                 full_name: overrideCheck.fullName || 'Kepala Sekolah'
@@ -227,11 +234,12 @@ export default function Login() {
         if (authResult?.error) {
           const adminCheck = await verifyAdminOverrideLogin(email, password, supabase)
           if (adminCheck.isOverride && adminCheck.success) {
+            const resolvedAdminId = (adminCheck.userId && isValidUUID(adminCheck.userId)) ? adminCheck.userId : generateUUID()
             const adminSessionData = {
               role: 'admin',
               isDeveloper: false,
               user: {
-                id: adminCheck.userId || 'admin-master-uid',
+                id: resolvedAdminId,
                 email: adminCheck.email,
                 role: 'admin',
                 full_name: adminCheck.fullName || 'Administrator Sekolah'
@@ -247,11 +255,12 @@ export default function Login() {
 
           const kepsekCheck = await verifyKepsekOverrideLogin(email, password, supabase)
           if (kepsekCheck.isOverride && kepsekCheck.success) {
+            const resolvedKepsekId = (kepsekCheck.userId && isValidUUID(kepsekCheck.userId)) ? kepsekCheck.userId : generateUUID()
             const kepsekSessionData = {
               role: 'kepsek',
               isDeveloper: false,
               user: {
-                id: kepsekCheck.userId || 'kepsek-master-uid',
+                id: resolvedKepsekId,
                 email: kepsekCheck.email,
                 role: 'kepsek',
                 full_name: kepsekCheck.fullName || 'Kepala Sekolah'
