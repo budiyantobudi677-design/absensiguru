@@ -8,6 +8,17 @@ import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJE
 import { syncCloudTeacherAssignments } from '../../lib/assignmentManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
 import CetakKartuQrSiswaModal from './CetakKartuQrSiswaModal'
+import { 
+  fetchClassesFromCloud, 
+  saveClassToCloud, 
+  updateClassInCloud, 
+  deleteClassFromCloud, 
+  fetchStudentsFromCloud, 
+  saveStudentToCloud, 
+  deleteStudentFromCloud,
+  mirrorStudentsToCloud,
+  sortClassesNaturally
+} from '../../lib/classCloudManager'
 
 export default function MasterSiswaDanKelas({
   user,
@@ -173,9 +184,23 @@ export default function MasterSiswaDanKelas({
     const onSubjectsUpdated = () => {
       setSubjectsList(getCustomSubjects())
     }
+    const onClassesUpdated = () => {
+      fetchClasses()
+    }
+    const onStudentsUpdated = () => {
+      if (selectedClassId) fetchStudents(selectedClassId)
+    }
+
     window.addEventListener('kbm_subjects_updated', onSubjectsUpdated)
-    return () => window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
-  }, [])
+    window.addEventListener('classes_updated', onClassesUpdated)
+    window.addEventListener('students_updated', onStudentsUpdated)
+
+    return () => {
+      window.removeEventListener('kbm_subjects_updated', onSubjectsUpdated)
+      window.removeEventListener('classes_updated', onClassesUpdated)
+      window.removeEventListener('students_updated', onStudentsUpdated)
+    }
+  }, [selectedClassId])
 
   useEffect(() => {
     if (isTeacher && Array.isArray(propClasses) && propClasses.length > 0) {
@@ -205,8 +230,7 @@ export default function MasterSiswaDanKelas({
 
   const fetchClasses = async () => {
     try {
-      const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
-      if (error) throw error
+      const data = await fetchClassesFromCloud(supabase)
       
       let filtered = data || []
       // Jika akun Guru, saring KETAT: HANYA rombel kelas yang diampu / dipilih oleh guru ini
@@ -278,22 +302,21 @@ export default function MasterSiswaDanKelas({
         setSelectedClassId('')
       }
     } catch (err) {
-      console.error(err)
+      console.error('Error in fetchClasses:', err)
     }
   }
 
   const fetchStudents = async (classId) => {
+    if (!classId) {
+      setStudents([])
+      return
+    }
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('class_id', classId)
-        .order('name', { ascending: true })
-      if (error) throw error
+      const data = await fetchStudentsFromCloud(supabase, classId)
       setStudents(data || [])
     } catch (err) {
-      console.error(err)
+      console.error('Error in fetchStudents:', err)
     } finally {
       setLoading(false)
     }
@@ -310,16 +333,13 @@ export default function MasterSiswaDanKelas({
     }
     if (!newClassName.trim()) return
     try {
-      const { data, error } = await supabase
-        .from('classes')
-        .insert([{ name: newClassName.trim(), teacher_id: null }])
-        .select()
-      if (error) throw error
-      setClasses([...classes, data[0]])
-      setSelectedClassId(data[0].id)
+      const newCls = await saveClassToCloud({ name: newClassName.trim(), teacher_id: null }, supabase)
+      const allUpdated = await fetchClassesFromCloud(supabase)
+      setClasses(allUpdated)
+      setSelectedClassId(newCls.id)
       setNewClassName('')
       setShowAddClass(false)
-      setMessage({ type: 'success', text: `Kelas ${data[0].name} berhasil ditambahkan!` })
+      setMessage({ type: 'success', text: `Kelas ${newCls.name} berhasil ditambahkan!` })
       if (onRefresh) onRefresh()
     } catch (err) {
       setMessage({ type: 'error', text: 'Gagal menambah kelas: ' + err.message })
@@ -333,13 +353,8 @@ export default function MasterSiswaDanKelas({
     if (!trimmed || !editClassModal) return
 
     try {
-      const { error } = await supabase
-        .from('classes')
-        .update({ name: trimmed })
-        .eq('id', editClassModal.id)
-      if (error) throw error
-
-      setClasses(classes.map(c => c.id === editClassModal.id ? { ...c, name: trimmed } : c))
+      const updatedClasses = await updateClassInCloud(editClassModal.id, trimmed, supabase)
+      setClasses(updatedClasses)
       setMessage({ type: 'success', text: `Nama kelas berhasil diubah menjadi "${trimmed}"!` })
       setEditClassModal(null)
       if (onRefresh) onRefresh()
@@ -353,13 +368,7 @@ export default function MasterSiswaDanKelas({
     if (!window.confirm(`Yakin ingin menghapus Rombel "${className}"?\n\nPERINGATAN: Siswa di dalam kelas ini juga akan terhapus!`)) return
 
     try {
-      // Hapus siswa di kelas tsb terlebih dahulu
-      await supabase.from('students').delete().eq('class_id', classId)
-      // Hapus kelas
-      const { error } = await supabase.from('classes').delete().eq('id', classId)
-      if (error) throw error
-
-      const remaining = classes.filter(c => c.id !== classId)
+      const remaining = await deleteClassFromCloud(classId, supabase)
       setClasses(remaining)
       if (selectedClassId === classId) {
         setSelectedClassId(remaining.length > 0 ? remaining[0].id : '')
@@ -375,21 +384,17 @@ export default function MasterSiswaDanKelas({
     e.preventDefault()
     if (!studentForm.name.trim() || !selectedClassId) return
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .insert([{
-          name: studentForm.name.trim(),
-          nisn: studentForm.nisn.trim() || null,
-          gender: studentForm.gender,
-          class_id: selectedClassId
-        }])
-        .select()
+      const savedStudent = await saveStudentToCloud({
+        name: studentForm.name.trim(),
+        nisn: studentForm.nisn.trim() || null,
+        gender: studentForm.gender,
+        class_id: selectedClassId
+      }, supabase)
 
-      if (error) throw error
-      setStudents([...students, data[0]])
+      setStudents([...students, savedStudent])
       setStudentForm({ name: '', nisn: '', gender: 'L' })
       setShowAddStudent(false)
-      setMessage({ type: 'success', text: `Siswa ${data[0].name} berhasil didaftarkan!` })
+      setMessage({ type: 'success', text: `Siswa ${savedStudent.name} berhasil didaftarkan!` })
     } catch (err) {
       setMessage({ type: 'error', text: 'Gagal menambah siswa: ' + err.message })
     }
@@ -402,17 +407,15 @@ export default function MasterSiswaDanKelas({
       const updatedName = editingStudent.name.trim()
       const updatedNisn = editingStudent.nisn ? editingStudent.nisn.trim() : null
       const updatedGender = editingStudent.gender || 'L'
-      const { error } = await supabase
-        .from('students')
-        .update({
-          name: updatedName,
-          nisn: updatedNisn,
-          gender: updatedGender
-        })
-        .eq('id', editingStudent.id)
 
-      if (error) throw error
-      setStudents(students.map(s => s.id === editingStudent.id ? { ...s, name: updatedName, nisn: updatedNisn, gender: updatedGender } : s))
+      const savedStudent = await saveStudentToCloud({
+        ...editingStudent,
+        name: updatedName,
+        nisn: updatedNisn,
+        gender: updatedGender
+      }, supabase)
+
+      setStudents(students.map(s => s.id === editingStudent.id ? savedStudent : s))
       setMessage({ type: 'success', text: `Data siswa "${updatedName}" berhasil diperbarui!` })
       setEditingStudent(null)
     } catch (err) {
@@ -423,8 +426,7 @@ export default function MasterSiswaDanKelas({
   const handleDeleteStudent = async (id, name) => {
     if (!window.confirm(`Yakin ingin menghapus siswa ${name}?`)) return
     try {
-      const { error } = await supabase.from('students').delete().eq('id', id)
-      if (error) throw error
+      await deleteStudentFromCloud(id, supabase)
       setStudents(students.filter(s => s.id !== id))
       setMessage({ type: 'success', text: `Siswa ${name} telah dihapus.` })
     } catch (err) {
@@ -485,10 +487,17 @@ export default function MasterSiswaDanKelas({
           return
         }
 
-        const { error } = await supabase.from('students').insert(newStudents)
-        if (error) throw error
+        const imported = []
+        for (const st of newStudents) {
+          try {
+            const saved = await saveStudentToCloud(st, supabase)
+            imported.push(saved)
+          } catch (e) {
+            console.warn('Gagal simpan siswa import:', e)
+          }
+        }
 
-        setMessage({ type: 'success', text: `Berhasil mengimpor ${newStudents.length} siswa baru!` })
+        setMessage({ type: 'success', text: `Berhasil mengimpor ${imported.length || newStudents.length} siswa baru!` })
         fetchStudents(selectedClassId)
       } catch (err) {
         alert('Gagal membaca file: ' + err.message)
@@ -579,13 +588,20 @@ export default function MasterSiswaDanKelas({
         gender: s.gender
       }))
 
-      const { data, error } = await supabase.from('students').insert(records).select()
-      if (error) throw error
+      const savedList = []
+      for (const rec of records) {
+        try {
+          const s = await saveStudentToCloud(rec, supabase)
+          savedList.push(s)
+        } catch (e) {
+          console.warn('Gagal simpan siswa scan:', e)
+        }
+      }
 
-      setStudents(prev => [...prev, ...(data || [])])
+      setStudents(prev => [...prev, ...savedList])
       setMessage({
         type: 'success',
-        text: `✨ Berhasil menambahkan ${records.length} siswa ke kelas melalui AI Scan (${aiUsedModel})!`
+        text: `✨ Berhasil menambahkan ${savedList.length || records.length} siswa ke kelas melalui AI Scan (${aiUsedModel})!`
       })
       setShowAiScanModal(false)
       setAiScanFile(null)

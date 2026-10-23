@@ -27,6 +27,8 @@ import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, getTodayUserAttendance, fetchAttendanceRecords } from '../../lib/attendanceCloudManager'
+import { fetchSchoolSettings } from '../../lib/schoolSettingsManager'
+import { fetchClassesFromCloud, sortClassesNaturally } from '../../lib/classCloudManager'
 import { 
   saveActiveSession, 
   getActiveSession, 
@@ -402,9 +404,27 @@ export default function DashboardGuru({ roleOverride = null }) {
     const handleResize = () => {
       setIsDesktop(window.innerWidth >= 992)
     }
+    const handleSettingsUpdated = (e) => {
+      if (e.detail) {
+        const s = e.detail
+        if (s.nama_sekolah) setSchoolName(s.nama_sekolah)
+        if (s.hari_kerja) setHariKerja(s.hari_kerja)
+        if (s.logo_sekolah) setSchoolLogo(s.logo_sekolah)
+        setGeofenceSettings({
+          enabled: s.geofence_enabled || false,
+          lat: s.school_lat || -5.147665,
+          lng: s.school_lng || 119.432732,
+          radius: s.school_radius || 100
+        })
+      }
+    }
     window.addEventListener('resize', handleResize)
+    window.addEventListener('school_settings_updated', handleSettingsUpdated)
     isIncognitoMode().then(val => setIsIncognito(val))
-    return () => window.removeEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('school_settings_updated', handleSettingsUpdated)
+    }
   }, [])
 
   useEffect(() => {
@@ -932,37 +952,16 @@ export default function DashboardGuru({ roleOverride = null }) {
       
       let cls = null
       try {
-        const { data: clsData } = await supabase.from('classes').select('*').order('name', { ascending: true })
-        if (clsData && clsData.length > 0) {
-          cls = clsData
-          localStorage.setItem('panrita_cached_classes', JSON.stringify(clsData))
-        }
-      } catch (e) {}
-
-      if (!cls) {
-        try {
-          const cachedCls = localStorage.getItem('panrita_cached_classes')
-          if (cachedCls) cls = JSON.parse(cachedCls)
-        } catch (e) {}
+        cls = await fetchClassesFromCloud(supabase)
+      } catch (e) {
+        console.warn('Gagal fetchClassesFromCloud di Guru:', e)
       }
 
       if (!cls || cls.length === 0) {
         try {
-          const defaultSDClasses = [
-            { name: 'Kelas 1' },
-            { name: 'Kelas 2' },
-            { name: 'Kelas 3' },
-            { name: 'Kelas 4' },
-            { name: 'Kelas 5' },
-            { name: 'Kelas 6' }
-          ]
-          const { data: seeded } = await supabase.from('classes').insert(defaultSDClasses).select()
-          if (seeded && seeded.length > 0) {
-            cls = seeded
-          }
-        } catch (e) {
-          console.warn('Could not auto-seed classes:', e)
-        }
+          const cachedCls = localStorage.getItem('panrita_cached_classes')
+          if (cachedCls) cls = JSON.parse(cachedCls)
+        } catch (e) {}
       }
       // Pastikan kelas yang teacher_id nya akun terhapus / tidak aktif langsung dibebaskan
       if (cls && Array.isArray(cls)) {
@@ -1091,12 +1090,13 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       let settings = null
       try {
-        const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
-        if (settingsData) {
-          settings = settingsData
-          cacheSchoolSettings(settingsData)
+        settings = await fetchSchoolSettings(supabase)
+        if (settings) {
+          cacheSchoolSettings(settings)
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Gagal fetchSchoolSettings di Guru:', e)
+      }
 
       if (!settings) {
         settings = getCachedSchoolSettings()
@@ -1707,21 +1707,43 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       // Geofencing Validation (khusus absen masuk & pulang)
       if (geofenceSettings.enabled && (jenis === 'masuk' || jenis === 'pulang')) {
-        const distance = calculateDistance(
-          userLat,
-          userLng,
-          geofenceSettings.lat,
-          geofenceSettings.lng
-        )
+        let activeGeofence = { ...geofenceSettings }
+        try {
+          const freshSettings = await fetchSchoolSettings(supabase)
+          if (freshSettings) {
+            activeGeofence = {
+              enabled: freshSettings.geofence_enabled ?? geofenceSettings.enabled,
+              lat: freshSettings.school_lat || geofenceSettings.lat,
+              lng: freshSettings.school_lng || geofenceSettings.lng,
+              radius: freshSettings.school_radius || geofenceSettings.radius
+            }
+            setGeofenceSettings(activeGeofence)
+          }
+        } catch (e) {
+          console.warn('Gagal ambil fresh geofence settings:', e)
+        }
 
-        if (distance > geofenceSettings.radius) {
-          showPopup(
-            "Di Luar Radius Sekolah",
-            `Anda berada ${distance}m dari sekolah (maksimal ${geofenceSettings.radius}m). Mohon mendekat ke area sekolah.`,
-            "error"
+        if (activeGeofence.enabled) {
+          const distance = calculateDistance(
+            userLat,
+            userLng,
+            activeGeofence.lat,
+            activeGeofence.lng
           )
-          setLoading(false)
-          return
+
+          const gpsAccuracy = position.accuracy || 0
+          const accuracyTolerance = (gpsAccuracy > 0 && gpsAccuracy <= 30) ? Math.round(gpsAccuracy / 2) : 0
+          const effectiveDistance = Math.max(0, distance - accuracyTolerance)
+
+          if (effectiveDistance > activeGeofence.radius) {
+            showPopup(
+              "Di Luar Radius Sekolah",
+              `Anda berada ${distance}m dari sekolah (maksimal ${activeGeofence.radius}m). Mohon mendekat ke area sekolah.`,
+              "error"
+            )
+            setLoading(false)
+            return
+          }
         }
       }
       

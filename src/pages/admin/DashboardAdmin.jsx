@@ -36,6 +36,7 @@ import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/delete
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
+import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -756,7 +757,11 @@ export default function DashboardAdmin() {
           schoolLng
         )
 
-        if (distance > schoolRadius) {
+        const gpsAccuracy = pos.accuracy || 0
+        const accuracyTolerance = (gpsAccuracy > 0 && gpsAccuracy <= 30) ? Math.round(gpsAccuracy / 2) : 0
+        const effectiveDistance = Math.max(0, distance - accuracyTolerance)
+
+        if (effectiveDistance > schoolRadius) {
           setKepsekPopup({
             show: true,
             title: "Di Luar Radius Sekolah",
@@ -1035,10 +1040,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
   const loadKbmClasses = async () => {
     try {
       await cleanupDeletedTeacherClassLocks(supabase)
-      const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
-      if (!error && data) {
+      const data = await fetchClassesFromCloud(supabase)
+      if (data && data.length > 0) {
         setKbmClasses(data)
-        if (data.length > 0 && !kbmSelectedClassId) {
+        if (!kbmSelectedClassId || !data.some(c => c.id === kbmSelectedClassId)) {
           setKbmSelectedClassId(data[0].id)
         }
       }
@@ -1050,12 +1055,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
   const loadKbmData = async () => {
     setKbmLoading(true)
     try {
-      // 1. Ambil data siswa
-      let studentQuery = supabase.from('students').select('*').order('name', { ascending: true })
-      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
-        studentQuery = studentQuery.eq('class_id', kbmSelectedClassId)
-      }
-      const { data: stdData } = await studentQuery
+      // 1. Ambil data siswa via Cloud Persistence
+      const stdData = await fetchStudentsFromCloud(supabase, kbmFilterMode === 'kelas' ? kbmSelectedClassId : null)
       setKbmStudents(stdData || [])
 
       // 2. Ambil data presensi
