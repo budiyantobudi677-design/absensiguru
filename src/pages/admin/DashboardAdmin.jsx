@@ -1505,26 +1505,26 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     <div className="admin-desktop-layout">
       {/* 💻 Desktop Fixed Sidebar Navigation */}
       <aside className={`admin-sidebar ${isSidebarOpen ? 'open' : ''}`}>
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }} className="no-scrollbar">
           {/* Logo & Info Sekolah */}
-          <div style={{ padding: '1.25rem 1.25rem 1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ padding: '1rem 1.15rem 0.85rem 1.15rem', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.6rem', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: logoSekolah ? 'transparent' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: logoSekolah ? 'transparent' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
                 {logoSekolah ? <img src={logoSekolah} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src="/panrita_logo.webp" alt="GammaraApp" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>
-                <span style={{ fontSize: '0.72rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontWeight: '500' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span> Portal Admin Web
+                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{namaSekolah}</h4>
+                <span style={{ fontSize: '0.7rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px', fontWeight: '500' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span> Portal Admin Web
                 </span>
               </div>
             </div>
             {/* GammaraApp Brand Tagline */}
-            <div style={{ background: 'var(--surface)', padding: '0.45rem 0.65rem', borderRadius: '10px', border: '1px solid var(--border)' }}>
-              <div className="gammara-logo" style={{ fontSize: '15px' }}>
+            <div style={{ background: 'var(--surface)', padding: '0.35rem 0.6rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div className="gammara-logo" style={{ fontSize: '14px' }}>
                 <span className="gammara">Gammara</span><span className="app">App</span>
               </div>
-              <div className="logo-description" style={{ fontSize: '10px', marginTop: '2px' }}>
+              <div className="logo-description" style={{ fontSize: '9.5px', marginTop: '1px' }}>
                 Sistem Manajemen Sekolah Terpadu
               </div>
             </div>
@@ -1577,21 +1577,23 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
           </nav>
         </div>
 
-        {/* Footer Sidebar (Akun Admin) */}
-        <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <UserCircle size={22} color="var(--primary)" />
+        {/* Footer Sidebar (Akun Admin) - Di Web tampil sampai tombol keluar, di APK tombol keluar tetap disembunyikan */}
+        <div style={{ padding: '0.85rem 1rem', borderTop: '1px solid var(--border)', flexShrink: 0, background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--surface-hover, rgba(0,0,0,0.02))', borderRadius: '12px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <UserCircle size={20} color="var(--primary)" />
               </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{admin?.email?.split('@')[0] || 'Administrator'}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Admin Aktif</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{admin?.email?.split('@')[0] || 'Administrator'}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Admin Aktif</div>
               </div>
             </div>
-            <button onClick={async () => { await clearActiveSession(); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <LogOut size={16} />
-            </button>
+            {!isNative && (
+              <button onClick={async () => { await clearActiveSession(); supabase.auth.signOut().then(() => navigate('/')); }} title="Keluar Akun (Web)" style={{ background: '#FEE2E2', border: 'none', color: '#EF4444', borderRadius: '8px', padding: '0.45rem', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: '6px' }}>
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -2374,7 +2376,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
              </div>
 
              {loadingData ? <p className="text-center text-muted">Memuat data...</p> : (
-               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1.15rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
                    {filteredPegawai.map(p => {
                     const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek';
@@ -2383,8 +2385,24 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     const isTendik = !isKepsek && !isAdmin && (guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan));
                     const isMapel = !isKepsek && !isAdmin && !isTendik && (guruTipe === 'guru_mapel' || p.role === 'guru_mapel');
                     return (
-                      <div key={p.id} className="card flex items-center justify-between" style={{ padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                        <div className="flex gap-3 items-center" style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        key={p.id}
+                        className="card"
+                        style={{
+                          padding: '1.15rem 1.25rem',
+                          border: '1px solid var(--border)',
+                          borderRadius: '20px',
+                          boxShadow: '0 4px 14px rgba(0,0,0,0.03)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '0.85rem',
+                          background: 'var(--surface)',
+                          transition: 'transform 0.15s, box-shadow 0.15s'
+                        }}
+                      >
+                        {/* Baris Atas: Profil & Data Pegawai */}
+                        <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
                           {p.foto_profil ? <img src={p.foto_profil} style={{ width:'42px', height:'42px', borderRadius:'50%', objectFit:'cover', flexShrink: 0 }} /> : <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><UserCircle size={24} color="var(--text-muted)" /></div>}
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -2438,114 +2456,133 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                          {(() => {
-                            const b = deviceBindings[p.id]
-                            if (b && b.deviceId) {
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const teacherName = p.full_name || p.email
-                                    if (window.confirm(`Reset kunci HP untuk ${teacherName}? Guru ini akan bisa mendaftarkan HP barunya saat presensi berikutnya.`)) {
-                                      const ok = await resetDeviceBinding({ userId: p.id, supabase })
-                                      if (ok) {
-                                        setDeviceBindings(prev => {
-                                          const copy = { ...prev }
-                                          delete copy[p.id]
-                                          return copy
-                                        })
-                                        alert(`Kunci HP untuk ${teacherName} berhasil di-reset!`)
-                                      } else {
-                                        alert("Gagal mereset kunci HP.")
+                        {/* Baris Bawah: Tombol-tombol Aksi Rapi Terpisah (Anti-Sempit & Nyaman di Semua Ukuran Layar) */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingTop: '0.75rem',
+                          borderTop: '1px solid var(--border)',
+                          gap: '0.5rem',
+                          flexWrap: 'wrap'
+                        }}>
+                          {/* Kiri: Status Kunci HP Guru */}
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            {(() => {
+                              const b = deviceBindings[p.id]
+                              if (b && b.deviceId) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const teacherName = p.full_name || p.email
+                                      if (window.confirm(`Reset kunci HP untuk ${teacherName}? Guru ini akan bisa mendaftarkan HP barunya saat presensi berikutnya.`)) {
+                                        const ok = await resetDeviceBinding({ userId: p.id, supabase })
+                                        if (ok) {
+                                          setDeviceBindings(prev => {
+                                            const copy = { ...prev }
+                                            delete copy[p.id]
+                                            return copy
+                                          })
+                                          alert(`Kunci HP untuk ${teacherName} berhasil di-reset!`)
+                                        } else {
+                                          alert("Gagal mereset kunci HP.")
+                                        }
                                       }
-                                    }
-                                  }}
-                                  title={`Terkunci di: ${b.deviceName || 'HP Guru'}. Klik untuk reset kunci jika guru ganti HP.`}
+                                    }}
+                                    title={`Terkunci di: ${b.deviceName || 'HP Guru'}. Klik untuk reset kunci jika guru ganti HP.`}
+                                    style={{
+                                      padding: '0.45rem 0.65rem',
+                                      borderRadius: '8px',
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECACA',
+                                      color: '#DC2626',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    <Fingerprint size={13} />
+                                    <span>Reset HP</span>
+                                  </button>
+                                )
+                              }
+                              return (
+                                <span 
+                                  title="Akun ini belum terikat ke HP manapun. Akan otomatis terkunci ke HP pertama saat guru presensi."
                                   style={{
-                                    padding: '0.45rem 0.65rem',
-                                    borderRadius: '10px',
-                                    background: '#FEF2F2',
-                                    border: '1px solid #FECACA',
-                                    color: '#DC2626',
-                                    fontSize: '0.72rem',
-                                    fontWeight: '700',
-                                    cursor: 'pointer',
+                                    fontSize: '0.7rem',
+                                    color: '#64748B',
+                                    background: 'var(--surface-hover, #F8FAFC)',
+                                    border: '1px solid var(--border)',
+                                    padding: '0.35rem 0.6rem',
+                                    borderRadius: '8px',
+                                    fontWeight: '600',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '4px'
                                   }}
                                 >
-                                  <Fingerprint size={12} />
-                                  <span>Reset HP</span>
-                                </button>
+                                  <span>📱</span>
+                                  <span>HP Terbuka</span>
+                                </span>
                               )
-                            }
-                            return (
-                              <span 
-                                title="Akun ini belum terikat ke HP manapun. Akan otomatis terkunci ke HP pertama saat guru presensi."
-                                style={{
-                                  fontSize: '0.7rem',
-                                  color: '#94A3B8',
-                                  background: '#F8FAFC',
-                                  border: '1px solid #E2E8F0',
-                                  padding: '0.4rem 0.55rem',
-                                  borderRadius: '8px',
-                                  fontWeight: '600'
-                                }}
-                              >
-                                HP Terbuka
-                              </span>
-                            )
-                          })()}
+                            })()}
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setEditingPegawai(p)}
-                            style={{
-                              padding: '0.45rem 0.65rem',
-                              borderRadius: '10px',
-                              background: '#F1F5F9',
-                              border: '1px solid #E2E8F0',
-                              color: '#475569',
-                              fontSize: '0.75rem',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              flexShrink: 0
-                            }}
-                          >
-                            <Edit3 size={13} />
-                            <span>Atur</span>
-                          </button>
-
-                          {!isKepsek && !isAdmin && p.id !== admin?.id && (
+                          {/* Kanan: Tombol Atur & Tombol Hapus Guru */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
                             <button
                               type="button"
-                              disabled={deletingTeacherId === p.id}
-                              onClick={() => handleDeleteTeacher(p)}
+                              onClick={() => setEditingPegawai(p)}
                               style={{
-                                padding: '0.45rem 0.75rem',
-                                borderRadius: '10px',
-                                background: '#FEF2F2',
-                                border: '1.5px solid #FECACA',
-                                color: '#DC2626',
-                                fontSize: '0.75rem',
-                                fontWeight: '700',
-                                cursor: deletingTeacherId === p.id ? 'not-allowed' : 'pointer',
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: '9px',
+                                background: 'var(--surface-hover, #F1F5F9)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text)',
+                                fontSize: '0.76rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '5px',
-                                flexShrink: 0
+                                gap: '4px',
+                                transition: 'all 0.15s'
                               }}
-                              title={`Hapus data guru ${p.full_name || p.email}`}
                             >
-                              <Trash2 size={13} />
-                              <span>{deletingTeacherId === p.id ? 'Menghapus...' : 'Hapus Guru'}</span>
+                              <Edit3 size={13} />
+                              <span>Atur</span>
                             </button>
-                          )}
+
+                            {!isKepsek && !isAdmin && p.id !== admin?.id && (
+                              <button
+                                type="button"
+                                disabled={deletingTeacherId === p.id}
+                                onClick={() => handleDeleteTeacher(p)}
+                                style={{
+                                  padding: '0.45rem 0.85rem',
+                                  borderRadius: '9px',
+                                  background: '#FEF2F2',
+                                  border: '1.5px solid #FECACA',
+                                  color: '#DC2626',
+                                  fontSize: '0.76rem',
+                                  fontWeight: '700',
+                                  cursor: deletingTeacherId === p.id ? 'not-allowed' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.15s'
+                                }}
+                                title={`Hapus data guru ${p.full_name || p.email}`}
+                              >
+                                <Trash2 size={13} />
+                                <span>{deletingTeacherId === p.id ? '...' : 'Hapus Guru'}</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

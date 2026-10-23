@@ -470,24 +470,24 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
         </div>
       </div>
 
-      {/* TAB NAVIGASI UTAMA (WHATSAPP TOP TABS STYLE) */}
+      {/* TAB NAVIGASI UTAMA (MODERN SEGMENTED CONTROL: RAPI & TIDAK SALING MENEKAN) */}
       <div
-        className="no-scrollbar"
         style={{
-          display: 'flex',
-          background: darkMode ? '#1E293B' : '#FFFFFF',
-          borderRadius: '14px',
-          padding: '4px',
-          marginBottom: '1rem',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '8px',
+          background: darkMode ? '#0F172A' : '#F1F5F9',
+          borderRadius: '16px',
+          padding: '6px',
+          marginBottom: '1.25rem',
           border: darkMode ? '1px solid #334155' : '1px solid #E2E8F0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          overflowX: 'auto'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
         }}
       >
         {[
-          { id: 'chat', label: 'Obrolan Staf', icon: '💬' },
-          { id: 'disposisi', label: 'Disposisi Kedinasan', icon: '📌' },
-          { id: 'wa_tools', label: 'Tombol WhatsApp', icon: '📲' }
+          { id: 'chat', label: 'Obrolan Staf', icon: '💬', badge: null },
+          { id: 'disposisi', label: 'Disposisi Kedinasan', icon: '📌', badge: dispositions.filter(d => d.status === 'pending').length || null },
+          { id: 'wa_tools', label: 'Tombol WhatsApp', icon: '📲', badge: null }
         ].map(tab => {
           const isActive = activeMainTab === tab.id
           return (
@@ -495,27 +495,54 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
               key={tab.id}
               type="button"
               onClick={() => setActiveMainTab(tab.id)}
-              className={`wa-tab-btn ${isActive ? 'active' : ''}`}
               style={{
-                flex: 1,
-                minWidth: '110px',
-                padding: '9px 12px',
-                border: 'none',
-                background: isActive ? (darkMode ? '#0F172A' : '#F0FDF4') : 'transparent',
-                color: isActive ? '#15803D' : (darkMode ? '#94A3B8' : '#64748B'),
-                borderRadius: '10px',
-                fontWeight: isActive ? 700 : 600,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                whiteSpace: 'nowrap'
+                padding: '0.65rem 0.5rem',
+                border: isActive
+                  ? (darkMode ? '1px solid #10B981' : '1px solid #10B981')
+                  : '1px solid transparent',
+                background: isActive
+                  ? (darkMode ? '#1E293B' : '#FFFFFF')
+                  : 'transparent',
+                color: isActive
+                  ? (darkMode ? '#34D399' : '#059669')
+                  : (darkMode ? '#94A3B8' : '#64748B'),
+                borderRadius: '12px',
+                fontWeight: isActive ? 800 : 600,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+                boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+                minWidth: 0,
+                overflow: 'hidden'
               }}
             >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span style={{ fontSize: '1rem', lineHeight: 1, flexShrink: 0 }}>{tab.icon}</span>
+              <span style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                fontSize: 'inherit'
+              }}>
+                {tab.label}
+              </span>
+              {tab.badge ? (
+                <span style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  background: '#EF4444',
+                  color: 'white',
+                  lineHeight: 1.2,
+                  flexShrink: 0
+                }}>
+                  {tab.badge}
+                </span>
+              ) : null}
             </button>
           )
         })}
