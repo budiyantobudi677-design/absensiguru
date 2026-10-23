@@ -13,7 +13,8 @@ import {
   verifyDeveloperKey, 
   checkBruteForceLockout,
   getDeveloperSession,
-  verifyAdminOverrideLogin
+  verifyAdminOverrideLogin,
+  verifyKepsekOverrideLogin
 } from '../lib/developerManager'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
 import { saveActiveSession, cacheUserProfile } from '../lib/offlineManager'
@@ -140,23 +141,98 @@ export default function Login() {
             const adminSessionData = {
               role: 'admin',
               user: {
-                id: 'admin-master-uid',
+                id: overrideCheck.userId || 'admin-master-uid',
                 email: overrideCheck.email,
                 role: 'admin',
-                full_name: 'Administrator Sekolah'
+                full_name: overrideCheck.fullName || 'Administrator Sekolah'
               },
               expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 jam
             }
             localStorage.setItem('panrita_developer_session', JSON.stringify(adminSessionData))
-            localStorage.setItem('panrita_role_admin-master-uid', 'admin')
+            localStorage.setItem(`panrita_role_${adminSessionData.user.id}`, 'admin')
             window.dispatchEvent(new Event('developer_session_updated'))
             navigate('/admin')
             return
           }
         }
 
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
+        // Cek jika login menggunakan Kredensial Kepala Sekolah Kustom yang diatur oleh Pengembang
+        if (selectedRole === 'kepsek') {
+          const overrideCheck = await verifyKepsekOverrideLogin(email, password, supabase)
+          if (overrideCheck.isOverride) {
+            if (!overrideCheck.success) {
+              throw new Error(overrideCheck.error || 'Password Kepala Sekolah salah.')
+            }
+            // Buat sesi kepsek override
+            const kepsekSessionData = {
+              role: 'kepsek',
+              user: {
+                id: overrideCheck.userId || 'kepsek-master-uid',
+                email: overrideCheck.email,
+                role: 'kepsek',
+                full_name: overrideCheck.fullName || 'Kepala Sekolah'
+              },
+              expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 jam
+            }
+            localStorage.setItem('panrita_developer_session', JSON.stringify(kepsekSessionData))
+            localStorage.setItem(`panrita_role_${kepsekSessionData.user.id}`, 'kepsek')
+            window.dispatchEvent(new Event('developer_session_updated'))
+            navigate('/kepsek')
+            return
+          }
+        }
+
+        let authResult = null
+        try {
+          authResult = await supabase.auth.signInWithPassword({ email, password })
+        } catch (authErr) {
+          authResult = { error: authErr }
+        }
+
+        // Jika auth signInWithPassword gagal, lakukan cek fallback ke override kredensial pimpinan
+        if (authResult?.error) {
+          const adminCheck = await verifyAdminOverrideLogin(email, password, supabase)
+          if (adminCheck.isOverride && adminCheck.success) {
+            const adminSessionData = {
+              role: 'admin',
+              user: {
+                id: adminCheck.userId || 'admin-master-uid',
+                email: adminCheck.email,
+                role: 'admin',
+                full_name: adminCheck.fullName || 'Administrator Sekolah'
+              },
+              expiresAt: Date.now() + 24 * 60 * 60 * 1000
+            }
+            localStorage.setItem('panrita_developer_session', JSON.stringify(adminSessionData))
+            localStorage.setItem(`panrita_role_${adminSessionData.user.id}`, 'admin')
+            window.dispatchEvent(new Event('developer_session_updated'))
+            navigate('/admin')
+            return
+          }
+
+          const kepsekCheck = await verifyKepsekOverrideLogin(email, password, supabase)
+          if (kepsekCheck.isOverride && kepsekCheck.success) {
+            const kepsekSessionData = {
+              role: 'kepsek',
+              user: {
+                id: kepsekCheck.userId || 'kepsek-master-uid',
+                email: kepsekCheck.email,
+                role: 'kepsek',
+                full_name: kepsekCheck.fullName || 'Kepala Sekolah'
+              },
+              expiresAt: Date.now() + 24 * 60 * 60 * 1000
+            }
+            localStorage.setItem('panrita_developer_session', JSON.stringify(kepsekSessionData))
+            localStorage.setItem(`panrita_role_${kepsekSessionData.user.id}`, 'kepsek')
+            window.dispatchEvent(new Event('developer_session_updated'))
+            navigate('/kepsek')
+            return
+          }
+
+          throw authResult.error
+        }
+
+        const data = authResult.data
         
         // Bersihkan sesi developer atau intended role lama agar tidak menimpa akun resmi
         localStorage.removeItem('panrita_developer_session')

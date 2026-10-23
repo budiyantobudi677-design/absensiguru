@@ -5,7 +5,10 @@ import {
   clearDeveloperSession, 
   updateDeveloperMasterKey,
   updateAdminAccountCredentials,
-  getAdminOverrideCredentials
+  updateLeaderAccountCredentials,
+  getAdminOverrideCredentials,
+  getKepsekOverrideCredentials,
+  deleteUserAccountSafely
 } from '../../lib/developerManager'
 import { 
   fetchDeviceBindings, 
@@ -16,7 +19,7 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X, UserX
+  RotateCcw, X, UserX, Edit3
 } from 'lucide-react'
 import { 
   getCloudOverrideToken, 
@@ -57,8 +60,19 @@ export default function DashboardPengembang() {
   const [savingAdminAcc, setSavingAdminAcc] = useState(false)
   const [adminAccStatus, setAdminAccStatus] = useState({ type: '', text: '' })
   const [currentAdminProfile, setCurrentAdminProfile] = useState(null)
+  const [currentKepsekProfile, setCurrentKepsekProfile] = useState(null)
   const [userSearchTerm, setUserSearchTerm] = useState('')
   const [updatingUserRole, setUpdatingUserRole] = useState(null)
+
+  // State Modal Edit Akun Pimpinan (Email & Password)
+  const [editingLeaderAccount, setEditingLeaderAccount] = useState(null)
+  const [editLeaderEmail, setEditLeaderEmail] = useState('')
+  const [editLeaderPassword, setEditLeaderPassword] = useState('')
+  const [editLeaderName, setEditLeaderName] = useState('')
+  const [editLeaderRole, setEditLeaderRole] = useState('admin')
+  const [showEditPass, setShowEditPass] = useState(false)
+  const [savingEditLeader, setSavingEditLeader] = useState(false)
+  const [deletingUserId, setDeletingUserId] = useState(null)
 
   // Ganti Kode Pengembang
   const [newKey, setNewKey] = useState('')
@@ -255,29 +269,52 @@ export default function DashboardPengembang() {
 
   const loadAdminAccountInfo = async () => {
     try {
-      // 1. Cek dari profiles
+      // 1. Cek dari profiles untuk Admin
       const { data: adminProf } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'admin')
         .limit(1)
 
-      // 2. Cek dari override credentials
-      const override = await getAdminOverrideCredentials(supabase)
+      // 2. Cek dari override credentials Admin
+      const overrideAdmin = await getAdminOverrideCredentials(supabase)
       
-      if (override && override.email) {
-        setAdminEmail(override.email)
+      if (overrideAdmin && overrideAdmin.email) {
         setCurrentAdminProfile({
-          email: override.email,
-          updatedAt: override.updatedAt,
+          email: overrideAdmin.email,
+          fullName: overrideAdmin.fullName || 'Administrator Sekolah',
+          updatedAt: overrideAdmin.updatedAt,
           isOverride: true
         })
       } else if (adminProf && adminProf.length > 0) {
-        setAdminEmail(adminProf[0].email || '')
         setCurrentAdminProfile(adminProf[0])
+      } else {
+        setCurrentAdminProfile(null)
+      }
+
+      // 3. Cek dari profiles untuk Kepala Sekolah
+      const { data: kepsekProf } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'kepsek')
+        .limit(1)
+
+      // 4. Cek dari override credentials Kepala Sekolah
+      const overrideKepsek = await getKepsekOverrideCredentials(supabase)
+      if (overrideKepsek && overrideKepsek.email) {
+        setCurrentKepsekProfile({
+          email: overrideKepsek.email,
+          fullName: overrideKepsek.fullName || 'Kepala Sekolah',
+          updatedAt: overrideKepsek.updatedAt,
+          isOverride: true
+        })
+      } else if (kepsekProf && kepsekProf.length > 0) {
+        setCurrentKepsekProfile(kepsekProf[0])
+      } else {
+        setCurrentKepsekProfile(null)
       }
     } catch (e) {
-      console.warn('Error loading admin account:', e)
+      console.warn('Error loading leader accounts info:', e)
     }
   }
 
@@ -301,32 +338,119 @@ export default function DashboardPengembang() {
     e.preventDefault()
     setAdminAccStatus({ type: '', text: '' })
 
-    if (!adminEmail.trim()) {
-      setAdminAccStatus({ type: 'error', text: 'Email Admin tidak boleh kosong!' })
+    const roleLabel = newLeaderRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator'
+
+    if (!adminEmail.trim() || !adminEmail.includes('@')) {
+      setAdminAccStatus({ type: 'error', text: `Email ${roleLabel} tidak valid!` })
       return
     }
     if (!adminPassword || adminPassword.length < 6) {
-      setAdminAccStatus({ type: 'error', text: 'Password Admin minimal 6 karakter!' })
+      setAdminAccStatus({ type: 'error', text: `Password ${roleLabel} minimal 6 karakter!` })
       return
     }
 
     setSavingAdminAcc(true)
     try {
-      await updateAdminAccountCredentials({
+      await updateLeaderAccountCredentials({
+        role: newLeaderRole,
         email: adminEmail.trim(),
         password: adminPassword,
+        fullName: newLeaderName.trim() || undefined,
         supabase
       })
       setAdminAccStatus({ 
         type: 'success', 
-        text: `Akun & Password Admin berhasil diperbarui! Email: ${adminEmail.trim()}` 
+        text: `Akun & Password ${roleLabel} berhasil diperbarui! Email: ${adminEmail.trim()}` 
       })
       setAdminPassword('')
+      await loadSystemMetrics()
       await loadAdminAccountInfo()
     } catch (err) {
-      setAdminAccStatus({ type: 'error', text: 'Gagal memperbarui akun admin: ' + err.message })
+      setAdminAccStatus({ type: 'error', text: `Gagal memperbarui akun ${roleLabel}: ` + err.message })
     } finally {
       setSavingAdminAcc(false)
+    }
+  }
+
+  const handleOpenEditLeaderModal = (u) => {
+    setEditingLeaderAccount(u)
+    setEditLeaderEmail(u.email || '')
+    setEditLeaderPassword('')
+    setEditLeaderName(u.full_name || '')
+    setEditLeaderRole(u.role === 'kepsek' ? 'kepsek' : 'admin')
+    setShowEditPass(false)
+  }
+
+  const handleSaveEditLeaderAccount = async (e) => {
+    e.preventDefault()
+    if (!editingLeaderAccount) return
+
+    if (!editLeaderEmail.trim() || !editLeaderEmail.includes('@')) {
+      alert('Format alamat email tidak valid!')
+      return
+    }
+
+    if (editLeaderPassword && editLeaderPassword.length < 6) {
+      alert('Password baru minimal 6 karakter!')
+      return
+    }
+
+    setSavingEditLeader(true)
+    const roleLabel = editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator'
+    try {
+      await updateLeaderAccountCredentials({
+        role: editLeaderRole,
+        email: editLeaderEmail.trim(),
+        password: editLeaderPassword || undefined,
+        fullName: editLeaderName.trim(),
+        supabase,
+        targetUserId: editingLeaderAccount.id
+      })
+
+      alert(`Berhasil! Data akun ${roleLabel} (${editLeaderEmail.trim()}) telah diperbarui.${editLeaderPassword ? ' Password baru telah diaktifkan.' : ''}`)
+      setEditingLeaderAccount(null)
+      await loadSystemMetrics()
+      await loadAdminAccountInfo()
+    } catch (err) {
+      console.error('Error saving leader edits:', err)
+      alert(`Gagal memperbarui akun ${roleLabel}: ` + (err.message || 'Terjadi kesalahan sistem.'))
+    } finally {
+      setSavingEditLeader(false)
+    }
+  }
+
+  const handleDeleteLeaderAccount = async (u) => {
+    const roleLabel = u.role === 'admin' ? 'Administrator' : (u.role === 'kepsek' ? 'Kepala Sekolah' : 'Pengguna')
+    const userName = u.full_name || u.email || 'Akun'
+    
+    const confirmMessage = `PERINGATAN PENGEMBANG SISTEM:
+
+Apakah Anda yakin ingin menghapus data ${roleLabel} "${userName}"?
+
+Peringatan Penting: Tindakan ini bersifat permanen dan akan mempengaruhi data siswa dan presensi dll. yang terkait dalam sistem.
+
+Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
+
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    setDeletingUserId(u.id)
+    try {
+      await deleteUserAccountSafely({
+        userId: u.id,
+        role: u.role || 'admin',
+        email: u.email || '',
+        supabase
+      })
+      alert(`Akun ${roleLabel} "${userName}" berhasil dihapus dari sistem.`)
+      await loadSystemMetrics()
+      await loadAdminAccountInfo()
+    } catch (err) {
+      console.error('Error deleting leader account:', err)
+      alert(`Gagal menghapus akun ${roleLabel}: ` + (err.message || 'Terjadi kesalahan sistem.'))
+    } finally {
+      setDeletingUserId(null)
     }
   }
 
@@ -683,23 +807,43 @@ export default function DashboardPengembang() {
                 </p>
               </div>
 
-              {/* Status Info Akun Admin Saat Ini */}
-              <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '1rem', marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600 }}>STATUS AKUN ADMIN AKTIF:</span>
-                  <span style={{ fontSize: '0.72rem', background: '#00B4D8', color: '#071C35', padding: '0.15rem 0.5rem', borderRadius: '6px', fontWeight: 800 }}>
-                    TERHUBUNG
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Mail size={16} />
-                  <span>{currentAdminProfile?.email || 'Belum ada email admin tersimpan'}</span>
-                </div>
-                {currentAdminProfile?.updatedAt && (
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
-                    Terakhir diperbarui: {new Date(currentAdminProfile.updatedAt).toLocaleString('id-ID')}
+              {/* Status Info Akun Admin & Kepala Sekolah Saat Ini */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ background: 'rgba(0, 180, 216, 0.08)', border: '1px solid rgba(0, 180, 216, 0.3)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700 }}>STATUS AKUN ADMIN:</span>
+                    <span style={{ fontSize: '0.7rem', background: '#00B4D8', color: '#071C35', padding: '0.15rem 0.5rem', borderRadius: '6px', fontWeight: 800 }}>
+                      {currentAdminProfile ? 'TERHUBUNG' : 'BELUM DIATUR'}
+                    </span>
                   </div>
-                )}
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Mail size={15} />
+                    <span style={{ wordBreak: 'break-all' }}>{currentAdminProfile?.email || 'Belum ada email admin'}</span>
+                  </div>
+                  {currentAdminProfile?.updatedAt && (
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '0.35rem' }}>
+                      Diperbarui: {new Date(currentAdminProfile.updatedAt).toLocaleString('id-ID')}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ background: 'rgba(167, 139, 250, 0.08)', border: '1px solid rgba(167, 139, 250, 0.3)', borderRadius: '14px', padding: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700 }}>STATUS KEPALA SEKOLAH:</span>
+                    <span style={{ fontSize: '0.7rem', background: '#A78BFA', color: '#071C35', padding: '0.15rem 0.5rem', borderRadius: '6px', fontWeight: 800 }}>
+                      {currentKepsekProfile ? 'TERHUBUNG' : 'BELUM DIATUR'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#C4B5FD', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Mail size={15} />
+                    <span style={{ wordBreak: 'break-all' }}>{currentKepsekProfile?.email || 'Belum ada email kepsek'}</span>
+                  </div>
+                  {currentKepsekProfile?.updatedAt && (
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '0.35rem' }}>
+                      Diperbarui: {new Date(currentKepsekProfile.updatedAt).toLocaleString('id-ID')}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Alert Status Notifikasi */}
@@ -758,6 +902,28 @@ export default function DashboardPengembang() {
                       🎓 Kepala Sekolah
                     </button>
                   </div>
+                </div>
+
+                <div style={{ marginBottom: '1.15rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.4rem' }}>
+                    Nama Lengkap Pimpinan (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeaderName}
+                    onChange={(e) => setNewLeaderName(e.target.value)}
+                    placeholder={newLeaderRole === 'kepsek' ? 'Nama Kepala Sekolah & Gelar' : 'Nama Administrator Sekolah'}
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.85rem 1rem', 
+                      background: 'rgba(255,255,255,0.06)', 
+                      border: '1.5px solid rgba(255,255,255,0.15)', 
+                      borderRadius: '12px', 
+                      color: '#FFFFFF', 
+                      fontSize: '0.92rem', 
+                      outline: 'none' 
+                    }}
+                  />
                 </div>
 
                 <div style={{ marginBottom: '1.15rem' }}>
@@ -861,6 +1027,124 @@ export default function DashboardPengembang() {
               </form>
             </div>
 
+            {/* Bagian 2: Daftar Khusus Akun Pimpinan (Admin & Kepala Sekolah) dengan Opsi Edit & Hapus */}
+            {(() => {
+              const leaderAccounts = teachersList.filter(u => u.role === 'admin' || u.role === 'kepsek')
+              return (
+                <div style={{ background: '#0B2545', border: '1px solid rgba(0, 180, 216, 0.25)', borderRadius: '20px', padding: '1.75rem' }}>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.15rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>🏛️ Akun Pimpinan Terdaftar (Admin & Kepala Sekolah)</span>
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#94A3B8' }}>
+                      Pengembang dapat mengubah alamat email dan kata sandi akun pimpinan, atau menghapus akun pimpinan secara permanen.
+                    </p>
+                  </div>
+
+                  {leaderAccounts.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', color: '#94A3B8', fontSize: '0.85rem' }}>
+                      Belum ada akun Administrator atau Kepala Sekolah yang terdaftar di database.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+                      {leaderAccounts.map(leader => {
+                        const isKep = leader.role === 'kepsek'
+                        return (
+                          <div
+                            key={leader.id}
+                            style={{
+                              background: isKep ? 'rgba(139, 92, 246, 0.08)' : 'rgba(0, 180, 216, 0.08)',
+                              border: isKep ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid rgba(0, 180, 216, 0.35)',
+                              borderRadius: '16px',
+                              padding: '1.25rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              gap: '1rem'
+                            }}
+                          >
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <span style={{
+                                  padding: '0.2rem 0.65rem',
+                                  borderRadius: '8px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  background: isKep ? 'rgba(167,139,250,0.25)' : 'rgba(0,180,216,0.25)',
+                                  color: isKep ? '#C4B5FD' : '#38BDF8',
+                                  border: isKep ? '1px solid #8B5CF6' : '1px solid #00B4D8'
+                                }}>
+                                  {isKep ? '🎓 Kepala Sekolah' : '🛡️ Administrator'}
+                                </span>
+                                {leader.nip && (
+                                  <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>NIP: {leader.nip}</span>
+                                )}
+                              </div>
+                              <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: 700, color: '#FFFFFF' }}>
+                                {leader.full_name || (isKep ? 'Kepala Sekolah' : 'Administrator')}
+                              </h4>
+                              <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Mail size={14} color="#00B4D8" />
+                                <span style={{ wordBreak: 'break-all' }}>{leader.email}</span>
+                              </p>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.85rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditLeaderModal(leader)}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.55rem',
+                                  borderRadius: '10px',
+                                  background: isKep ? '#7C3AED' : '#0284C7',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  fontWeight: 700,
+                                  fontSize: '0.78rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <Edit3 size={13} />
+                                <span>Ganti Email & Pass</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={deletingUserId === leader.id}
+                                onClick={() => handleDeleteLeaderAccount(leader)}
+                                style={{
+                                  padding: '0.55rem 0.85rem',
+                                  borderRadius: '10px',
+                                  background: 'rgba(239, 68, 68, 0.2)',
+                                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                                  color: '#F87171',
+                                  fontWeight: 700,
+                                  fontSize: '0.78rem',
+                                  cursor: deletingUserId === leader.id ? 'not-allowed' : 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <Trash2 size={13} />
+                                <span>{deletingUserId === leader.id ? '...' : 'Hapus'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Bagian 2: Ubah Peran Akun Terdaftar Menjadi Kepala Sekolah / Admin / Guru / Tendik */}
             <div style={{ background: '#0B2545', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '1.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -933,7 +1217,56 @@ export default function DashboardPengembang() {
                               </span>
                             </td>
                             <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                {(isKepsek || isAdmin) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditLeaderModal(u)}
+                                      title={`Ganti email dan password akun ${isKepsek ? 'Kepala Sekolah' : 'Admin'}`}
+                                      style={{
+                                        padding: '0.35rem 0.6rem',
+                                        borderRadius: '8px',
+                                        background: isKepsek ? '#7C3AED' : '#0284C7',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        fontWeight: 700,
+                                        fontSize: '0.72rem',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                    >
+                                      <Edit3 size={11} />
+                                      <span>Ganti Email/Pass</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      disabled={deletingUserId === u.id}
+                                      onClick={() => handleDeleteLeaderAccount(u)}
+                                      title={`Hapus data akun ${isKepsek ? 'Kepala Sekolah' : 'Admin'} ini dari sistem`}
+                                      style={{
+                                        padding: '0.35rem 0.6rem',
+                                        borderRadius: '8px',
+                                        background: 'rgba(239, 68, 68, 0.2)',
+                                        border: '1px solid rgba(239, 68, 68, 0.45)',
+                                        color: '#F87171',
+                                        fontWeight: 700,
+                                        fontSize: '0.72rem',
+                                        cursor: deletingUserId === u.id ? 'not-allowed' : 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                    >
+                                      <Trash2 size={11} />
+                                      <span>{deletingUserId === u.id ? '...' : 'Hapus'}</span>
+                                    </button>
+                                  </>
+                                )}
+
                                 {!isKepsek && (
                                   <button
                                     type="button"
@@ -1600,6 +1933,220 @@ export default function DashboardPengembang() {
                   <div>• <strong>Auto-Backup:</strong> Mengunduh file JSON cadangan otomatis sebelum data dihapus</div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EDIT AKUN PIMPINAN (EMAIL & PASSWORD) OLEH PENGEMBANG */}
+        {editingLeaderAccount && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7, 28, 53, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1rem',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              background: '#0B2545',
+              border: '1.5px solid rgba(0, 180, 216, 0.4)',
+              borderRadius: '24px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '1.75rem',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              color: '#FFFFFF'
+            }}>
+              {/* Header Modal */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(0, 180, 216, 0.2)', color: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Key size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Edit Akun {editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator'}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8' }}>
+                      Ubah alamat email dan kata sandi akun pimpinan
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingLeaderAccount(null)}
+                  style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditLeaderAccount}>
+                {/* Badge Peran */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.35rem' }}>
+                    Peran Akun
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <span style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      background: editLeaderRole === 'kepsek' ? 'rgba(167,139,250,0.25)' : 'rgba(0,180,216,0.25)',
+                      color: editLeaderRole === 'kepsek' ? '#C4B5FD' : '#38BDF8',
+                      border: editLeaderRole === 'kepsek' ? '1px solid #8B5CF6' : '1px solid #00B4D8'
+                    }}>
+                      {editLeaderRole === 'kepsek' ? '🎓 Kepala Sekolah' : '🛡️ Administrator'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Nama Lengkap */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.35rem' }}>
+                    Nama Lengkap Pimpinan
+                  </label>
+                  <input
+                    type="text"
+                    value={editLeaderName}
+                    onChange={(e) => setEditLeaderName(e.target.value)}
+                    placeholder="Nama Lengkap & Gelar"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1.5px solid rgba(255,255,255,0.15)',
+                      borderRadius: '12px',
+                      color: '#FFFFFF',
+                      fontSize: '0.9rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Alamat Email */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1', marginBottom: '0.35rem' }}>
+                    Alamat Email Akun
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Mail size={16} color="#64748B" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="email"
+                      value={editLeaderEmail}
+                      onChange={(e) => setEditLeaderEmail(e.target.value)}
+                      placeholder="email@sekolah.edu"
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 1rem 0.75rem 2.5rem',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1.5px solid rgba(255,255,255,0.15)',
+                        borderRadius: '12px',
+                        color: '#FFFFFF',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Password Baru */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#CBD5E1' }}>
+                      Password Baru
+                    </label>
+                    <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Kosongkan jika tidak diubah</span>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <Lock size={16} color="#64748B" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type={showEditPass ? "text" : "password"}
+                      value={editLeaderPassword}
+                      onChange={(e) => setEditLeaderPassword(e.target.value)}
+                      placeholder="Masukkan password baru (minimal 6 karakter)"
+                      minLength={6}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 2.5rem 0.75rem 2.5rem',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1.5px solid rgba(255,255,255,0.15)',
+                        borderRadius: '12px',
+                        color: '#FFFFFF',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPass(!showEditPass)}
+                      style={{
+                        position: 'absolute',
+                        right: '0.85rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#94A3B8',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      {showEditPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tombol Simpan & Batal */}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditingLeaderAccount(null)}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(255,255,255,0.05)',
+                      color: '#CBD5E1',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEditLeader}
+                    style={{
+                      flex: 2,
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #0284C7 0%, #00B4D8 100%)',
+                      color: '#071C35',
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      cursor: savingEditLeader ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Check size={16} />
+                    <span>{savingEditLeader ? 'Menyimpan...' : 'Simpan Kredensial'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -219,8 +219,10 @@ export async function updateDeveloperMasterKey(newCode, supabase) {
   return true
 }
 
-// Target konfig khusus untuk kredensial akun admin yang dikelola oleh Pengembang
+// Target konfig khusus untuk kredensial akun admin & kepsek yang dikelola oleh Pengembang
 const ADMIN_CREDENTIALS_TARGET = '__SYSTEM_ADMIN_CREDENTIALS__'
+const KEPSEK_CREDENTIALS_TARGET = '__SYSTEM_KEPSEK_CREDENTIALS__'
+const LEADER_CREDENTIALS_PREFIX = '__SYSTEM_LEADER_CREDENTIALS_'
 
 /**
  * Mengambil kredensial kustom admin jika diatur oleh pengembang
@@ -245,65 +247,200 @@ export async function getAdminOverrideCredentials(supabase) {
 }
 
 /**
- * Mengupdate atau mengatur ulang Akun Email & Password Admin dari Console Pengembang
+ * Mengambil kredensial kustom kepala sekolah jika diatur oleh pengembang
+ */
+export async function getKepsekOverrideCredentials(supabase) {
+  if (!supabase) return null
+  try {
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', KEPSEK_CREDENTIALS_TARGET)
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (!error && data && data.length > 0) {
+      return JSON.parse(data[0].pesan)
+    }
+  } catch (e) {
+    console.warn('Error fetching kepsek credentials override:', e)
+  }
+  return null
+}
+
+/**
+ * Mengupdate atau mengatur ulang Akun Email & Password Admin dari Console Pengembang (Kompatibilitas)
  */
 export async function updateAdminAccountCredentials({ email, password, supabase }) {
+  return updateLeaderAccountCredentials({
+    role: 'admin',
+    email,
+    password,
+    fullName: 'Administrator Sekolah',
+    supabase
+  })
+}
+
+/**
+ * Mengupdate atau mengatur Akun Email & Password Pimpinan (Admin / Kepala Sekolah)
+ * Mendukung pembaharuan akun umum maupun akun spesifik berdasarkan ID
+ */
+export async function updateLeaderAccountCredentials({
+  role = 'admin',
+  email,
+  password,
+  fullName = '',
+  supabase,
+  targetUserId = null
+}) {
   if (!email || !email.includes('@')) {
     throw new Error('Format email tidak valid.')
   }
-  if (!password || password.length < 6) {
-    throw new Error('Password admin minimal 6 karakter.')
+  if (password && password.length < 6) {
+    throw new Error('Password baru minimal 6 karakter.')
   }
 
-  // Hash password menggunakan SHA-256 + salt agar aman dari pembobolan
-  const passwordHash = await hashDeveloperKey(password)
+  const cleanEmail = email.trim().toLowerCase()
+  const cleanRole = (role === 'kepsek') ? 'kepsek' : 'admin'
+  const defaultName = cleanRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator Sekolah'
+  const cleanFullName = (fullName || defaultName).trim()
 
-  const payload = JSON.stringify({
-    email: email.trim().toLowerCase(),
-    passwordHash: passwordHash,
+  let passwordHash = null
+  if (password) {
+    passwordHash = await hashDeveloperKey(password)
+  }
+
+  const payloadObj = {
+    email: cleanEmail,
+    role: cleanRole,
+    fullName: cleanFullName,
+    userId: targetUserId || undefined,
     updatedAt: new Date().toISOString()
-  })
-
-  // 1. Simpan konfigurasi kredensial ke cloud Supabase
-  const { data: existing } = await supabase
-    .from('pengumuman')
-    .select('id')
-    .eq('target_type', ADMIN_CREDENTIALS_TARGET)
-    .limit(1)
-
-  if (existing && existing.length > 0) {
-    const { error } = await supabase
-      .from('pengumuman')
-      .update({ pesan: payload })
-      .eq('id', existing[0].id)
-    if (error) throw error
-  } else {
-    const { error } = await supabase
-      .from('pengumuman')
-      .insert([{
-        pesan: payload,
-        target_type: ADMIN_CREDENTIALS_TARGET,
-        target_users: ''
-      }])
-    if (error) throw error
+  }
+  if (passwordHash) {
+    payloadObj.passwordHash = passwordHash
   }
 
-  // 2. Sinkronkan juga ke tabel profiles jika ada akun admin
-  try {
-    const { data: adminProfiles } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'admin')
-      .limit(1)
+  const mainTarget = cleanRole === 'kepsek' ? KEPSEK_CREDENTIALS_TARGET : ADMIN_CREDENTIALS_TARGET
 
-    if (adminProfiles && adminProfiles.length > 0) {
+  // 1. Jika targetUserId ada, simpan juga kredensial spesifik akun ini
+  if (targetUserId) {
+    const specificTarget = `${LEADER_CREDENTIALS_PREFIX}${targetUserId}`
+    try {
+      const { data: existingSpecific } = await supabase
+        .from('pengumuman')
+        .select('id, pesan')
+        .eq('target_type', specificTarget)
+        .limit(1)
+
+      let finalPayload = { ...payloadObj }
+      if (!passwordHash && existingSpecific?.[0]?.pesan) {
+        try {
+          const old = JSON.parse(existingSpecific[0].pesan)
+          if (old.passwordHash) finalPayload.passwordHash = old.passwordHash
+        } catch {}
+      }
+
+      const specificStr = JSON.stringify(finalPayload)
+      if (existingSpecific && existingSpecific.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: specificStr })
+          .eq('id', existingSpecific[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: specificStr,
+            target_type: specificTarget,
+            target_users: ''
+          }])
+      }
+    } catch (e) {
+      console.warn('Error saving specific leader override:', e)
+    }
+
+    // Perbarui profil di database
+    try {
       await supabase
         .from('profiles')
-        .update({ email: email.trim().toLowerCase() })
-        .eq('id', adminProfiles[0].id)
+        .update({
+          email: cleanEmail,
+          full_name: cleanFullName,
+          role: cleanRole
+        })
+        .eq('id', targetUserId)
+    } catch (err) {
+      console.warn('Could not update profiles for targetUserId:', err)
     }
-  } catch (err) {
-    console.warn('Could not update email in profiles:', err)
+  }
+
+  // 2. Simpan atau perbarui konfigurasi override utama role ini jika ada password
+  if (passwordHash || !targetUserId) {
+    const { data: existing } = await supabase
+      .from('pengumuman')
+      .select('id, pesan')
+      .eq('target_type', mainTarget)
+      .limit(1)
+
+    let finalMainPayload = { ...payloadObj }
+    if (!passwordHash && existing?.[0]?.pesan) {
+      try {
+        const oldMain = JSON.parse(existing[0].pesan)
+        if (oldMain.passwordHash) finalMainPayload.passwordHash = oldMain.passwordHash
+      } catch {}
+    }
+
+    const payloadStr = JSON.stringify(finalMainPayload)
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('pengumuman')
+        .update({ pesan: payloadStr })
+        .eq('id', existing[0].id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('pengumuman')
+        .insert([{
+          pesan: payloadStr,
+          target_type: mainTarget,
+          target_users: ''
+        }])
+      if (error) throw error
+    }
+  }
+
+  // 3. Sinkronkan juga ke tabel profiles jika belum terikat ke targetUserId
+  if (!targetUserId) {
+    try {
+      const { data: matchedProfiles } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', cleanRole)
+        .limit(1)
+
+      if (matchedProfiles && matchedProfiles.length > 0) {
+        await supabase
+          .from('profiles')
+          .update({
+            email: cleanEmail,
+            full_name: cleanFullName
+          })
+          .eq('id', matchedProfiles[0].id)
+      } else {
+        // Jika belum ada row di profiles, masukkan agar muncul di daftar
+        await supabase
+          .from('profiles')
+          .insert([{
+            id: crypto.randomUUID ? crypto.randomUUID() : `leader-${Date.now()}`,
+            email: cleanEmail,
+            full_name: cleanFullName,
+            role: cleanRole
+          }])
+      }
+    } catch (err) {
+      console.warn('Could not upsert email in profiles:', err)
+    }
   }
 
   return true
@@ -313,20 +450,210 @@ export async function updateAdminAccountCredentials({ email, password, supabase 
  * Memeriksa apakah login admin cocok dengan override credentials dari pengembang
  */
 export async function verifyAdminOverrideLogin(email, password, supabase) {
-  const override = await getAdminOverrideCredentials(supabase)
-  if (!override || !override.email || !override.passwordHash) {
-    return { isOverride: false }
-  }
-
+  if (!supabase) return { isOverride: false }
   const inputEmail = email.trim().toLowerCase()
-  if (inputEmail !== override.email) {
-    return { isOverride: false }
+  const inputHash = await hashDeveloperKey(password)
+
+  // 1. Cek override utama role admin
+  const override = await getAdminOverrideCredentials(supabase)
+  if (override && override.email && override.passwordHash) {
+    if (inputEmail === override.email.toLowerCase()) {
+      if (inputHash === override.passwordHash) {
+        return {
+          isOverride: true,
+          success: true,
+          email: override.email,
+          fullName: override.fullName || 'Administrator Sekolah',
+          userId: override.userId || 'admin-master-uid'
+        }
+      } else {
+        return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
+      }
+    }
   }
 
-  const inputHash = await hashDeveloperKey(password)
-  if (inputHash === override.passwordHash) {
-    return { isOverride: true, success: true, email: override.email }
-  } else {
-    return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
+  // 2. Cek override spesifik pimpinan akun admin
+  try {
+    const { data: specificList } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .like('target_type', `${LEADER_CREDENTIALS_PREFIX}%`)
+      .limit(50)
+
+    if (specificList && specificList.length > 0) {
+      for (const item of specificList) {
+        try {
+          const parsed = JSON.parse(item.pesan)
+          if (parsed?.role === 'admin' && parsed?.email?.toLowerCase() === inputEmail) {
+            if (parsed.passwordHash && inputHash === parsed.passwordHash) {
+              return {
+                isOverride: true,
+                success: true,
+                email: parsed.email,
+                fullName: parsed.fullName || 'Administrator Sekolah',
+                userId: parsed.userId || 'admin-master-uid'
+              }
+            } else {
+              return { isOverride: true, success: false, error: 'Password Admin tidak sesuai.' }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('Error checking specific admin credentials:', e)
   }
+
+  return { isOverride: false }
+}
+
+/**
+ * Memeriksa apakah login kepala sekolah cocok dengan override credentials dari pengembang
+ */
+export async function verifyKepsekOverrideLogin(email, password, supabase) {
+  if (!supabase) return { isOverride: false }
+  const inputEmail = email.trim().toLowerCase()
+  const inputHash = await hashDeveloperKey(password)
+
+  // 1. Cek override utama role kepsek
+  const override = await getKepsekOverrideCredentials(supabase)
+  if (override && override.email && override.passwordHash) {
+    if (inputEmail === override.email.toLowerCase()) {
+      if (inputHash === override.passwordHash) {
+        return {
+          isOverride: true,
+          success: true,
+          email: override.email,
+          fullName: override.fullName || 'Kepala Sekolah',
+          userId: override.userId || 'kepsek-master-uid'
+        }
+      } else {
+        return { isOverride: true, success: false, error: 'Password Kepala Sekolah tidak sesuai.' }
+      }
+    }
+  }
+
+  // 2. Cek override spesifik pimpinan akun kepsek
+  try {
+    const { data: specificList } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .like('target_type', `${LEADER_CREDENTIALS_PREFIX}%`)
+      .limit(50)
+
+    if (specificList && specificList.length > 0) {
+      for (const item of specificList) {
+        try {
+          const parsed = JSON.parse(item.pesan)
+          if (parsed?.role === 'kepsek' && parsed?.email?.toLowerCase() === inputEmail) {
+            if (parsed.passwordHash && inputHash === parsed.passwordHash) {
+              return {
+                isOverride: true,
+                success: true,
+                email: parsed.email,
+                fullName: parsed.fullName || 'Kepala Sekolah',
+                userId: parsed.userId || 'kepsek-master-uid'
+              }
+            } else {
+              return { isOverride: true, success: false, error: 'Password Kepala Sekolah tidak sesuai.' }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('Error checking specific kepsek credentials:', e)
+  }
+
+  return { isOverride: false }
+}
+
+/**
+ * Menghapus akun pengguna (Guru, Tendik, Admin, atau Kepala Sekolah) secara aman beserta dependensi datanya
+ */
+export async function deleteUserAccountSafely({ userId, role = 'guru', email = '', supabase }) {
+  if (!userId || !supabase) {
+    throw new Error('ID pengguna atau koneksi database tidak valid.')
+  }
+
+  // 1. Hapus transaksi terkait agar tidak melanggar foreign key
+  try {
+    await supabase.from('absensi').delete().eq('user_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus absensi user:', e)
+  }
+  try {
+    await supabase.from('learning_journals').delete().eq('user_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus learning_journals user:', e)
+  }
+  try {
+    await supabase.from('jurnal').delete().eq('user_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus jurnal user:', e)
+  }
+  try {
+    await supabase.from('student_attendance').delete().eq('teacher_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus student_attendance user:', e)
+  }
+  try {
+    await supabase.from('student_grades').delete().eq('teacher_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus student_grades user:', e)
+  }
+  try {
+    await supabase.from('student_behavior_notes').delete().eq('teacher_id', userId)
+  } catch (e) {
+    console.warn('Gagal hapus student_behavior_notes user:', e)
+  }
+  try {
+    await supabase.from('classes').update({ teacher_id: null }).eq('teacher_id', userId)
+  } catch (e) {
+    console.warn('Gagal update classes teacher_id user:', e)
+  }
+
+  // 2. Hapus kredensial spesifik jika ada
+  try {
+    await supabase
+      .from('pengumuman')
+      .delete()
+      .eq('target_type', `${LEADER_CREDENTIALS_PREFIX}${userId}`)
+  } catch (e) {}
+
+  // 3. Jika email cocok dengan override utama, bersihkan
+  if (email) {
+    const cleanMail = email.trim().toLowerCase()
+    try {
+      const adminOverride = await getAdminOverrideCredentials(supabase)
+      if (adminOverride?.email?.toLowerCase() === cleanMail) {
+        await supabase.from('pengumuman').delete().eq('target_type', ADMIN_CREDENTIALS_TARGET)
+      }
+    } catch {}
+    try {
+      const kepsekOverride = await getKepsekOverrideCredentials(supabase)
+      if (kepsekOverride?.email?.toLowerCase() === cleanMail) {
+        await supabase.from('pengumuman').delete().eq('target_type', KEPSEK_CREDENTIALS_TARGET)
+      }
+    } catch {}
+  }
+
+  // 4. Hapus profil dari tabel profiles
+  const { error } = await supabase.from('profiles').delete().eq('id', userId)
+  if (error) {
+    throw error
+  }
+
+  // 5. Bersihkan cache lokal yang terkait
+  try {
+    localStorage.removeItem(`guru_assigned_classes_${userId}`)
+    localStorage.removeItem(`guru_tipe_${userId}`)
+    localStorage.removeItem(`guru_tipe_perangkat_${userId}`)
+    localStorage.removeItem(`guru_mapel_${userId}`)
+    localStorage.removeItem(`tendik_penugasan_${userId}`)
+    localStorage.removeItem(`tendik_kategori_${userId}`)
+    localStorage.removeItem(`panrita_role_${userId}`)
+  } catch (e) {}
+
+  return true
 }

@@ -30,6 +30,7 @@ import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
+import { deleteUserAccountSafely } from '../../lib/developerManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -770,6 +771,53 @@ export default function DashboardAdmin() {
     }
     if (bindRes) setDeviceBindings(bindRes)
     setLoadingData(false)
+  }
+
+  const [deletingTeacherId, setDeletingTeacherId] = useState(null)
+
+  const handleDeleteTeacher = async (p) => {
+    const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek'
+    const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin'
+    
+    if (isKepsek || isAdmin) {
+      alert('Administrator tidak memiliki akses untuk menghapus akun Kepala Sekolah atau Administrator. Penghapusan akun Pimpinan hanya dapat dilakukan oleh Pengembang Sistem.')
+      return
+    }
+
+    if (p.id === admin?.id) {
+      alert('Anda tidak dapat menghapus akun Administrator Anda sendiri.')
+      return
+    }
+
+    const teacherName = p.full_name || p.email || 'Guru'
+    const confirmMessage = `PERINGATAN SISTEM:
+
+Apakah Anda yakin ingin menghapus data guru "${teacherName}"?
+
+Peringatan Penting: Tindakan ini bersifat permanen dan akan mempengaruhi data siswa dan presensi dll. yang terkait.
+
+Apakah Anda yakin untuk melanjutkan penghapusan?`
+
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    setDeletingTeacherId(p.id)
+    try {
+      await deleteUserAccountSafely({
+        userId: p.id,
+        role: p.role || 'guru',
+        email: p.email || '',
+        supabase
+      })
+      alert(`Data guru "${teacherName}" berhasil dihapus dari sistem.`)
+      await loadPegawai()
+    } catch (err) {
+      console.error('Error saat menghapus data guru:', err)
+      alert('Gagal menghapus data guru: ' + (err.message || 'Terjadi kesalahan sistem.'))
+    } finally {
+      setDeletingTeacherId(null)
+    }
   }
 
   const loadAbsensi = async () => {
@@ -2448,6 +2496,32 @@ export default function DashboardAdmin() {
                             <Edit3 size={13} />
                             <span>Atur</span>
                           </button>
+
+                          {!isKepsek && !isAdmin && p.id !== admin?.id && (
+                            <button
+                              type="button"
+                              disabled={deletingTeacherId === p.id}
+                              onClick={() => handleDeleteTeacher(p)}
+                              style={{
+                                padding: '0.45rem 0.65rem',
+                                borderRadius: '10px',
+                                background: '#FEF2F2',
+                                border: '1px solid #FECACA',
+                                color: '#DC2626',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                cursor: deletingTeacherId === p.id ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                flexShrink: 0
+                              }}
+                              title={`Hapus data guru ${p.full_name || p.email}`}
+                            >
+                              <Trash2 size={13} />
+                              <span>{deletingTeacherId === p.id ? 'Menghapus...' : 'Hapus'}</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
