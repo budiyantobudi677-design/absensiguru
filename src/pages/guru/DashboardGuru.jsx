@@ -417,7 +417,8 @@ export default function DashboardGuru({ roleOverride = null }) {
   const isInspectingSpecificUser = Boolean(selectedViewTeacherId)
   const isPathNonOp = !isInspectingSpecificUser && (location.pathname.startsWith('/nonoperator') || roleOverride === 'nonoperator')
   const isPathOp = !isInspectingSpecificUser && (location.pathname.startsWith('/operator') || roleOverride === 'operator')
-  const isTendikUser = isPathNonOp || isPathOp || profile?.role === 'tendik' || profile?.role === 'operator' || profile?.role === 'nonoperator' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)
+  const isRealGuru = !isPathOp && !isPathNonOp && (profile?.role === 'guru' || user?.role === 'guru')
+  const isTendikUser = !isRealGuru && (isPathNonOp || isPathOp || profile?.role === 'tendik' || profile?.role === 'operator' || profile?.role === 'nonoperator' || profile?.penugasan_tipe === 'tendik' || guruTipeState === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan))
   const isNonOpUser = isPathNonOp || profile?.role === 'nonoperator' || (isTendikUser && !isPathOp && (localStorage.getItem(`tendik_kategori_${profile?.id || user?.id}`) === 'non_operator' || ['Pustakawan', 'Bujang', 'Satpam'].includes(profile?.jabatan)))
   const isOpUser = !isNonOpUser && (isPathOp || profile?.role === 'operator' || isTendikUser)
 
@@ -548,15 +549,44 @@ export default function DashboardGuru({ roleOverride = null }) {
     }
   }
 
-  // Jika belum ada di state/local, cari dari profile jabatan guru (contoh: "Guru Kelas 5" atau "Guru Kelas • Wali 5")
-  if (userAssignedIds.length === 0 && profile?.jabatan && classesList.length > 0) {
-    const jabLower = String(profile.jabatan).toLowerCase()
-    const matched = classesList.find(c => {
-      const cName = String(c.name || '').toLowerCase().trim()
-      return jabLower.includes(`wali ${cName}`) || jabLower.includes(`kelas ${cName}`) || jabLower.endsWith(` ${cName}`)
-    })
-    if (matched) {
-      userAssignedIds = [matched.id]
+  // Helper normalisasi nama kelas dan angka Arab - Romawi
+  const normalizeClassName = (str) => {
+    if (!str) return ''
+    let s = String(str).trim().toLowerCase()
+    s = s.replace(/^(guru\s+kelas\s*•?\s*wali\s+|guru\s+kelas\s+|wali\s+kelas\s+|wali\s+|kelas\s+|rombel\s+)/i, '').trim()
+    s = s.replace(/\s+/g, '')
+    return s
+  }
+
+  const toArabicVariant = (s) => {
+    return s.toLowerCase()
+      .replace(/^viii([a-z]?)$/, '8$1')
+      .replace(/^vii([a-z]?)$/, '7$1')
+      .replace(/^vi([a-z]?)$/, '6$1')
+      .replace(/^iv([a-z]?)$/, '4$1')
+      .replace(/^v([a-z]?)$/, '5$1')
+      .replace(/^iii([a-z]?)$/, '3$1')
+      .replace(/^ii([a-z]?)$/, '2$1')
+      .replace(/^i([a-z]?)$/, '1$1')
+  }
+
+  const toRomanVariant = (s) => {
+    return s.toLowerCase()
+      .replace(/^8([a-z]?)$/, 'viii$1')
+      .replace(/^7([a-z]?)$/, 'vii$1')
+      .replace(/^6([a-z]?)$/, 'vi$1')
+      .replace(/^5([a-z]?)$/, 'v$1')
+      .replace(/^4([a-z]?)$/, 'iv$1')
+      .replace(/^3([a-z]?)$/, 'iii$1')
+      .replace(/^2([a-z]?)$/, 'ii$1')
+      .replace(/^1([a-z]?)$/, 'i$1')
+  }
+
+  // Jika belum ada di state/local, cari dari profile jabatan guru (contoh: "Guru Kelas 5" atau "Guru Kelas • Wali VB")
+  if (userAssignedIds.length === 0 && profile?.jabatan) {
+    const cleanJab = normalizeClassName(profile.jabatan)
+    if (cleanJab) {
+      userAssignedIds = [cleanJab]
     }
   }
 
@@ -564,31 +594,62 @@ export default function DashboardGuru({ roleOverride = null }) {
   const dbTeacherClassIds = classesList.filter(c => c.teacher_id === user?.id).map(c => c.id)
   const combinedAssignedIds = Array.from(new Set([...userAssignedIds, ...dbTeacherClassIds]))
 
-  // Helper pencocokan kelas yang fleksibel (mendukung integer id, string id, nama kelas, atau teacher_id)
+  // Helper pencocokan kelas yang fleksibel dan akurat
   const isClassAssignedToTeacher = (c, assignedList, teacherId) => {
     if (!c) return false
     if (teacherId && String(c.teacher_id) === String(teacherId)) return true
     if (!Array.isArray(assignedList) || assignedList.length === 0) return false
 
-    const cIdStr = String(c.id).trim()
-    const cNameStr = String(c.name || '').trim().toLowerCase()
-    const cleanCName = cNameStr.replace(/^kelas\s+/i, '').trim()
+    const cId = String(c.id || '').trim()
+    const cNameRaw = String(c.name || '').trim()
+    const cNorm = normalizeClassName(cNameRaw)
+    const cArabic = toArabicVariant(cNorm)
+    const cRoman = toRomanVariant(cNorm)
 
-    return assignedList.some(assignedItem => {
-      if (assignedItem === null || assignedItem === undefined) return false
-      const aStr = String(assignedItem).trim()
-      const aLower = aStr.toLowerCase()
-      const cleanALower = aLower.replace(/^kelas\s+/i, '').trim()
+    return assignedList.some(item => {
+      if (!item) return false
+      const itemStr = String(item).trim()
+      if (cId && itemStr === cId) return true
 
-      if (aStr === cIdStr) return true
-      if (cNameStr && (aLower === cNameStr || cleanALower === cleanCName || cleanALower === cNameStr)) return true
+      const aNorm = normalizeClassName(itemStr)
+      if (!aNorm) return false
+      if (cNorm && cNorm === aNorm) return true
+
+      const aArabic = toArabicVariant(aNorm)
+      const aRoman = toRomanVariant(aNorm)
+      if (cArabic && (cArabic === aArabic || cArabic === aNorm)) return true
+      if (cRoman && (cRoman === aRoman || cRoman === aNorm)) return true
+
+      const cDigit = cArabic.match(/^[1-8]/)?.[0]
+      const aDigit = aArabic.match(/^[1-8]/)?.[0]
+      if (cDigit && aDigit && cDigit === aDigit) {
+        if (cArabic.startsWith(aArabic) || aArabic.startsWith(cArabic)) return true
+      }
       return false
     })
   }
 
-  const filteredClassesList = combinedAssignedIds.length > 0
-    ? classesList.filter(c => isClassAssignedToTeacher(c, combinedAssignedIds, user?.id))
-    : classesList
+  // Saring rombel kelas yang diampu
+  let filteredClassesList = []
+  if (combinedAssignedIds.length > 0) {
+    filteredClassesList = classesList.filter(c => isClassAssignedToTeacher(c, combinedAssignedIds, user?.id))
+  }
+
+  // Jika guru sudah memiliki penugasan/jabatan wali kelas tetapi belum ada entri di classesList
+  if (filteredClassesList.length === 0 && (!isTendikUser && !isOpUser)) {
+    const jabStr = String(profile?.jabatan || user?.jabatan || '').trim()
+    const jabMatch = jabStr.match(/(?:wali|kelas)\s+([A-Za-z0-9\s\-]+)/i)
+    if (jabMatch || combinedAssignedIds.length > 0) {
+      const clsName = jabMatch ? `Kelas ${jabMatch[1].trim()}` : (userAssignedIds[0] ? `Kelas ${userAssignedIds[0]}` : 'Kelas Binaan')
+      const clsId = userAssignedIds[0] || 'assigned-cls'
+      filteredClassesList = [{ id: clsId, name: clsName }]
+    }
+  }
+
+  // Khusus Operator/Admin: jika kosong, baru tampilkan seluruh kelas
+  if (filteredClassesList.length === 0 && (isTendikUser || isOpUser)) {
+    filteredClassesList = classesList
+  }
 
   useEffect(() => {
     if (darkMode) {
@@ -626,6 +687,7 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   const handleDeletePengumuman = (id) => {
      if (!user) return
+     if (!window.confirm("Apakah Anda yakin ingin menghapus pengumuman ini dari daftar Anda?")) return
      const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${user.id}`) || '{"read":[], "deleted":[]}')
      localData.deleted.push(id)
      localStorage.setItem(`pengumuman_meta_${user.id}`, JSON.stringify(localData))
@@ -3236,6 +3298,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                  setHistoryMonth(m)
                  loadHistory(m, user)
                }}
+               onRefresh={() => loadHistory(historyMonth, user)}
                schoolName={schoolName}
                schoolLogo={schoolLogo}
                hariKerja={hariKerja}
@@ -3272,18 +3335,30 @@ export default function DashboardGuru({ roleOverride = null }) {
                    Belum ada pengumuman untuk Anda.
                 </div>
              ) : (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   {pengumumanData.map(p => (
-                    <div key={p.id} className="card" style={{ padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '16px', background: 'white' }}>
-                      <div className="flex justify-between items-start mb-2">
-                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                          {new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <button onClick={() => handleDeletePengumuman(p.id)} style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#EF4444', cursor: 'pointer', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
-                          <Trash2 size={16} />
+                    <div key={p.id} className="card" style={{ padding: '1.25rem', border: '1px solid #E2E8F0', borderRadius: '20px', background: 'white', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                      <div className="flex justify-between items-center mb-3 pb-2" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', color: 'white', padding: '3px 10px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            📢 Pengumuman Resmi
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                            {new Date(p.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <button 
+                          onClick={() => handleDeletePengumuman(p.id)} 
+                          title="Hapus pengumuman ini"
+                          style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#EF4444', cursor: 'pointer', padding: '0.35rem 0.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          <Trash2 size={14} />
+                          <span>Hapus</span>
                         </button>
                       </div>
-                      <p style={{ margin: 0, fontSize: '0.95rem', color: '#1E293B', lineHeight: '1.5' }}>{p.pesan}</p>
+                      <div style={{ margin: 0, fontSize: '0.9rem', color: '#1E293B', lineHeight: '1.65', whiteSpace: 'pre-line', fontWeight: 500 }}>
+                        {p.pesan}
+                      </div>
                     </div>
                   ))}
                 </div>

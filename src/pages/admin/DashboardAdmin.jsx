@@ -2886,6 +2886,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                onMonthChange={(m) => {
                  setLaporanBulan(m)
                }}
+               onRefresh={() => {
+                 if (typeof loadRekapPresensi === 'function') loadRekapPresensi()
+                 if (typeof loadHistory === 'function') loadHistory(historyMonth)
+               }}
                schoolName={namaSekolah}
                schoolLogo={logoSekolah}
                hariKerja={hariKerja || 5}
@@ -2952,7 +2956,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                          <Trash2 size={16} />
                        </button>
                      </div>
-                     <p style={{ margin: 0, fontSize: '0.95rem', color: '#334E68', lineHeight: '1.5' }}>{p.pesan}</p>
+                     <div style={{ margin: 0, fontSize: '0.9rem', color: '#1E293B', lineHeight: '1.65', whiteSpace: 'pre-line', fontWeight: 500 }}>{p.pesan}</div>
                    </div>
                  ))}
                </div>
@@ -3825,6 +3829,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
               onMonthChange={(m) => {
                 setHistoryMonth(m)
                 loadHistory(m)
+              }}
+              onRefresh={() => {
+                if (typeof loadHistory === 'function') loadHistory(historyMonth)
+                if (typeof loadRekapPresensi === 'function') loadRekapPresensi()
               }}
               schoolName={namaSekolah}
               schoolLogo={logoSekolah}

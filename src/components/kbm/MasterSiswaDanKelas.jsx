@@ -25,36 +25,115 @@ export default function MasterSiswaDanKelas({
   const isAdmin = activeProfile.role === 'admin' || 
                   user?.role === 'admin' || 
                   window.location.pathname.startsWith('/admin')
+  const isOperatorRoute = window.location.pathname.startsWith('/operator')
   const guruTipe = localStorage.getItem(`guru_tipe_${activeProfile.id || user?.id}`) || activeProfile.penugasan_tipe || activeProfile.role
-  const isGuruMapel = !isAdmin && !isOperatorMode && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
+  
+  // Deteksi akun Guru murni (Bukan Admin dan Bukan Operator)
+  const isTeacher = !isAdmin && !isOperatorMode && !isOperatorRoute && (
+    activeProfile.role === 'guru' ||
+    user?.role === 'guru' ||
+    guruTipe === 'guru_kelas' ||
+    guruTipe === 'guru_mapel'
+  )
+  const isGuruMapel = isTeacher && (guruTipe === 'guru_mapel' || activeProfile.role === 'guru_mapel' || user?.role === 'guru_mapel')
   
   // Deteksi akun Tendik (Operator maupun Non-Operator)
-  const isTendik = isOperatorMode ||
-                   window.location.pathname.startsWith('/operator') ||
-                   activeProfile.role === 'tendik' || 
-                   activeProfile.role === 'operator' ||
-                   activeProfile.penugasan_tipe === 'tendik' || 
-                   guruTipe === 'tendik' ||
-                   Boolean(localStorage.getItem(`tendik_kategori_${activeProfile.id || user?.id}`)) ||
-                   Boolean(localStorage.getItem(`tendik_penugasan_${activeProfile.id || user?.id}`)) ||
-                   ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(activeProfile.jabatan)
+  const isTendik = !isTeacher && (
+    isOperatorMode ||
+    isOperatorRoute ||
+    activeProfile.role === 'tendik' || 
+    activeProfile.role === 'operator' ||
+    activeProfile.penugasan_tipe === 'tendik' || 
+    guruTipe === 'tendik' ||
+    ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(activeProfile.jabatan)
+  )
 
-  // Hak Akses Manajemen Kelas (Tambah, Edit & Hapus Rombel): Admin dan Tendik/Operator
-  const canManageClasses = isAdmin || isTendik
+  // Guru TIDAK PERNAH boleh mengelola kelas rombel (+ Tambah Kelas, Edit, Hapus Kelas)
+  // Hak Akses Manajemen Kelas (Tambah, Edit & Hapus Rombel) HANYA untuk Admin dan Tendik/Operator
+  const canManageClasses = (isAdmin || (isOperatorMode && isTendik)) && !isTeacher
   // Admin, Wali Kelas, dan Tendik/Operator berhak mengelola siswa (tambah, edit & hapus siswa); Guru Mapel dibatasi (Read Only)
   const canManageStudents = isAdmin || isTendik || !isGuruMapel
   // Hanya Admin yang berhak merubah struktur mapel kurikulum secara global
   const canManageSubjects = isAdmin
 
+  // Normalizer nama kelas dan konversi angka Arab - Romawi
+  const normalizeClassName = (str) => {
+    if (!str) return ''
+    let s = String(str).trim().toLowerCase()
+    s = s.replace(/^(guru\s+kelas\s*•?\s*wali\s+|guru\s+kelas\s+|wali\s+kelas\s+|wali\s+|kelas\s+|rombel\s+)/i, '').trim()
+    s = s.replace(/\s+/g, '')
+    return s
+  }
+
+  const toArabicVariant = (s) => {
+    return s.toLowerCase()
+      .replace(/^viii([a-z]?)$/, '8$1')
+      .replace(/^vii([a-z]?)$/, '7$1')
+      .replace(/^vi([a-z]?)$/, '6$1')
+      .replace(/^iv([a-z]?)$/, '4$1')
+      .replace(/^v([a-z]?)$/, '5$1')
+      .replace(/^iii([a-z]?)$/, '3$1')
+      .replace(/^ii([a-z]?)$/, '2$1')
+      .replace(/^i([a-z]?)$/, '1$1')
+  }
+
+  const toRomanVariant = (s) => {
+    return s.toLowerCase()
+      .replace(/^8([a-z]?)$/, 'viii$1')
+      .replace(/^7([a-z]?)$/, 'vii$1')
+      .replace(/^6([a-z]?)$/, 'vi$1')
+      .replace(/^5([a-z]?)$/, 'v$1')
+      .replace(/^4([a-z]?)$/, 'iv$1')
+      .replace(/^3([a-z]?)$/, 'iii$1')
+      .replace(/^2([a-z]?)$/, 'ii$1')
+      .replace(/^1([a-z]?)$/, 'i$1')
+  }
+
+  // Helper pencocokan kelas yang fleksibel (mendukung integer ID, UUID, nama kelas, atau teacher_id)
+  const isClassMatchingAssigned = (c, assignedList, teacherId) => {
+    if (!c) return false
+    if (teacherId && String(c.teacher_id) === String(teacherId)) return true
+    if (!Array.isArray(assignedList) || assignedList.length === 0) return false
+
+    const cId = String(c.id || '').trim()
+    const cNameRaw = String(c.name || '').trim()
+    const cNorm = normalizeClassName(cNameRaw)
+    const cArabic = toArabicVariant(cNorm)
+    const cRoman = toRomanVariant(cNorm)
+
+    return assignedList.some(item => {
+      if (!item) return false
+      const itemStr = String(item).trim()
+      if (cId && itemStr === cId) return true
+
+      const aNorm = normalizeClassName(itemStr)
+      if (!aNorm) return false
+      if (cNorm && cNorm === aNorm) return true
+
+      const aArabic = toArabicVariant(aNorm)
+      const aRoman = toRomanVariant(aNorm)
+      if (cArabic && (cArabic === aArabic || cArabic === aNorm)) return true
+      if (cRoman && (cRoman === aRoman || cRoman === aNorm)) return true
+
+      // Pencocokan tingkat kelas dasar (contoh: '5' vs '5B' atau 'VB' vs '5')
+      const cDigit = cArabic.match(/^[1-8]/)?.[0]
+      const aDigit = aArabic.match(/^[1-8]/)?.[0]
+      if (cDigit && aDigit && cDigit === aDigit) {
+        if (cArabic.startsWith(aArabic) || aArabic.startsWith(cArabic)) return true
+      }
+      return false
+    })
+  }
+
   // State Kelas & Siswa
   const [classes, setClasses] = useState(() => {
-    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+    if (isTeacher && Array.isArray(propClasses) && propClasses.length > 0) {
       return propClasses
     }
     return []
   })
   const [selectedClassId, setSelectedClassId] = useState(() => {
-    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+    if (isTeacher && Array.isArray(propClasses) && propClasses.length > 0) {
       return propClasses[0].id
     }
     return ''
@@ -99,13 +178,13 @@ export default function MasterSiswaDanKelas({
   }, [])
 
   useEffect(() => {
-    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+    if (isTeacher && Array.isArray(propClasses) && propClasses.length > 0) {
       setClasses(propClasses)
       if (!selectedClassId || !propClasses.some(c => c.id === selectedClassId)) {
         setSelectedClassId(propClasses[0].id)
       }
     }
-  }, [propClasses, isAdmin, isTendik])
+  }, [propClasses, isTeacher])
 
   useEffect(() => {
     if (selectedClassId) {
@@ -124,36 +203,14 @@ export default function MasterSiswaDanKelas({
     }
   }
 
-  // Helper pencocokan kelas yang fleksibel (mendukung integer ID, string ID, nama kelas, atau teacher_id)
-  const isClassMatchingAssigned = (c, assignedList, teacherId) => {
-    if (!c) return false
-    if (teacherId && String(c.teacher_id) === String(teacherId)) return true
-    if (!Array.isArray(assignedList) || assignedList.length === 0) return false
-
-    const cIdStr = String(c.id).trim()
-    const cNameStr = String(c.name || '').trim().toLowerCase()
-    const cleanCName = cNameStr.replace(/^kelas\s+/i, '').trim()
-
-    return assignedList.some(assignedItem => {
-      if (assignedItem === null || assignedItem === undefined) return false
-      const aStr = String(assignedItem).trim()
-      const aLower = aStr.toLowerCase()
-      const cleanALower = aLower.replace(/^kelas\s+/i, '').trim()
-
-      if (aStr === cIdStr) return true
-      if (cNameStr && (aLower === cNameStr || cleanALower === cleanCName || cleanALower === cNameStr)) return true
-      return false
-    })
-  }
-
   const fetchClasses = async () => {
     try {
       const { data, error } = await supabase.from('classes').select('*').order('name', { ascending: true })
       if (error) throw error
       
       let filtered = data || []
-      // Jika bukan Admin dan bukan Tendik/Operator, saring KETAT: hanya rombel kelas yang diampu/dipilih oleh guru ini
-      if (!isAdmin && !isTendik) {
+      // Jika akun Guru, saring KETAT: HANYA rombel kelas yang diampu / dipilih oleh guru ini
+      if (isTeacher) {
         const uId = activeProfile.id || user?.id
         let assigned = Array.isArray(assignedClassIds) && assignedClassIds.length > 0 ? [...assignedClassIds] : []
 
@@ -166,7 +223,7 @@ export default function MasterSiswaDanKelas({
         }
 
         if (assigned.length === 0 && Array.isArray(propClasses) && propClasses.length > 0) {
-          assigned = propClasses.map(c => c.id)
+          assigned = propClasses.map(c => c.id || c.name)
         }
 
         if (assigned.length === 0 && supabase) {
@@ -182,25 +239,33 @@ export default function MasterSiswaDanKelas({
         const dbTeacherClassIds = filtered.filter(c => String(c.teacher_id) === String(uId)).map(c => c.id)
         let allAssigned = Array.from(new Set([...assigned, ...dbTeacherClassIds]))
 
-        // Jika masih kosong, coba periksa dari profil jabatan guru (misal: "Guru Kelas 5" atau "Guru Kelas • Wali 5")
-        if (allAssigned.length === 0) {
-          const jab = String(activeProfile?.jabatan || user?.jabatan || '').toLowerCase().trim()
-          const matched = filtered.find(c => {
-            const cName = String(c.name || '').trim().toLowerCase()
-            return jab.includes(`wali ${cName}`) || jab.includes(`kelas ${cName}`) || jab.endsWith(` ${cName}`)
-          })
-          if (matched) {
-            allAssigned = [matched.id]
-          }
+        // Ambil nama kelas dari profil jabatan guru jika ada (misal: "Guru Kelas • Wali VB" -> "VB" atau "Kelas 5")
+        const jabStr = String(activeProfile?.jabatan || user?.jabatan || '').trim()
+        if (jabStr) {
+          const cleanJab = normalizeClassName(jabStr)
+          if (cleanJab) allAssigned.push(cleanJab)
         }
 
+        // Saring kelas di database
+        let matchedClasses = []
         if (allAssigned.length > 0) {
-          const matchedClasses = filtered.filter(c => isClassMatchingAssigned(c, allAssigned, uId))
-          if (matchedClasses.length > 0) {
-            filtered = matchedClasses
-          }
+          matchedClasses = filtered.filter(c => isClassMatchingAssigned(c, allAssigned, uId))
+        }
+
+        if (matchedClasses.length > 0) {
+          filtered = matchedClasses
         } else if (Array.isArray(propClasses) && propClasses.length > 0) {
-          filtered = filtered.filter(c => propClasses.some(pc => String(pc.id) === String(c.id) || String(pc.name).toLowerCase() === String(c.name).toLowerCase()))
+          filtered = propClasses
+        } else if (allAssigned.length > 0) {
+          // Guru punya penugasan tapi di database belum ada baris kelasnya
+          // Buat baris kelas sintetis agar guru HANYA melihat kelas binaannya sendiri (TIDAK MELIHAT KELAS LAIN)
+          const primaryAssigned = allAssigned[0]
+          const jabMatch = jabStr.match(/(?:wali|kelas)\s+([A-Za-z0-9\s\-]+)/i)
+          const fallbackName = jabMatch ? `Kelas ${jabMatch[1].trim()}` : (isNaN(primaryAssigned) && primaryAssigned.length < 10 ? `Kelas ${primaryAssigned}` : 'Kelas Binaan')
+          filtered = [{ id: primaryAssigned, name: fallbackName }]
+        } else {
+          // Jika guru belum memilih kelas sama sekali, JANGAN pernah tampilkan seluruh kelas sekolah!
+          filtered = []
         }
       }
 

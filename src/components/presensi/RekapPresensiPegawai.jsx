@@ -2,11 +2,13 @@ import React, { useState, useMemo } from 'react'
 import { 
   Calendar, Table, Grid, Users, Clock, FileSpreadsheet, 
   Download, Printer, Search, Briefcase, Eye, X, Check, 
-  ChevronLeft, ChevronRight, Award, Activity, AlertCircle, FileText, ImageIcon
+  ChevronLeft, ChevronRight, Award, Activity, AlertCircle, FileText, ImageIcon,
+  Trash2, Loader2
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import { supabase } from '../../lib/supabase'
 
 export default function RekapPresensiPegawai({
   role = 'guru', // 'admin' | 'kepsek' | 'guru' | 'tendik'
@@ -22,7 +24,8 @@ export default function RekapPresensiPegawai({
   hariKerja = 5,
   onOpenExportModal,
   onExportExcel,
-  onExportPdf
+  onExportPdf,
+  onRefresh
 }) {
   // Mode Tampilan: 'tabel' (Tabel Rinci) | 'kalender' (Kalender Bulanan) | 'matriks' (Matriks Dinas 1-31)
   const [viewMode, setViewMode] = useState('tabel')
@@ -30,6 +33,7 @@ export default function RekapPresensiPegawai({
   const [searchTerm, setSearchTerm] = useState('')
   const [activeDayDetail, setActiveDayDetail] = useState(null) // Modal detail hari
   const [activePhotoModal, setActivePhotoModal] = useState(null) // Modal preview foto surat/bukti
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Parse Bulan & Tahun
   const currentMonthStr = selectedMonth || new Date().toISOString().slice(0, 7)
@@ -338,6 +342,66 @@ export default function RekapPresensiPegawai({
     }
   }
 
+  // Handler Hapus 1 Catatan Presensi dengan Pop-up Konfirmasi
+  const handleDeleteSingle = async (item) => {
+    if (!item?.id) return
+    const tgl = item.tanggal 
+      ? new Date(item.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) 
+      : 'ini'
+    const namaPegawai = item.profiles?.full_name ? ` milik ${item.profiles.full_name}` : ''
+    const confirmMsg = `Apakah Anda yakin ingin menghapus data presensi tanggal ${tgl}${namaPegawai}?\n\nPERINGATAN: Data yang telah dihapus tidak dapat dipulihkan kembali.`
+    
+    if (!window.confirm(confirmMsg)) return
+
+    try {
+      setIsDeleting(true)
+      const { error } = await supabase.from('absensi').delete().eq('id', item.id)
+      if (error) throw error
+
+      alert(`Data presensi tanggal ${tgl} berhasil dihapus.`)
+      if (activeDayDetail?.att?.id === item.id) {
+        setActiveDayDetail(null)
+      }
+      if (onRefresh) onRefresh()
+    } catch (err) {
+      alert(`Gagal menghapus data presensi: ${err.message}`)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Handler Hapus Seluruh Riwayat Presensi yang Tampil dengan Pop-up Konfirmasi
+  const handleDeleteAll = async () => {
+    if (!filteredData || filteredData.length === 0) {
+      alert('Tidak ada catatan presensi untuk dihapus pada periode ini.')
+      return
+    }
+
+    const count = filteredData.length
+    const targetLabel = mode === 'personal' ? 'pribadi Anda' : (selectedTeacherId ? 'pegawai ini' : 'seluruh pegawai')
+    const confirmMsg = `PERINGATAN BESAR:\nApakah Anda yakin ingin menghapus SEMUA ${count} catatan presensi ${targetLabel} pada periode ${periodLabel}?\n\nTindakan ini permanen dan data presensi tidak dapat dikembalikan.`
+    
+    if (!window.confirm(confirmMsg)) return
+    if (!window.confirm(`Konfirmasi Akhir: Klik OK untuk menghapus permanen ${count} data presensi.`)) return
+
+    try {
+      setIsDeleting(true)
+      const ids = filteredData.map(d => d.id).filter(Boolean)
+      if (ids.length === 0) return
+
+      const { error } = await supabase.from('absensi').delete().in('id', ids)
+      if (error) throw error
+
+      alert(`Sebanyak ${count} data riwayat presensi berhasil dihapus.`)
+      setActiveDayDetail(null)
+      if (onRefresh) onRefresh()
+    } catch (err) {
+      alert(`Gagal menghapus seluruh riwayat presensi: ${err.message}`)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="fade-in" style={{ width: '100%' }}>
       {/* 1. HEADER KONTROL & VIEW SWITCHER (IDE 4) */}
@@ -621,6 +685,33 @@ export default function RekapPresensiPegawai({
                   <span>Ekspor</span>
                 </button>
               )}
+
+              {filteredData.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDeleteAll}
+                  disabled={isDeleting}
+                  title="Hapus seluruh riwayat presensi yang tampil saat ini"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: '#FEF2F2',
+                    color: '#DC2626',
+                    border: '1px solid #FECACA',
+                    padding: '0.5rem 0.85rem',
+                    borderRadius: '12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: isDeleting ? 'not-allowed' : 'pointer',
+                    opacity: isDeleting ? 0.6 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Trash2 size={15} />
+                  <span>{isDeleting ? 'Menghapus...' : 'Hapus Semua'}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -742,12 +833,13 @@ export default function RekapPresensiPegawai({
                   <th style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', fontWeight: 800, color: '#475569', textAlign: 'center' }}>DURASI</th>
                   <th style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', fontWeight: 800, color: '#475569', textAlign: 'center' }}>STATUS</th>
                   <th style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', fontWeight: 800, color: '#475569' }}>KETERANGAN</th>
+                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', fontWeight: 800, color: '#EF4444', textAlign: 'center', width: '70px' }}>AKSI</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan={mode === 'all' && !selectedTeacherId ? 8 : 7} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.875rem' }}>
+                    <td colSpan={mode === 'all' && !selectedTeacherId ? 9 : 8} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.875rem' }}>
                       Tidak ada catatan presensi pada periode {periodLabel}.
                     </td>
                   </tr>
@@ -888,6 +980,30 @@ export default function RekapPresensiPegawai({
                               )}
                             </div>
                           )}
+                        </td>
+
+                        {/* Kolom Aksi Hapus Presensi */}
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSingle(item)}
+                            disabled={isDeleting}
+                            title="Hapus data presensi ini"
+                            style={{
+                              background: '#FEF2F2',
+                              border: '1px solid #FECACA',
+                              color: '#EF4444',
+                              cursor: isDeleting ? 'not-allowed' : 'pointer',
+                              padding: '6px 8px',
+                              borderRadius: '8px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </td>
                       </tr>
                     )
@@ -1236,6 +1352,31 @@ export default function RekapPresensiPegawai({
                     />
                   </div>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSingle(activeDayDetail.att)}
+                  disabled={isDeleting}
+                  style={{
+                    marginTop: '0.75rem',
+                    width: '100%',
+                    padding: '0.65rem 1rem',
+                    borderRadius: '12px',
+                    background: '#FEF2F2',
+                    color: '#DC2626',
+                    border: '1px solid #FECACA',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: isDeleting ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Trash2 size={16} />
+                  <span>Hapus Presensi Tanggal Ini</span>
+                </button>
               </div>
             ) : (
               <p style={{ margin: 0, color: '#94A3B8', fontSize: '0.85rem' }}>Tidak ada rekaman presensi pada hari ini.</p>
