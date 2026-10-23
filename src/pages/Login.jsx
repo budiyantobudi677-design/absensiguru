@@ -463,7 +463,7 @@ export default function Login() {
     try {
       localStorage.setItem('intended_login_role', selectedRole)
       const isNative = Capacitor.isNativePlatform()
-      const redirectTo = isNative ? 'panritaedu://auth-callback' : window.location.origin
+      const redirectTo = isNative ? 'gammaraapp://auth-callback' : window.location.origin
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

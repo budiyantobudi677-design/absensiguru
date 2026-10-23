@@ -1204,7 +1204,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const displayCoords = formatCoordDecimalCard(geoData.latitude !== null ? geoData.latitude : -5.125379, geoData.longitude !== null ? geoData.longitude : 119.530402)
 
     // Helper: Gambar Logo Teks GammaraApp & Subjudul "100% foto asli" di Bagian Kanan Atas Foto
-    const drawPanritaEduBrand = () => {
+    const drawGammaraAppBrand = () => {
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
       ctx.shadowBlur = 6 * baseFactor
@@ -1245,7 +1245,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     // 2. Render Watermark Based on layoutTemplate ('panritaedu' | 'panrita_split' | 'geotag' | 'logo' | 'modern' | 'card' | 'academic' | 'stamp' | 'idbadge' | 'classic')
     if (layoutTemplate === 'panritaedu') {
       // ========================================================
-      // TEMA PANRITAEDU (Badge Jam Kotak Gelap + Ceklis Oranye di Kiri Bawah)
+      // TEMA GAMMARAAPP (Badge Jam Kotak Gelap + Ceklis Oranye di Kiri Bawah)
       // ========================================================
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
@@ -1381,7 +1381,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.restore()
     } else if (layoutTemplate === 'panrita_split') {
       // ========================================================
-      // TEMA PANRITA SPLIT / JAM BESAR (Sesuai Foto Referensi 1 Pengguna)
+      // TEMA GAMMARA SPLIT / JAM BESAR (Sesuai Foto Referensi 1 Pengguna)
       // ========================================================
       ctx.save()
       ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'
@@ -2068,8 +2068,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       }
     }
 
-    // Render Watermark PanritaEdu ("PanritaEdu" & "100% foto asli") di Pojok Kanan Atas untuk SEMUA TEMPLATE
-    drawPanritaEduBrand()
+    // Render Watermark GammaraApp ("GammaraApp" & "100% foto asli") di Pojok Kanan Atas untuk SEMUA TEMPLATE
+    drawGammaraAppBrand()
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
     setIsFlashActive(true)

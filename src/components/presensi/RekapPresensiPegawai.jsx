@@ -17,7 +17,7 @@ export default function RekapPresensiPegawai({
   loading = false,
   selectedMonth,
   onMonthChange,
-  schoolName = 'SDN 173 Gammara',
+  schoolName = '',
   schoolLogo = '',
   hariKerja = 5,
   onOpenExportModal,

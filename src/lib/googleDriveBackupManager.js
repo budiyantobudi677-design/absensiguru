@@ -271,7 +271,7 @@ export async function findOrCreateFolder(accessToken, folderName, parentFolderId
  * Mengunggah file ke Google Drive menggunakan Multipart Upload
  */
 export async function uploadFileToFolder(accessToken, parentFolderId, fileName, mimeType, fileBlob) {
-  const boundary = '-------PanritaEduBoundary' + Math.random().toString(36).substring(2)
+  const boundary = '-------GammaraAppBoundary' + Math.random().toString(36).substring(2)
   const delimiter = `\r\n--${boundary}\r\n`
   const closeDelim = `\r\n--${boundary}--`
 
@@ -736,7 +736,7 @@ export async function generateDatabaseSnapshotJson(supabase) {
   }
 
   const dump = {
-    appName: 'PanritaEdu / GammaraApp',
+    appName: 'GammaraApp',
     snapshotCreatedAt: new Date().toISOString(),
     schoolName: schoolSettings?.[0]?.school_name || settings?.[0]?.school_name || 'Sekolah',
     schemaVersion: '2.0-kbm-terpadu',
@@ -783,7 +783,7 @@ export async function runFullBackupToDrive({ supabase, onProgress = () => {}, si
   try {
     // 0. Ambil nama sekolah untuk nama folder
     const { data: sSet } = await supabase.from('school_settings').select('school_name').limit(1)
-    const schoolName = sSet?.[0]?.school_name || 'PanritaEdu'
+    const schoolName = sSet?.[0]?.school_name || 'GammaraApp'
     const cleanSchoolName = schoolName.replace(/[/\\?%*:|"<>]/g, '_')
 
     const dateStamp = new Date().toISOString().slice(0, 10)
@@ -792,7 +792,7 @@ export async function runFullBackupToDrive({ supabase, onProgress = () => {}, si
 
     // 1. Root Folder
     onProgress({ step: 1, total: 6, message: 'Menyiapkan folder utama di Google Drive...' })
-    const rootFolder = await findOrCreateFolder(accessToken, `PanritaEdu - Backup ${cleanSchoolName}`)
+    const rootFolder = await findOrCreateFolder(accessToken, `GammaraApp - Backup ${cleanSchoolName}`)
     const rootFolderId = rootFolder.id
     const rootFolderUrl = rootFolder.webViewLink || `https://drive.google.com/drive/folders/${rootFolderId}`
 
@@ -863,7 +863,7 @@ export async function runFullBackupToDrive({ supabase, onProgress = () => {}, si
     const upDb = await uploadFileToFolder(
       accessToken,
       sub05.id,
-      `Snapshot_Database_PanritaEdu_${cleanSchoolName}_${stamp}.json`,
+      `Snapshot_Database_GammaraApp_${cleanSchoolName}_${stamp}.json`,
       'application/json',
       dbBlob
     )
@@ -918,7 +918,7 @@ export async function downloadDirectBackupBundle(supabase, onProgress = () => {}
 
   onProgress('Menyiapkan berkas Snapshot Database...')
   const dbBlob = await generateDatabaseSnapshotJson(supabase)
-  saveAs(dbBlob, `05_Snapshot_Database_PanritaEdu_${schoolName}_${stamp}.json`)
+  saveAs(dbBlob, `05_Snapshot_Database_GammaraApp_${schoolName}_${stamp}.json`)
 
   onProgress('Selesai! Berkas telah tersimpan di perangkat Anda.')
   return true

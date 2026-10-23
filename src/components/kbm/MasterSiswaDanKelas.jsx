@@ -5,10 +5,19 @@ import { supabase } from '../../lib/supabase'
 import { Users, Plus, Upload, Trash2, Edit3, Save, School, X, Sparkles, FileText, CheckCircle2, Search, Download, BookOpen, RotateCcw, Lock, ShieldAlert, Info, Image as ImageIcon, Camera, Loader2, CheckSquare, Square, QrCode } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { getCustomSubjects, saveCustomSubjects, syncCloudSubjects, DEFAULT_SUBJECTS } from '../../lib/subjectsManager'
+import { syncCloudTeacherAssignments } from '../../lib/assignmentManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, fileToBase64, scanStudentsFromImage } from '../../lib/gemini'
 import CetakKartuQrSiswaModal from './CetakKartuQrSiswaModal'
 
-export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefresh, isOperatorMode = false }) {
+export default function MasterSiswaDanKelas({
+  user,
+  profile,
+  schoolInfo,
+  onRefresh,
+  isOperatorMode = false,
+  classes: propClasses,
+  assignedClassIds = []
+}) {
   const [activeTab, setActiveTab] = useState('siswa_kelas') // 'siswa_kelas' | 'mapel'
 
   // Peran Guru, Tendik & Hak Akses
@@ -38,8 +47,18 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   const canManageSubjects = isAdmin
 
   // State Kelas & Siswa
-  const [classes, setClasses] = useState([])
-  const [selectedClassId, setSelectedClassId] = useState('')
+  const [classes, setClasses] = useState(() => {
+    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+      return propClasses
+    }
+    return []
+  })
+  const [selectedClassId, setSelectedClassId] = useState(() => {
+    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+      return propClasses[0].id
+    }
+    return ''
+  })
   const [students, setStudents] = useState([])
   const [newClassName, setNewClassName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -80,6 +99,15 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
   }, [])
 
   useEffect(() => {
+    if (!isAdmin && !isTendik && Array.isArray(propClasses) && propClasses.length > 0) {
+      setClasses(propClasses)
+      if (!selectedClassId || !propClasses.some(c => c.id === selectedClassId)) {
+        setSelectedClassId(propClasses[0].id)
+      }
+    }
+  }, [propClasses, isAdmin, isTendik])
+
+  useEffect(() => {
     if (selectedClassId) {
       fetchStudents(selectedClassId)
     } else {
@@ -102,18 +130,49 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
       if (error) throw error
       
       let filtered = data || []
-      // Jika bukan Admin dan bukan Tendik/Operator, saring sesuai penugasan guru
+      // Jika bukan Admin dan bukan Tendik/Operator, saring KETAT: hanya rombel kelas yang diampu/dipilih oleh guru ini
       if (!isAdmin && !isTendik) {
         const uId = activeProfile.id || user?.id
-        const assigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${uId}`) || '[]')
-        if (assigned.length > 0) {
-          filtered = filtered.filter(c => assigned.includes(c.id))
+        let assigned = Array.isArray(assignedClassIds) && assignedClassIds.length > 0 ? [...assignedClassIds] : []
+
+        if (assigned.length === 0) {
+          try {
+            const raw = localStorage.getItem(`guru_assigned_classes_${uId}`)
+            if (raw) assigned = JSON.parse(raw)
+          } catch (e) {}
+        }
+
+        if (assigned.length === 0 && Array.isArray(propClasses) && propClasses.length > 0) {
+          assigned = propClasses.map(c => c.id)
+        }
+
+        if (assigned.length === 0 && supabase) {
+          try {
+            const cloudAss = await syncCloudTeacherAssignments(supabase)
+            if (cloudAss?.[uId]?.assignedClasses?.length > 0) {
+              assigned = cloudAss[uId].assignedClasses
+            }
+          } catch (e) {}
+        }
+
+        // Cek juga kelas yang memiliki teacher_id = uId di tabel classes Supabase
+        const dbTeacherClassIds = filtered.filter(c => c.teacher_id === uId).map(c => c.id)
+        const allAssigned = Array.from(new Set([...assigned, ...dbTeacherClassIds]))
+
+        if (allAssigned.length > 0) {
+          filtered = filtered.filter(c => allAssigned.includes(c.id))
+        } else if (Array.isArray(propClasses) && propClasses.length > 0) {
+          filtered = filtered.filter(c => propClasses.some(pc => pc.id === c.id))
         }
       }
 
       setClasses(filtered)
-      if (filtered && filtered.length > 0 && !selectedClassId) {
-        setSelectedClassId(filtered[0].id)
+      if (filtered && filtered.length > 0) {
+        if (!selectedClassId || !filtered.some(c => c.id === selectedClassId)) {
+          setSelectedClassId(filtered[0].id)
+        }
+      } else {
+        setSelectedClassId('')
       }
     } catch (err) {
       console.error(err)
@@ -830,9 +889,13 @@ export default function MasterSiswaDanKelas({ user, profile, schoolInfo, onRefre
                     className="input"
                     style={{ flex: 1, padding: '0.65rem 0.85rem', fontSize: '0.85rem', borderRadius: '12px' }}
                   >
-                    {(classes || []).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {(classes || []).length > 0 ? (
+                      classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))
+                    ) : (
+                      <option value="">Belum ada rombel kelas yang diampu</option>
+                    )}
                   </select>
                   {canManageClasses && selectedClassId && (
                     <>

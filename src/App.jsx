@@ -220,7 +220,7 @@ function App() {
         }
 
         const url = event?.url || ''
-        if (url.includes('panritaedu://') || url.includes('com.sekolah.absensi://')) {
+        if (url.includes('gammaraapp://') || url.includes('panritaedu://') || url.includes('com.sekolah.absensi://')) {
           // Tangkap fragment token (#access_token=...&refresh_token=...)
           const hashIdx = url.indexOf('#')
           if (hashIdx !== -1) {

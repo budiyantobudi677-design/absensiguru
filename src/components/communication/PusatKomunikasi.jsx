@@ -593,7 +593,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
             <div style={{ padding: '0.85rem 1rem 0.6rem 1rem', background: darkMode ? '#202C33' : '#F0F2F5', borderBottom: darkMode ? '1px solid #2A3942' : '1px solid #E2E8F0' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: 800, color: darkMode ? '#E9EDEF' : '#111B21' }}>
-                  Obrolan PanritaEdu
+                  Obrolan GammaraApp
                 </span>
                 <span style={{ fontSize: '0.7rem', color: '#10B981', background: darkMode ? '#064E3B' : '#DCFCE7', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
                   ● Aktif
@@ -916,7 +916,7 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
                   <button
                     type="button"
                     onClick={() => {
-                      const text = `Halo Bapak/Ibu *${selectedPartner?.full_name}*, terkait koordinasi tugas di PanritaEdu...`
+                      const text = `Halo Bapak/Ibu *${selectedPartner?.full_name}*, terkait koordinasi tugas di GammaraApp...`
                       openWhatsAppDirect(selectedPartner?.phone, text)
                     }}
                     title="Buka Chat WhatsApp Resmi"

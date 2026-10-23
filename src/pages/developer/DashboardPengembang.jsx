@@ -2074,7 +2074,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                   <div>• <strong>Presensi & Nilai Siswa:</strong> Dikosongkan (0 baris riwayat)</div>
                   <div>• <strong>Jurnal & KBM Guru:</strong> Dikosongkan (0 baris riwayat)</div>
                   <div>• <strong>Siswa, Kelas, Libur:</strong> Dikosongkan (0 data sekolah)</div>
-                  <div>• <strong>Setelan Sekolah:</strong> Kembali ke nilai bawaan SDN 173 Gammara</div>
+                  <div>• <strong>Setelan Sekolah:</strong> Kembali ke nilai bawaan sekolah</div>
                   <div>• <strong>Auto-Backup:</strong> Mengunduh file JSON cadangan otomatis sebelum data dihapus</div>
                 </div>
               </div>

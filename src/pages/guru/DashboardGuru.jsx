@@ -370,7 +370,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [isHoliday, setIsHoliday] = useState(false)
   const [holidayReason, setHolidayReason] = useState('')
   const [showCameraModal, setShowCameraModal] = useState(false)
-  const [schoolName, setSchoolName] = useState('Presensia')
+  const [schoolName, setSchoolName] = useState(() => localStorage.getItem('gammara_school_name') || localStorage.getItem('panrita_school_name') || 'GammaraApp')
   const [schoolLogo, setSchoolLogo] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
   const [historyList, setHistoryList] = useState([])
@@ -959,6 +959,7 @@ export default function DashboardGuru({ roleOverride = null }) {
       const hariKerja = hariKerjaVal
       if (settings?.nama_sekolah) {
         setSchoolName(settings.nama_sekolah)
+        localStorage.setItem('gammara_school_name', settings.nama_sekolah)
       }
 
       // Ambil data Kepala Sekolah dan NIP dari Pengaturan Aplikasi (cloud config, panrita_kop_surat & profiles role kepsek)
@@ -3677,6 +3678,8 @@ export default function DashboardGuru({ roleOverride = null }) {
 
                 {kbmSubTab === 'master_siswa' && (
                   <MasterSiswaDanKelas
+                    classes={filteredClassesList}
+                    assignedClassIds={userAssignedIds}
                     user={{ ...user, ...profile }}
                     profile={profile}
                     schoolInfo={schoolInfoData}

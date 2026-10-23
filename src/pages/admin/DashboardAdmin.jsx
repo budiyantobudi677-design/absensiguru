@@ -112,7 +112,7 @@ export default function DashboardAdmin() {
   const [geminiTesting, setGeminiTesting] = useState(false)
   const [geminiTestStatus, setGeminiTestStatus] = useState(null)
   const [geminiSavedMessage, setGeminiSavedMessage] = useState(null)
-  const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
+  const [namaSekolah, setNamaSekolah] = useState(() => localStorage.getItem('gammara_school_name') || localStorage.getItem('panrita_school_name') || 'HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
   const [rekapTampilJam, setRekapTampilJam] = useState(true)
@@ -321,7 +321,10 @@ export default function DashboardAdmin() {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
     let currentHariKerja = 5
     if (data) {
-      if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+      if (data.nama_sekolah) {
+        setNamaSekolah(data.nama_sekolah)
+        localStorage.setItem('gammara_school_name', data.nama_sekolah)
+      }
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
       if (data.hari_kerja) {
         setHariKerja(data.hari_kerja)
@@ -2350,7 +2353,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 </button>
                 <div>
                   <h3 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 800 }}>Kelola & Hapus Data Guru</h3>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Daftar seluruh guru dan pegawai sekolah SDN 173 Gammara</p>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {namaSekolah && namaSekolah !== 'HR Dashboard' ? `Daftar seluruh guru dan pegawai ${namaSekolah}` : 'Daftar seluruh guru dan pegawai sekolah'}
+                  </p>
                 </div>
              </div>
 
@@ -2822,7 +2827,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           defaultValue={editingPegawai.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${editingPegawai.id}`) || 'android'}
                           style={{ fontWeight: 600 }}
                         >
-                          <option value="android">📱 Android (Wajib APK Resmi PanritaEdu)</option>
+                          <option value="android">📱 Android (Wajib APK Resmi GammaraApp)</option>
                           <option value="iphone">🍏 iPhone (Safari / Chrome iOS)</option>
                         </select>
                         <small style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px', display: 'block' }}>
@@ -3357,7 +3362,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                  const formData = new FormData(e.target);
                  const { error } = await supabase.from('settings').upsert({ id: 1, nama_sekolah: formData.get('nama_sekolah'), logo_sekolah: logoSekolah }, { onConflict: 'id' });
                  if (error) alert('Error: ' + error.message);
-                 else { setNamaSekolah(formData.get('nama_sekolah')); alert('Tersimpan!'); }
+                 else { 
+                   const sName = formData.get('nama_sekolah');
+                   setNamaSekolah(sName); 
+                   if (sName) localStorage.setItem('gammara_school_name', sName);
+                   alert('Tersimpan!'); 
+                 }
                }}>
                  <div className="input-group">
                    <label className="input-label">Nama Sekolah / Instansi</label>

@@ -104,7 +104,7 @@ export default function DashboardKepsek() {
   const [geminiTesting, setGeminiTesting] = useState(false)
   const [geminiTestStatus, setGeminiTestStatus] = useState(null)
   const [geminiSavedMessage, setGeminiSavedMessage] = useState(null)
-  const [namaSekolah, setNamaSekolah] = useState('HR Dashboard')
+  const [namaSekolah, setNamaSekolah] = useState(() => localStorage.getItem('gammara_school_name') || localStorage.getItem('panrita_school_name') || 'HR Dashboard')
   const [logoSekolah, setLogoSekolah] = useState('')
   const [hariKerja, setHariKerja] = useState(5)
   const [rekapTampilJam, setRekapTampilJam] = useState(true)
@@ -268,7 +268,10 @@ export default function DashboardKepsek() {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle()
     let currentHariKerja = 5
     if (data) {
-      if (data.nama_sekolah) setNamaSekolah(data.nama_sekolah)
+      if (data.nama_sekolah) {
+        setNamaSekolah(data.nama_sekolah)
+        localStorage.setItem('gammara_school_name', data.nama_sekolah)
+      }
       if (data.logo_sekolah) setLogoSekolah(data.logo_sekolah)
       if (data.hari_kerja) {
         setHariKerja(data.hari_kerja)
