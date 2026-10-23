@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
+import jsQR from 'jsqr'
 import { 
   X, Camera, RefreshCw, CheckCircle2, AlertCircle, 
   Volume2, VolumeX, Users, Sparkles, UserCheck, Search,
@@ -57,19 +57,22 @@ export default function ScanQrPresensiModal({
   supabase,
   user
 }) {
-  const [scannerInitialized, setScannerInitialized] = useState(false)
+  const [stream, setStream] = useState(null)
+  const [facingMode, setFacingMode] = useState('environment') // 'environment' (belakang) | 'user' (depan/selfie)
   const [cameraError, setCameraError] = useState(null)
-  const [availableCameras, setAvailableCameras] = useState([])
-  const [currentCameraIndex, setCurrentCameraIndex] = useState(0)
+  const [isCameraActive, setIsCameraActive] = useState(false)
   const [lastScannedStudent, setLastScannedStudent] = useState(null)
   const [recentScans, setRecentScans] = useState([])
   const [manualQuery, setManualQuery] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [savingId, setSavingId] = useState(null)
 
-  const html5QrCodeRef = useRef(null)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const animFrameIdRef = useRef(null)
+  const barcodeDetectorRef = useRef(null)
+  const isScanningRef = useRef(false)
   const lastScanTimeRef = useRef({})
-  const containerId = 'panrita-student-qr-viewport'
 
   const currentClass = classes.find(c => String(c.id) === String(activeClassId))
   const classNameStr = currentClass?.name || 'Kelas'
@@ -78,111 +81,204 @@ export default function ScanQrPresensiModal({
   const totalStudents = students.length
   const presentCount = students.filter(s => (attendanceMap[s.id] || 'hadir') === 'hadir').length
 
-  // Inisialisasi scanner saat modal terbuka
+  // Inisialisasi BarcodeDetector jika browser mendukung (hardware-accelerated di Chrome & Android)
   useEffect(() => {
-    let isMounted = true
-    if (!isOpen) return
-
-    setCameraError(null)
-    setLastScannedStudent(null)
-
-    const initScanner = async () => {
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
       try {
-        const devices = await Html5Qrcode.getCameras()
-        if (!isMounted) return
-
-        if (!devices || devices.length === 0) {
-          throw new Error('Tidak ada kamera yang ditemukan pada perangkat ini.')
-        }
-
-        setAvailableCameras(devices)
-
-        // Cari kamera belakang (environment) secara default
-        let backCameraIndex = devices.findIndex(d => 
-          /back|rear|environment|belakang/i.test(d.label)
-        )
-        if (backCameraIndex < 0) backCameraIndex = 0
-        setCurrentCameraIndex(backCameraIndex)
-
-        const selectedDeviceId = devices[backCameraIndex].id
-        await startCamera(selectedDeviceId)
-      } catch (err) {
-        if (!isMounted) return
-        console.error('Error init camera:', err)
-        setCameraError(err.message || 'Gagal mengakses kamera.')
+        barcodeDetectorRef.current = new window.BarcodeDetector({ formats: ['qr_code', 'code_128', 'ean_13'] })
+      } catch (e) {
+        barcodeDetectorRef.current = null
       }
     }
+  }, [])
 
-    const timer = setTimeout(() => {
-      initScanner()
-    }, 250)
+  // Fungsi menyalakan kamera
+  const startCamera = async (targetFacing = facingMode) => {
+    setCameraError(null)
+    setIsCameraActive(false)
 
+    // Hentikan stream sebelumnya jika ada
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      setStream(null)
+    }
+
+    try {
+      let mediaStream = null
+
+      // Strategi 1: Ideal facingMode dengan resolusi proporsional
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        })
+      } catch (e1) {
+        // Strategi 2: Fallback exact facingMode
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: targetFacing },
+            audio: false
+          })
+        } catch (e2) {
+          // Strategi 3: Fallback ke kamera default apapun yang tersedia di perangkat
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          })
+        }
+      }
+
+      if (!mediaStream) {
+        throw new Error('Tidak dapat memperoleh stream video dari kamera.')
+      }
+
+      setStream(mediaStream)
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream
+        videoRef.current.setAttribute('playsinline', 'true')
+        await videoRef.current.play()
+      }
+      setIsCameraActive(true)
+      isScanningRef.current = true
+    } catch (err) {
+      console.error('Camera access failed:', err)
+      let msg = 'Kamera tidak dapat diakses.'
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Izin kamera ditolak. Harap izinkan akses kamera di pengaturan browser/HP Anda.'
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        msg = 'Tidak ada perangkat kamera yang terdeteksi pada perangkat ini.'
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        msg = 'Kamera sedang digunakan oleh aplikasi lain. Tutup aplikasi kamera lain lalu coba lagi.'
+      } else {
+        msg = err.message || 'Gagal memulai kamera.'
+      }
+      setCameraError(msg)
+      setIsCameraActive(false)
+    }
+  }
+
+  // Fungsi mematikan kamera
+  const stopCamera = () => {
+    isScanningRef.current = false
+    if (animFrameIdRef.current) {
+      cancelAnimationFrame(animFrameIdRef.current)
+      animFrameIdRef.current = null
+    }
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      setStream(null)
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setIsCameraActive(false)
+  }
+
+  // Beralih antara Kamera Depan & Kamera Belakang
+  const handleSwitchCamera = async () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment'
+    setFacingMode(nextMode)
+    await startCamera(nextMode)
+  }
+
+  // Mengatur lifecycle modal
+  useEffect(() => {
+    if (isOpen) {
+      setLastScannedStudent(null)
+      startCamera(facingMode)
+    } else {
+      stopCamera()
+    }
     return () => {
-      isMounted = false
-      clearTimeout(timer)
-      stopScanner()
+      stopCamera()
     }
   }, [isOpen])
 
-  const startCamera = async (cameraId) => {
-    try {
-      await stopScanner()
+  // Continuous Scan Loop
+  useEffect(() => {
+    if (!isCameraActive || !isOpen) return
 
-      const qrScanner = new Html5Qrcode(containerId)
-      html5QrCodeRef.current = qrScanner
+    let lastScanCheck = 0
 
-      const config = {
-        fps: 15,
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const edge = Math.min(viewfinderWidth, viewfinderHeight) * 0.72
-          return { width: Math.floor(edge), height: Math.floor(edge) }
-        },
-        aspectRatio: 1.0
-      }
+    const scanFrame = async (timestamp) => {
+      if (!isScanningRef.current) return
 
-      await qrScanner.start(
-        cameraId,
-        config,
-        (decodedText) => handleDecodedQr(decodedText),
-        () => {} // abaikan scan error di setiap frame
-      )
+      // Batasi pemindaian setiap ~130ms agar tidak membebani CPU
+      if (timestamp - lastScanCheck > 130) {
+        lastScanCheck = timestamp
 
-      setScannerInitialized(true)
-      setCameraError(null)
-    } catch (err) {
-      console.error('Failed to start camera:', err)
-      setCameraError('Gagal menyalakan kamera. Pastikan izin kamera telah diberikan di browser/aplikasi.')
-    }
-  }
+        const video = videoRef.current
+        if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          let decodedString = null
 
-  const stopScanner = async () => {
-    if (html5QrCodeRef.current) {
-      try {
-        if (html5QrCodeRef.current.isScanning) {
-          await html5QrCodeRef.current.stop()
+          // Engine 1: Native BarcodeDetector (Super Cepat)
+          if (barcodeDetectorRef.current) {
+            try {
+              const barcodes = await barcodeDetectorRef.current.detect(video)
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                decodedString = barcodes[0].rawValue
+              }
+            } catch (e) {
+              // Jika BarcodeDetector gagal pada frame tertentu, fallback ke Engine 2
+            }
+          }
+
+          // Engine 2: Fallback jsQR (100% JavaScript Kompatibel di Semua Browser & HP)
+          if (!decodedString) {
+            try {
+              let canvas = canvasRef.current
+              if (!canvas) {
+                canvas = document.createElement('canvas')
+                canvasRef.current = canvas
+              }
+              const w = Math.min(video.videoWidth, 640)
+              const h = Math.min(video.videoHeight, 480)
+              canvas.width = w
+              canvas.height = h
+
+              const ctx = canvas.getContext('2d', { willReadFrequently: true })
+              if (ctx) {
+                ctx.drawImage(video, 0, 0, w, h)
+                const imageData = ctx.getImageData(0, 0, w, h)
+                const qrCode = jsQR(imageData.data, w, h, { inversionAttempts: 'dontInvert' })
+                if (qrCode && qrCode.data) {
+                  decodedString = qrCode.data
+                }
+              }
+            } catch (e) {
+              console.warn('jsQR frame scan error:', e)
+            }
+          }
+
+          if (decodedString) {
+            handleDecodedQr(decodedString)
+          }
         }
-        html5QrCodeRef.current.clear()
-      } catch (e) {
-        console.warn('Error stopping scanner:', e)
       }
-      html5QrCodeRef.current = null
-      setScannerInitialized(false)
-    }
-  }
 
-  const handleSwitchCamera = async () => {
-    if (availableCameras.length <= 1) return
-    const nextIndex = (currentCameraIndex + 1) % availableCameras.length
-    setCurrentCameraIndex(nextIndex)
-    await startCamera(availableCameras[nextIndex].id)
-  }
+      if (isScanningRef.current) {
+        animFrameIdRef.current = requestAnimationFrame(scanFrame)
+      }
+    }
+
+    animFrameIdRef.current = requestAnimationFrame(scanFrame)
+
+    return () => {
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current)
+      }
+    }
+  }, [isCameraActive, isOpen, students, activeClassId, selectedDate, attendanceMap])
 
   // Parsing dan pemrosesan kode QR yang terbaca
   const handleDecodedQr = async (decodedText) => {
     if (!decodedText) return
     const raw = String(decodedText).trim()
 
-    // Ekstraksi ID atau NISN dari beragam format yang mungkin dicetak pada kartu
     let parsedStudentId = ''
     let parsedNisn = ''
     let parsedName = ''
@@ -206,7 +302,6 @@ export default function ScanQrPresensiModal({
         parsedStudentId = parts[1]
       }
     } else {
-      // Asumsikan plain ID atau NISN
       parsedStudentId = raw
       parsedNisn = raw
     }
@@ -214,12 +309,12 @@ export default function ScanQrPresensiModal({
     // Cari siswa yang cocok di daftar kelas saat ini
     let matchedStudent = students.find(s => {
       if (parsedStudentId && String(s.id).toLowerCase() === String(parsedStudentId).toLowerCase()) return true
-      if (parsedNisn && String(s.nisn).trim() === String(parsedNisn).trim()) return true
+      if (parsedNisn && s.nisn && String(s.nisn).trim() === String(parsedNisn).trim()) return true
       if (parsedName && s.name && s.name.toLowerCase() === parsedName.toLowerCase()) return true
       return false
     })
 
-    // Debounce scan berulang (hindari scan terus-menerus dalam 4 detik untuk murid yang sama)
+    // Debounce scan berulang (hindari scan terus-menerus dalam 3.5 detik untuk murid yang sama)
     const now = Date.now()
     const targetKey = matchedStudent ? matchedStudent.id : raw
     if (lastScanTimeRef.current[targetKey] && now - lastScanTimeRef.current[targetKey] < 3500) {
@@ -230,7 +325,7 @@ export default function ScanQrPresensiModal({
     if (matchedStudent) {
       await recordStudentAttendance(matchedStudent, 'Hadir via Scan QR')
     } else {
-      // Coba cari di database jika murid mungkin terdaftar di kelas lain
+      // Coba cari di database jika murid mungkin terdaftar di rombel kelas lain
       searchInOtherClasses(parsedStudentId, parsedNisn, parsedName)
     }
   }
@@ -238,7 +333,7 @@ export default function ScanQrPresensiModal({
   const searchInOtherClasses = async (id, nisn, name) => {
     if (!supabase) return
     try {
-      let query = supabase.from('students').select('*, kelas(name)')
+      let query = supabase.from('students').select('*')
       if (id && id.length > 10) {
         query = query.eq('id', id)
       } else if (nisn) {
@@ -252,19 +347,20 @@ export default function ScanQrPresensiModal({
       const { data, error } = await query.limit(1)
       if (!error && data && data.length > 0) {
         const otherStudent = data[0]
-        const otherClassName = otherStudent.kelas?.name || 'Kelas Lain'
+        const otherClassObj = classes.find(c => String(c.id) === String(otherStudent.class_id))
+        const otherClassName = otherClassObj?.name || 'Kelas Lain'
         if (soundEnabled) playBeep('warning')
         setLastScannedStudent({
           student: otherStudent,
           status: 'different_class',
-          message: `${otherStudent.name} terdaftar di ${otherClassName} (bukan ${classNameStr}). Tetap hadirkan?`,
+          message: `${otherStudent.name} terdaftar di ${otherClassName} (bukan ${classNameStr}).`,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         })
       } else {
         if (soundEnabled) playBeep('warning')
         setLastScannedStudent({
           status: 'not_found',
-          message: 'Data siswa tidak ditemukan di sistem sekolah.',
+          message: 'Data siswa tidak terdaftar di sistem sekolah.',
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         })
       }
@@ -479,8 +575,7 @@ export default function ScanQrPresensiModal({
           <div style={{
             position: 'relative',
             width: '100%',
-            aspectRatio: '1',
-            maxHeight: '290px',
+            height: '270px',
             borderRadius: '20px',
             overflow: 'hidden',
             background: '#020617',
@@ -491,8 +586,18 @@ export default function ScanQrPresensiModal({
             justifyContent: 'center',
             marginBottom: '0.85rem'
           }}>
-            {/* Target ID untuk Html5Qrcode */}
-            <div id={containerId} style={{ width: '100%', height: '100%' }}></div>
+            {/* Video Element Langsung */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }}
+            />
 
             {/* Error Kamera */}
             {cameraError && (
@@ -517,7 +622,7 @@ export default function ScanQrPresensiModal({
                 </p>
                 <button
                   type="button"
-                  onClick={() => startCamera(availableCameras[0]?.id)}
+                  onClick={() => startCamera(facingMode)}
                   style={{
                     marginTop: '0.85rem',
                     padding: '0.5rem 1rem',
@@ -530,13 +635,13 @@ export default function ScanQrPresensiModal({
                     cursor: 'pointer'
                   }}
                 >
-                  Coba Akses Lagi
+                  Coba Nyalakan Lagi
                 </button>
               </div>
             )}
 
             {/* Tombol Ganti Kamera (Depan / Belakang) */}
-            {availableCameras.length > 1 && (
+            {isCameraActive && (
               <button
                 type="button"
                 onClick={handleSwitchCamera}
@@ -566,7 +671,7 @@ export default function ScanQrPresensiModal({
             )}
 
             {/* Laser Scanning Animation Overlay */}
-            {scannerInitialized && !cameraError && (
+            {isCameraActive && !cameraError && (
               <div style={{
                 position: 'absolute',
                 top: 0,
@@ -579,9 +684,9 @@ export default function ScanQrPresensiModal({
                 justifyContent: 'center'
               }}>
                 <div style={{
-                  width: '72%',
-                  height: '72%',
-                  border: '2px dashed rgba(52, 211, 153, 0.6)',
+                  width: '68%',
+                  height: '68%',
+                  border: '2px dashed rgba(52, 211, 153, 0.8)',
                   borderRadius: '16px',
                   position: 'relative',
                   boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
@@ -593,7 +698,7 @@ export default function ScanQrPresensiModal({
                     right: 0,
                     height: '2px',
                     background: 'linear-gradient(90deg, transparent, #10B981, transparent)',
-                    boxShadow: '0 0 8px #10B981',
+                    boxShadow: '0 0 10px #10B981',
                     animation: 'scanLaser 2s infinite ease-in-out'
                   }}></div>
                 </div>

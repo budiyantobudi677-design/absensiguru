@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
 import { 
   X, Printer, Download, Search, School, Users, 
-  QrCode, RefreshCw, Check, Sparkles, Filter
+  QrCode, RefreshCw, Check, Sparkles, Filter, FileText
 } from 'lucide-react'
 import html2pdf from 'html2pdf.js'
 
@@ -15,7 +15,7 @@ export default function CetakKartuQrSiswaModal({
   schoolInfo = {},
   supabase
 }) {
-  const [activeClass, setActiveClass] = useState(selectedClassId || classes[0]?.id || '')
+  const [activeClass, setActiveClass] = useState(selectedClassId || classes[0]?.id || 'all')
   const [studentList, setStudentList] = useState([])
   const [loading, setLoading] = useState(false)
   const [qrMap, setQrMap] = useState({})
@@ -26,43 +26,64 @@ export default function CetakKartuQrSiswaModal({
 
   const schoolName = schoolInfo?.school_name || schoolInfo?.nama || 'UPTD SPF SD NEGERI'
 
-  // Update active class when prop changes
+  // Sinkronkan activeClass saat modal dibuka atau selectedClassId berubah
   useEffect(() => {
     if (selectedClassId) {
       setActiveClass(selectedClassId)
-    } else if (classes.length > 0 && !activeClass) {
+    } else if (classes && classes.length > 0 && (!activeClass || activeClass === 'all')) {
       setActiveClass(classes[0].id)
     }
-  }, [selectedClassId, classes])
+  }, [selectedClassId, classes, isOpen])
 
-  // Fetch students for the chosen class
+  // Muat data siswa dan generate QR Code
   useEffect(() => {
     if (!isOpen) return
 
-    const loadStudents = async () => {
+    let isMounted = true
+
+    const loadStudentsAndGenerateQr = async () => {
       setLoading(true)
       try {
-        let query = supabase.from('students').select('*, kelas(name)').order('name', { ascending: true })
-        if (activeClass && activeClass !== 'all') {
-          query = query.eq('class_id', activeClass)
+        let list = []
+
+        // 1. Coba ambil dari Supabase tabel 'students'
+        if (supabase) {
+          try {
+            let query = supabase.from('students').select('*').order('name', { ascending: true })
+            if (activeClass && activeClass !== 'all') {
+              query = query.eq('class_id', activeClass)
+            }
+            const { data, error } = await query
+            if (!error && data && data.length > 0) {
+              list = data
+            }
+          } catch (dbErr) {
+            console.warn('Query students from db failed, using props fallback:', dbErr)
+          }
         }
 
-        const { data, error } = await query
-        if (error) throw error
+        // 2. Fallback: jika query database kosong atau gagal, gunakan data 'students' dari props
+        if ((!list || list.length === 0) && students && students.length > 0) {
+          if (activeClass && activeClass !== 'all') {
+            list = students.filter(s => String(s.class_id) === String(activeClass))
+          } else {
+            list = students
+          }
+        }
 
-        const list = data || []
+        if (!isMounted) return
         setStudentList(list)
 
-        // Generate QR codes for all students
+        // 3. Generate QR Code untuk setiap siswa
         const qrs = {}
         for (const st of list) {
           try {
-            // Encode payload ringkas & terstruktur
             const payload = JSON.stringify({
               type: 'panrita_student',
               id: st.id,
               nisn: st.nisn || '',
-              name: st.name
+              name: st.name,
+              class_id: st.class_id
             })
 
             const dataUrl = await QRCode.toDataURL(payload, {
@@ -76,19 +97,26 @@ export default function CetakKartuQrSiswaModal({
             })
             qrs[st.id] = dataUrl
           } catch (e) {
-            console.warn('Gagal buat QR untuk siswa:', st.name, e)
+            console.warn('Gagal buat QR untuk:', st.name, e)
           }
         }
-        setQrMap(qrs)
+
+        if (isMounted) {
+          setQrMap(qrs)
+        }
       } catch (err) {
-        console.error('Error load students for QR:', err)
+        console.error('Error in loadStudentsAndGenerateQr:', err)
       } finally {
-        setLoading(false)
+        if (isMounted) setLoading(false)
       }
     }
 
-    loadStudents()
-  }, [isOpen, activeClass, supabase])
+    loadStudentsAndGenerateQr()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isOpen, activeClass, students, supabase])
 
   const filteredStudents = studentList.filter(s => {
     const q = searchQuery.toLowerCase().trim()
@@ -96,7 +124,7 @@ export default function CetakKartuQrSiswaModal({
     return (s.name || '').toLowerCase().includes(q) || (s.nisn || '').includes(q)
   })
 
-  // Cetak dokumen menggunakan print preview browser
+  // Cetak dokumen menggunakan print preview browser (tata letak rapi A4)
   const handlePrint = () => {
     window.print()
   }
@@ -124,7 +152,7 @@ export default function CetakKartuQrSiswaModal({
     }
   }
 
-  // Unduh satu kartu gambar
+  // Unduh satu kartu gambar PNG
   const handleDownloadSingleQr = (student) => {
     const dataUrl = qrMap[student.id]
     if (!dataUrl) return
@@ -274,7 +302,7 @@ export default function CetakKartuQrSiswaModal({
             </div>
 
             <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
-              {filteredStudents.length} Kartu Siswa
+              {filteredStudents.length} Siswa Terpilih
             </span>
           </div>
 
@@ -295,7 +323,7 @@ export default function CetakKartuQrSiswaModal({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                cursor: 'pointer',
+                cursor: loading || filteredStudents.length === 0 ? 'not-allowed' : 'pointer',
                 boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
               }}
             >
@@ -318,7 +346,7 @@ export default function CetakKartuQrSiswaModal({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                cursor: 'pointer',
+                cursor: loading || generatingPdf || filteredStudents.length === 0 ? 'not-allowed' : 'pointer',
                 boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)'
               }}
             >
@@ -338,8 +366,10 @@ export default function CetakKartuQrSiswaModal({
           ) : filteredStudents.length === 0 ? (
             <div style={{ padding: '4rem 1rem', textAlign: 'center', color: '#94A3B8' }}>
               <Users size={36} style={{ margin: '0 auto 0.5rem auto', opacity: 0.5 }} />
-              <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#64748B' }}>Tidak ada data siswa</p>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem' }}>Pilih rombel lain atau tambahkan data siswa di Master Siswa.</p>
+              <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#64748B' }}>Tidak ada data siswa ditemukan</p>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem' }}>
+                Pilih rombel kelas lain di atas, atau pastikan data siswa sudah tersimpan di menu Master Siswa.
+              </p>
             </div>
           ) : (
             <div
@@ -353,7 +383,8 @@ export default function CetakKartuQrSiswaModal({
               }}
             >
               {filteredStudents.map((st) => {
-                const classNameStr = st.kelas?.name || classes.find(c => String(c.id) === String(st.class_id))?.name || 'Siswa'
+                const currentClassObj = classes.find(c => String(c.id) === String(st.class_id)) || classes.find(c => String(c.id) === String(activeClass))
+                const classNameStr = currentClassObj?.name || 'Siswa'
                 const qrUrl = qrMap[st.id]
 
                 return (
