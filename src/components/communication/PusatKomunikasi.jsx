@@ -39,6 +39,7 @@ import {
   createStudentAbsenceTemplate,
   createAnnouncementWhatsAppTemplate
 } from '../../lib/schoolCommunicationManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 
 export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [activeMainTab, setActiveMainTab] = useState('chat') // 'chat' | 'disposisi' | 'wa_tools'
@@ -140,13 +141,17 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   useEffect(() => {
     async function initData() {
       try {
-        const [{ data: profs }, { data: sSet }, { data: pList }] = await Promise.all([
+        const [{ data: profs }, { data: sSet }, { data: pList }, deletedReg] = await Promise.all([
           supabase.from('profiles').select('*').order('full_name'),
           supabase.from('school_settings').select('school_name').limit(1),
-          supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(20)
+          supabase.from('pengumuman').select('*').order('created_at', { ascending: false }).limit(20),
+          fetchDeletedAccountsRegistry(supabase)
         ])
 
-        if (profs) setTeachersList(profs)
+        if (profs) {
+          const activeProfs = profs.filter(p => !isAccountDeleted(p, deletedReg))
+          setTeachersList(activeProfs)
+        }
         if (sSet && sSet[0]?.school_name) setSchoolName(sSet[0].school_name)
         if (pList) {
           const validPengumuman = pList.filter(p => {

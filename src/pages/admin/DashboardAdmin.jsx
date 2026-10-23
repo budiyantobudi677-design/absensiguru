@@ -31,6 +31,7 @@ import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { deleteUserAccountSafely } from '../../lib/developerManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()
@@ -753,12 +754,14 @@ export default function DashboardAdmin() {
     loadKbmClasses()
     syncCloudSubjects(supabase)
     const cloudAssignments = await syncCloudTeacherAssignments(supabase)
-    const [profRes, bindRes] = await Promise.all([
+    const [profRes, bindRes, deletedReg] = await Promise.all([
       supabase.from('profiles').select('*'),
-      fetchDeviceBindings(supabase)
+      fetchDeviceBindings(supabase),
+      fetchDeletedAccountsRegistry(supabase)
     ])
     if (profRes.data) {
-      const merged = profRes.data.map(p => {
+      const activeProfiles = profRes.data.filter(p => !isAccountDeleted(p, deletedReg))
+      const merged = activeProfiles.map(p => {
         const assign = cloudAssignments?.[p.id]
         return {
           ...p,
@@ -803,11 +806,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     }
 
     setDeletingTeacherId(p.id)
+    // 1. Optimistic removal: hapus seketika dari state lokal agar langsung lenyap dari tampilan tanpa jeda
+    setPegawaiData(prev => prev.filter(item => item.id !== p.id && item.email !== p.email))
+
     try {
       await deleteUserAccountSafely({
         userId: p.id,
         role: p.role || 'guru',
         email: p.email || '',
+        fullName: p.full_name || '',
+        deletedBy: admin?.full_name || admin?.email || 'Administrator',
         supabase
       })
       alert(`Data guru "${teacherName}" berhasil dihapus dari sistem.`)
@@ -815,6 +823,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     } catch (err) {
       console.error('Error saat menghapus data guru:', err)
       alert('Gagal menghapus data guru: ' + (err.message || 'Terjadi kesalahan sistem.'))
+      await loadPegawai()
     } finally {
       setDeletingTeacherId(null)
     }

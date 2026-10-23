@@ -16,8 +16,9 @@ import {
   verifyAdminOverrideLogin,
   verifyKepsekOverrideLogin
 } from '../lib/developerManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../lib/deletedAccountsManager'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud } from '../lib/assignmentManager'
-import { saveActiveSession, cacheUserProfile } from '../lib/offlineManager'
+import { saveActiveSession, cacheUserProfile, clearActiveSession } from '../lib/offlineManager'
 
 const ROLES = [
   { id: 'kepsek', label: 'Kepala Sekolah', icon: ShieldCheck, placeholder: 'kepsek@sekolah.edu' },
@@ -130,6 +131,12 @@ export default function Login() {
 
     try {
       if (mode === 'login') {
+        // Cek apakah akun ini telah dihapus oleh Administrator Sekolah
+        const deletedReg = await fetchDeletedAccountsRegistry(supabase)
+        if (isAccountDeleted(email, deletedReg)) {
+          throw new Error('Akun ini telah dinonaktifkan atau dihapus oleh Administrator Sekolah.')
+        }
+
         // Cek jika login menggunakan Kredensial Admin Kustom yang diatur oleh Pengembang
         if (selectedRole === 'admin') {
           const overrideCheck = await verifyAdminOverrideLogin(email, password, supabase)
@@ -234,6 +241,13 @@ export default function Login() {
 
         const data = authResult.data
         
+        // Verifikasi apakah akun pengguna yang berhasil login ini masuk dalam daftar hapus
+        if (isAccountDeleted(data.user, deletedReg)) {
+          await supabase.auth.signOut()
+          await clearActiveSession()
+          throw new Error('Akun ini telah dinonaktifkan atau dihapus oleh Administrator Sekolah.')
+        }
+
         // Bersihkan sesi developer atau intended role lama agar tidak menimpa akun resmi
         localStorage.removeItem('panrita_developer_session')
         localStorage.removeItem('intended_login_role')

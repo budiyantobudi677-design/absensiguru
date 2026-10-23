@@ -10,6 +10,7 @@ import {
   getKepsekOverrideCredentials,
   deleteUserAccountSafely
 } from '../../lib/developerManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { 
   fetchDeviceBindings, 
   resetDeviceBinding 
@@ -230,14 +231,16 @@ export default function DashboardPengembang() {
     setLoadingMetrics(true)
     await pingLatency()
     try {
-      const [pRes, cRes, aRes, sRes] = await Promise.all([
+      const [pRes, cRes, aRes, sRes, deletedReg] = await Promise.all([
         supabase.from('profiles').select('id, full_name, email, role, nip'),
         supabase.from('classes').select('id'),
         supabase.from('absensi').select('id', { count: 'exact', head: true }),
-        supabase.from('settings').select('*').eq('id', 1).maybeSingle()
+        supabase.from('settings').select('*').eq('id', 1).maybeSingle(),
+        fetchDeletedAccountsRegistry(supabase)
       ])
 
-      const profs = pRes.data || []
+      const rawProfs = pRes.data || []
+      const profs = rawProfs.filter(p => !isAccountDeleted(p, deletedReg))
       setTeachersList(profs)
 
       setStats({
@@ -269,25 +272,28 @@ export default function DashboardPengembang() {
 
   const loadAdminAccountInfo = async () => {
     try {
+      const deletedReg = await fetchDeletedAccountsRegistry(supabase)
+
       // 1. Cek dari profiles untuk Admin
       const { data: adminProf } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'admin')
-        .limit(1)
+
+      const validAdminProf = (adminProf || []).filter(p => !isAccountDeleted(p, deletedReg))
 
       // 2. Cek dari override credentials Admin
       const overrideAdmin = await getAdminOverrideCredentials(supabase)
       
-      if (overrideAdmin && overrideAdmin.email) {
+      if (overrideAdmin && overrideAdmin.email && !isAccountDeleted(overrideAdmin.email, deletedReg)) {
         setCurrentAdminProfile({
           email: overrideAdmin.email,
           fullName: overrideAdmin.fullName || 'Administrator Sekolah',
           updatedAt: overrideAdmin.updatedAt,
           isOverride: true
         })
-      } else if (adminProf && adminProf.length > 0) {
-        setCurrentAdminProfile(adminProf[0])
+      } else if (validAdminProf.length > 0) {
+        setCurrentAdminProfile(validAdminProf[0])
       } else {
         setCurrentAdminProfile(null)
       }
@@ -297,19 +303,20 @@ export default function DashboardPengembang() {
         .from('profiles')
         .select('*')
         .eq('role', 'kepsek')
-        .limit(1)
+
+      const validKepsekProf = (kepsekProf || []).filter(p => !isAccountDeleted(p, deletedReg))
 
       // 4. Cek dari override credentials Kepala Sekolah
       const overrideKepsek = await getKepsekOverrideCredentials(supabase)
-      if (overrideKepsek && overrideKepsek.email) {
+      if (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg)) {
         setCurrentKepsekProfile({
           email: overrideKepsek.email,
           fullName: overrideKepsek.fullName || 'Kepala Sekolah',
           updatedAt: overrideKepsek.updatedAt,
           isOverride: true
         })
-      } else if (kepsekProf && kepsekProf.length > 0) {
-        setCurrentKepsekProfile(kepsekProf[0])
+      } else if (validKepsekProf.length > 0) {
+        setCurrentKepsekProfile(validKepsekProf[0])
       } else {
         setCurrentKepsekProfile(null)
       }
@@ -456,11 +463,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
     }
 
     setDeletingUserId(u.id)
+    // Optimistic removal: langsung singkirkan dari tampilan lokal seketika
+    setTeachersList(prev => prev.filter(item => item.id !== u.id && item.email !== u.email))
+
     try {
       await deleteUserAccountSafely({
         userId: u.id,
         role: u.role || 'admin',
         email: u.email || '',
+        fullName: u.full_name || '',
+        deletedBy: 'Pengembang Sistem',
         supabase
       })
       alert(`Akun ${roleLabel} "${userName}" berhasil dihapus dari sistem.`)
@@ -469,6 +481,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
     } catch (err) {
       console.error('Error deleting leader account:', err)
       alert(`Gagal menghapus akun ${roleLabel}: ` + (err.message || 'Terjadi kesalahan sistem.'))
+      await loadSystemMetrics()
     } finally {
       setDeletingUserId(null)
     }

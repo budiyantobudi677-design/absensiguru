@@ -1,5 +1,7 @@
 // Utility for Developer Master Key Authentication & Security
 // Menggunakan enkripsi satu arah SHA-256 + Salt (Anti-Bocor) & Proteksi Brute-Force
+import { markAccountAsDeletedInCloud } from './deletedAccountsManager'
+import { resetDeviceBinding } from './deviceManager'
 
 const DEV_KEY_TARGET = '__SYSTEM_DEVELOPER_KEY_CONFIG__'
 const SALT = 'panrita_dev_salt_2026_xyz'
@@ -571,12 +573,31 @@ export async function verifyKepsekOverrideLogin(email, password, supabase) {
 /**
  * Menghapus akun pengguna (Guru, Tendik, Admin, atau Kepala Sekolah) secara aman beserta dependensi datanya
  */
-export async function deleteUserAccountSafely({ userId, role = 'guru', email = '', supabase }) {
+export async function deleteUserAccountSafely({ userId, role = 'guru', email = '', fullName = '', deletedBy = 'Administrator', supabase }) {
   if (!userId || !supabase) {
     throw new Error('ID pengguna atau koneksi database tidak valid.')
   }
 
-  // 1. Hapus transaksi terkait agar tidak melanggar foreign key
+  // 1. Catat ke Cloud Deleted Accounts Registry TERLEBIH DAHULU agar akun langsung hilang seketika di semua client & diblokir login
+  try {
+    await markAccountAsDeletedInCloud({
+      userId,
+      email,
+      role,
+      fullName,
+      deletedBy,
+      supabase
+    })
+  } catch (err) {
+    console.warn('Gagal mencatat akun ke Cloud Deleted Registry:', err)
+  }
+
+  // 2. Reset device bindings agar kunci HP dibebaskan
+  try {
+    await resetDeviceBinding({ userId, supabase })
+  } catch (e) {}
+
+  // 3. Hapus transaksi terkait agar tidak melanggar foreign key
   try {
     await supabase.from('absensi').delete().eq('user_id', userId)
   } catch (e) {
@@ -613,7 +634,7 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     console.warn('Gagal update classes teacher_id user:', e)
   }
 
-  // 2. Hapus kredensial spesifik jika ada
+  // 4. Hapus kredensial spesifik jika ada
   try {
     await supabase
       .from('pengumuman')
@@ -621,7 +642,7 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
       .eq('target_type', `${LEADER_CREDENTIALS_PREFIX}${userId}`)
   } catch (e) {}
 
-  // 3. Jika email cocok dengan override utama, bersihkan
+  // 5. Jika email cocok dengan override utama, bersihkan
   if (email) {
     const cleanMail = email.trim().toLowerCase()
     try {
@@ -638,13 +659,14 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     } catch {}
   }
 
-  // 4. Hapus profil dari tabel profiles
-  const { error } = await supabase.from('profiles').delete().eq('id', userId)
-  if (error) {
-    throw error
+  // 6. Coba hapus profil dari tabel profiles jika diperbolehkan
+  try {
+    await supabase.from('profiles').delete().eq('id', userId)
+  } catch (e) {
+    console.warn('RLS batasi delete profiles secara langsung:', e)
   }
 
-  // 5. Bersihkan cache lokal yang terkait
+  // 7. Bersihkan cache lokal yang terkait
   try {
     localStorage.removeItem(`guru_assigned_classes_${userId}`)
     localStorage.removeItem(`guru_tipe_${userId}`)
@@ -653,6 +675,7 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     localStorage.removeItem(`tendik_penugasan_${userId}`)
     localStorage.removeItem(`tendik_kategori_${userId}`)
     localStorage.removeItem(`panrita_role_${userId}`)
+    localStorage.removeItem(`panrita_permanent_device_id_${userId}`)
   } catch (e) {}
 
   return true

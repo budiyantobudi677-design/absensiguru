@@ -27,6 +27,7 @@ import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -699,11 +700,15 @@ export default function DashboardKepsek() {
     loadKbmClasses()
     syncCloudSubjects(supabase)
     await syncCloudTeacherAssignments(supabase)
-    const [profRes, bindRes] = await Promise.all([
+    const [profRes, bindRes, deletedReg] = await Promise.all([
       supabase.from('profiles').select('*'),
-      fetchDeviceBindings(supabase)
+      fetchDeviceBindings(supabase),
+      fetchDeletedAccountsRegistry(supabase)
     ])
-    if (profRes.data) setPegawaiData(profRes.data)
+    if (profRes.data) {
+      const activeProfiles = profRes.data.filter(p => !isAccountDeleted(p, deletedReg))
+      setPegawaiData(activeProfiles)
+    }
     if (bindRes) setDeviceBindings(bindRes)
     setLoadingData(false)
   }

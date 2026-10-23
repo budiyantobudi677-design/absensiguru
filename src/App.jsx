@@ -15,7 +15,8 @@ import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
 import { getDeveloperSession } from './lib/developerManager'
 import { syncCloudTeacherAssignments } from './lib/assignmentManager'
-import { saveActiveSession, getActiveSession } from './lib/offlineManager'
+import { saveActiveSession, getActiveSession, clearActiveSession } from './lib/offlineManager'
+import { fetchDeletedAccountsRegistry, isAccountDeleted } from './lib/deletedAccountsManager'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -42,10 +43,24 @@ function App() {
       }
 
       try {
-        const [profRes, cloudAssignments] = await Promise.all([
+        const [profRes, cloudAssignments, deletedReg] = await Promise.all([
           supabase.from('profiles').select('role, jabatan, full_name').eq('id', userSession.user.id).maybeSingle(),
-          syncCloudTeacherAssignments(supabase)
+          syncCloudTeacherAssignments(supabase),
+          fetchDeletedAccountsRegistry(supabase)
         ])
+
+        if (isAccountDeleted(userSession.user, deletedReg)) {
+          console.warn('Sesi terdeteksi akun yang telah dihapus. Mengeluarkan pengguna...')
+          await supabase.auth.signOut().catch(() => {})
+          await clearActiveSession().catch(() => {})
+          if (isMounted) {
+            setSession(null)
+            setRole(null)
+            setLoading(false)
+          }
+          return
+        }
+
         const data = profRes?.data
         const myAssignment = cloudAssignments?.[userSession.user.id]
 
