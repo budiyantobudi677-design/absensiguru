@@ -53,21 +53,45 @@ export default function CetakKartuQrSiswaModal({
   const printAreaRef = useRef(null)
 
   // Helper konversi URL gambar ke Base64 Data URL (bebas CORS pada PDF export)
-  const convertUrlToDataUrl = async (url) => {
-    if (!url) return ''
-    if (url.startsWith('data:')) return url
-    try {
-      const res = await fetch(url, { mode: 'cors' })
-      const blob = await res.blob()
-      return new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result)
-        reader.readAsDataURL(blob)
-      })
-    } catch (err) {
-      console.warn('Konversi logo ke DataUrl gagal, menggunakan URL asli:', err)
-      return url
-    }
+  const convertUrlToDataUrl = (url) => {
+    return new Promise((resolve) => {
+      if (!url) return resolve('')
+      if (url.startsWith('data:')) return resolve(url)
+      
+      const img = new Image()
+      img.crossOrigin = 'Anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth || img.width || 140
+          canvas.height = img.naturalHeight || img.height || 140
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch (e) {
+          console.warn('Canvas toDataURL failed, attempting fetch:', e)
+          fetch(url, { mode: 'cors' })
+            .then(res => res.blob())
+            .then(blob => {
+              const reader = new FileReader()
+              reader.onloadend = () => resolve(reader.result)
+              reader.readAsDataURL(blob)
+            })
+            .catch(() => resolve(url))
+        }
+      }
+      img.onerror = () => {
+        fetch(url, { mode: 'cors' })
+          .then(res => res.blob())
+          .then(blob => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result)
+            reader.readAsDataURL(blob)
+          })
+          .catch(() => resolve(url))
+      }
+      img.src = url
+    })
   }
 
   // Muat setting nama sekolah dan logo sekolah langsung dari database Supabase
@@ -232,13 +256,16 @@ export default function CetakKartuQrSiswaModal({
       const classNameLabel = currentClassObj ? formatClassName(currentClassObj.name) : 'Semua_Kelas'
       
       const opt = {
-        margin: [8, 8, 8, 8],
+        margin: [6, 6, 6, 6],
         filename: `Kartu_QR_Siswa_${schoolName.replace(/[^a-zA-Z0-9]/g, '_')}_${classNameLabel.replace(/\s+/g, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
-          scale: 2, 
+          scale: 2.5, 
           useCORS: true, 
-          letterRendering: true,
+          allowTaint: true,
+          scrollY: 0,
+          scrollX: 0,
+          letterRendering: false,
           logging: false
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -253,8 +280,31 @@ export default function CetakKartuQrSiswaModal({
     }
   }
 
-  // Unduh satu kartu gambar PNG
-  const handleDownloadSingleQr = (student) => {
+  // Unduh satu kartu gambar PNG (Kartu utuh atau QR)
+  const handleDownloadSingleCard = async (student) => {
+    try {
+      const cardEl = document.getElementById(`student-card-${student.id}`)
+      if (cardEl && window.html2canvas) {
+        const canvas = await window.html2canvas(cardEl, {
+          scale: 3,
+          useCORS: true,
+          allowTaint: true,
+          letterRendering: false,
+          logging: false,
+          ignoreElements: (el) => el.classList && el.classList.contains('no-pdf')
+        })
+        const a = document.createElement('a')
+        a.href = canvas.toDataURL('image/png')
+        a.download = `Kartu_QR_${student.name.replace(/\s+/g, '_')}_${student.nisn || 'Siswa'}.png`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        return
+      }
+    } catch (e) {
+      console.warn('Gagal unduh visual kartu, unduh QR langsung:', e)
+    }
+
     const dataUrl = qrMap[student.id]
     if (!dataUrl) return
     const a = document.createElement('a')
@@ -574,6 +624,7 @@ export default function CetakKartuQrSiswaModal({
                       return (
                         <div
                           key={st.id}
+                          id={`student-card-${st.id}`}
                           className="student-card-item"
                           style={{
                             background: '#FFFFFF',
@@ -591,28 +642,30 @@ export default function CetakKartuQrSiswaModal({
                         >
                           {/* Header Kartu: Logo Sekolah, Nama Sekolah & Judul Kartu */}
                           <div style={{
-                            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 65%, #1D4ED8 100%)',
                             color: '#FFFFFF',
-                            padding: '0.65rem 0.85rem',
+                            padding: '0.75rem 0.95rem',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '10px',
+                            gap: '12px',
                             borderTopLeftRadius: '14px',
-                            borderTopRightRadius: '14px'
+                            borderTopRightRadius: '14px',
+                            boxSizing: 'border-box'
                           }}>
                             {/* Logo Sekolah Resmi */}
                             <div style={{
-                              width: '34px',
-                              height: '34px',
+                              width: '38px',
+                              height: '38px',
                               borderRadius: '50%',
                               background: '#FFFFFF',
-                              border: '1.5px solid rgba(255, 255, 255, 0.4)',
+                              border: '2px solid rgba(255, 255, 255, 0.9)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               flexShrink: 0,
                               overflow: 'hidden',
-                              boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                              padding: '2px'
                             }}>
                               {effectiveLogo ? (
                                 <img
@@ -622,24 +675,22 @@ export default function CetakKartuQrSiswaModal({
                                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                                 />
                               ) : (
-                                <School size={18} color="#1E3A8A" />
+                                <School size={20} color="#1E3A8A" />
                               )}
                             </div>
 
-                            {/* Teks Nama Sekolah (Mendukung pembungkus 2 baris agar tidak terpotong) */}
+                            {/* Teks Nama Sekolah (Bersih, rapi & tidak terpotong di canvas/PDF) */}
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{
-                                fontSize: '0.78rem',
+                                fontSize: '0.84rem',
                                 fontWeight: 800,
                                 color: '#FFFFFF',
-                                lineHeight: '1.2',
+                                lineHeight: '1.38',
                                 textTransform: 'uppercase',
-                                letterSpacing: '0.2px',
+                                letterSpacing: '0.25px',
                                 wordBreak: 'break-word',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden'
+                                paddingTop: '2px',
+                                paddingBottom: '1px'
                               }}>
                                 {schoolName}
                               </div>
@@ -647,9 +698,10 @@ export default function CetakKartuQrSiswaModal({
                                 fontSize: '0.62rem',
                                 color: '#93C5FD',
                                 fontWeight: 700,
-                                letterSpacing: '0.5px',
+                                letterSpacing: '0.8px',
                                 textTransform: 'uppercase',
-                                marginTop: '1px'
+                                lineHeight: '1.3',
+                                marginTop: '2px'
                               }}>
                                 Kartu Presensi Digital Siswa
                               </div>
@@ -658,21 +710,21 @@ export default function CetakKartuQrSiswaModal({
 
                           {/* Body Kartu: QR Code & Data Lengkap Siswa */}
                           <div style={{
-                            padding: '0.85rem',
+                            padding: '0.85rem 0.95rem',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '0.85rem',
+                            gap: '0.95rem',
                             background: '#FFFFFF',
                             flex: 1
                           }}>
                             {/* Frame QR Code */}
                             <div style={{
-                              width: '98px',
-                              height: '98px',
+                              width: '100px',
+                              height: '100px',
                               background: '#FFFFFF',
                               borderRadius: '12px',
                               border: '1.5px solid #E2E8F0',
-                              padding: '4px',
+                              padding: '5px',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -698,47 +750,47 @@ export default function CetakKartuQrSiswaModal({
                                 fontWeight: 800,
                                 color: '#1D4ED8',
                                 background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                padding: '2px 8px',
-                                borderRadius: '6px',
+                                border: '1.5px solid #BFDBFE',
+                                padding: '2.5px 10px',
+                                borderRadius: '20px',
                                 display: 'inline-block',
-                                marginBottom: '4px'
+                                marginBottom: '5px',
+                                lineHeight: '1.2'
                               }}>
                                 {formattedClass}
                               </div>
 
-                              {/* Nama Siswa */}
-                              <h4 style={{
-                                margin: '0 0 3px 0',
-                                fontSize: '0.90rem',
+                              {/* Nama Siswa (Bersih, rapi & tidak terpotong di canvas/PDF) */}
+                              <div style={{
+                                fontSize: '0.94rem',
                                 fontWeight: 800,
                                 color: '#0F172A',
-                                lineHeight: '1.25',
+                                lineHeight: '1.38',
                                 wordBreak: 'break-word',
                                 textTransform: 'uppercase',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden'
+                                letterSpacing: '0.2px',
+                                paddingTop: '2px',
+                                paddingBottom: '2px',
+                                marginBottom: '4px'
                               }}>
                                 {st.name}
-                              </h4>
-
-                              {/* NISN */}
-                              <div style={{ fontSize: '0.74rem', color: '#475569', margin: '2px 0' }}>
-                                NISN: <strong style={{ color: '#0F172A' }}>{st.nisn || '-'}</strong>
                               </div>
 
-                              {/* Jenis Kelamin */}
-                              <div style={{ fontSize: '0.70rem', color: '#64748B' }}>
-                                JK: {st.gender === 'P' || st.gender === 'Perempuan' ? 'Perempuan' : 'Laki-laki'}
+                              {/* NISN & Jenis Kelamin dalam baris rapi */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#64748B', lineHeight: '1.35' }}>
+                                  NISN: <span style={{ color: '#0F172A', fontWeight: 700 }}>{st.nisn || '-'}</span>
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: '1.35' }}>
+                                  JK: <span style={{ color: '#334155', fontWeight: 600 }}>{st.gender === 'P' || st.gender === 'Perempuan' ? 'Perempuan' : 'Laki-laki'}</span>
+                                </div>
                               </div>
                             </div>
                           </div>
 
                           {/* Footer Kartu & Tombol Aksi PNG */}
                           <div style={{
-                            padding: '0.4rem 0.85rem',
+                            padding: '0.45rem 0.95rem',
                             background: '#F8FAFC',
                             borderTop: '1px solid #F1F5F9',
                             display: 'flex',
@@ -747,26 +799,34 @@ export default function CetakKartuQrSiswaModal({
                             fontSize: '0.66rem',
                             color: '#64748B'
                           }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={11} color="#10B981" />
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#059669', fontWeight: 700 }}>
+                              <CheckCircle2 size={12} color="#10B981" />
                               <span>Pindai untuk absensi</span>
                             </span>
 
+                            {/* Watermark untuk PDF / Cetak */}
+                            <span className="print-watermark" style={{ display: generatingPdf ? 'block' : 'none', color: '#94A3B8', fontWeight: 600, fontSize: '0.64rem' }}>
+                              GammaraApp • Kartu Resmi
+                            </span>
+
+                            {/* Tombol aksi PNG untuk interaktif modal */}
                             <button
                               type="button"
-                              className="no-print"
-                              onClick={() => handleDownloadSingleQr(st)}
-                              title="Unduh QR Saja (PNG)"
+                              className="no-pdf no-print"
+                              onClick={() => handleDownloadSingleCard(st)}
+                              title="Unduh Kartu Siswa Ini (PNG)"
                               style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#0284C7',
+                                display: generatingPdf ? 'none' : 'flex',
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                borderRadius: '6px',
+                                padding: '2px 8px',
+                                color: '#1D4ED8',
                                 cursor: 'pointer',
                                 fontWeight: 700,
                                 fontSize: '0.68rem',
-                                display: 'flex',
                                 alignItems: 'center',
-                                gap: '3px'
+                                gap: '4px'
                               }}
                             >
                               <Download size={11} /> PNG
@@ -872,8 +932,11 @@ export default function CetakKartuQrSiswaModal({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print {
+          .no-print, .no-pdf {
             display: none !important;
+          }
+          .print-watermark {
+            display: block !important;
           }
         }
       `}</style>
