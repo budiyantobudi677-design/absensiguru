@@ -205,6 +205,20 @@ function App() {
     }
   }, [])
 
+  // Auto-bounce ke aplikasi APK jika dibuka di browser mobile dari callback OAuth Google
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return
+    const isMobileAndroid = /android/i.test(navigator.userAgent || '')
+    const hasAuthTokens = window.location.hash.includes('access_token=') || window.location.search.includes('code=')
+    if (isMobileAndroid && hasAuthTokens) {
+      try {
+        const appCallbackUrl = `gammaraapp://auth-callback${window.location.search}${window.location.hash}`
+        // Alihkan otomatis ke aplikasi native
+        window.location.href = appCallbackUrl
+      } catch (e) {}
+    }
+  }, [])
+
   // Listener Deep Link saat kembali dari Google OAuth di aplikasi native (APK)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
@@ -220,7 +234,7 @@ function App() {
         }
 
         const url = event?.url || ''
-        if (url.includes('gammaraapp://') || url.includes('panritaedu://') || url.includes('com.sekolah.absensi://')) {
+        if (url.includes('gammaraapp://') || url.includes('panritaedu://') || url.includes('com.sekolah.absensi://') || url.includes('gammara.vercel.app')) {
           // Tangkap fragment token (#access_token=...&refresh_token=...)
           const hashIdx = url.indexOf('#')
           if (hashIdx !== -1) {
