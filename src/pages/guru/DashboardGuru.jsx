@@ -23,6 +23,8 @@ import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
+import { playNotificationSound } from '../../lib/soundNotification'
+import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { 
   saveActiveSession, 
   getActiveSession, 
@@ -1198,6 +1200,16 @@ export default function DashboardGuru({ roleOverride = null }) {
            }
            return true
          })
+
+         if (activePengumuman.length === 0) {
+           activePengumuman.push({
+             id: 'welcome-gammara-app',
+             created_at: new Date().toISOString(),
+             pesan: `🌟 SELAMAT DATANG DI APLIKASI GAMMARAAPP 🌟\nSistem Manajemen Pendidikan, Presensi Cerdas & Administrasi Sekolah Digital Modern.\n\nFitur Unggulan GammaraApp:\n🎯 Presensi Digital Berbasis Geofencing GPS & Watermark Foto Anti-Kecurangan\n📚 Master KBM Terpadu (Presensi Siswa, Jurnal Mengajar, Modul Ajar AI & Penilaian)\n💬 Pusat Komunikasi Real-Time (Obrolan Staf, Disposisi & Lembar Instruksi Digital)\n📊 Rekapitulasi Presensi & Laporan Kedinasan Otomatis (Format Excel & PDF)\n🔔 Sistem Notifikasi Audio & Pesan Suara Seketika\n\nMari bersama mewujudkan tata kelola pendidikan yang modern, transparan, dan berintegritas tinggi bersama GammaraApp!`,
+             target_type: 'all'
+           })
+         }
+
          setPengumumanData(activePengumuman)
          
          const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
@@ -1296,7 +1308,11 @@ export default function DashboardGuru({ roleOverride = null }) {
           supabase.from('absensi').delete().in('id', duplicateIds).then(() => {}).catch(() => {})
         }
 
-        setHistoryList(cleaned)
+        // Saring baris yang telah dihapus oleh Admin dari Cloud & Local Registry
+        const deletedReg = await fetchDeletedAttendanceRegistry(supabase)
+        const activeList = filterActiveAttendance(cleaned, deletedReg)
+
+        setHistoryList(activeList)
       } else {
         setHistoryList([])
       }
@@ -1312,6 +1328,75 @@ export default function DashboardGuru({ roleOverride = null }) {
       loadHistory(historyMonth, user)
     }
   }, [activeTab, user?.id, historyMonth, isTendikUser])
+
+  // Realtime Audio & Data Listener untuk Pengumuman Baru & Pesan Masuk di Dashboard Guru
+  useEffect(() => {
+    if (!supabase || !user?.id) return
+
+    // 1. Channel Realtime Pengumuman
+    const pengumumanSub = supabase
+      .channel(`rt_pengumuman_guru_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'pengumuman' },
+        (payload) => {
+          const row = payload.new
+          if (!row) return
+          const tt = (row.target_type || '').trim()
+          if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return
+
+          const isTargeted = tt === 'all' || 
+            (row.target_users && row.target_users.includes(user.id))
+
+          if (isTargeted) {
+            playNotificationSound('announcement', row.id)
+            setPengumumanData(prev => [row, ...prev.filter(p => p.id !== row.id)])
+            setUnreadCount(prev => prev + 1)
+          }
+        }
+      )
+      .subscribe()
+
+    // 2. Channel Realtime Pesan Chat
+    const chatSub = supabase
+      .channel(`rt_chat_notify_guru_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'school_chat_messages' },
+        (payload) => {
+          const row = payload.new
+          if (!row || !row.id) return
+          if (row.sender_id !== user.id) {
+            if (!row.receiver_id || row.receiver_id === user.id || row.channel) {
+              playNotificationSound('message', row.id)
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    // 3. Channel Realtime Disposisi Tugas
+    const dispSub = supabase
+      .channel(`rt_disp_notify_guru_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'disposisi_tugas' },
+        (payload) => {
+          const row = payload.new
+          if (!row || !row.id) return
+          if (row.assigned_to === user.id || row.assigned_to === 'all' || !row.assigned_to) {
+            playNotificationSound('disposition', row.id)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(pengumumanSub)
+      supabase.removeChannel(chatSub)
+      supabase.removeChannel(dispSub)
+    }
+  }, [supabase, user?.id])
 
   const downloadHistoryExcel = async () => {
     if (historyList.length === 0) {

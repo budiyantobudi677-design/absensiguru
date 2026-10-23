@@ -28,6 +28,8 @@ import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
+import { playNotificationSound } from '../../lib/soundNotification'
+import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -83,7 +85,8 @@ export default function DashboardKepsek() {
         .lte('tanggal', lastDay)
         .order('tanggal', { ascending: false })
       if (!error && data) {
-        setHistoryList(data)
+        const delReg = await fetchDeletedAttendanceRegistry(supabase)
+        setHistoryList(filterActiveAttendance(data, delReg))
       }
     } catch (err) {
       console.error("Gagal load history:", err)
@@ -227,6 +230,62 @@ export default function DashboardKepsek() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
+
+  // Realtime Audio & Data Listener untuk Pengumuman, Chat, dan Disposisi di Dashboard Kepsek
+  useEffect(() => {
+    if (!supabase || !admin?.id) return
+
+    const pengumumanSub = supabase
+      .channel(`rt_pengumuman_kepsek_${admin.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'pengumuman' },
+        (payload) => {
+          const row = payload.new
+          if (!row) return
+          const tt = (row.target_type || '').trim()
+          if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return
+
+          playNotificationSound('announcement', row.id)
+          setPengumumanData(prev => [row, ...prev.filter(p => p.id !== row.id)])
+        }
+      )
+      .subscribe()
+
+    const chatSub = supabase
+      .channel(`rt_chat_notify_kepsek_${admin.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'school_chat_messages' },
+        (payload) => {
+          const row = payload.new
+          if (!row || !row.id) return
+          if (row.sender_id !== admin.id) {
+            playNotificationSound('message', row.id)
+          }
+        }
+      )
+      .subscribe()
+
+    const dispSub = supabase
+      .channel(`rt_disp_notify_kepsek_${admin.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'disposisi_tugas' },
+        (payload) => {
+          const row = payload.new
+          if (!row || !row.id) return
+          playNotificationSound('disposition', row.id)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(pengumumanSub)
+      supabase.removeChannel(chatSub)
+      supabase.removeChannel(dispSub)
+    }
+  }, [supabase, admin?.id])
 
   useEffect(() => {
     if (activeTab === 'laporan') {
@@ -737,7 +796,10 @@ export default function DashboardKepsek() {
     }
     
     const { data } = await query.order('waktu_masuk', { ascending: false }).limit(2000)
-    if (data) setAbsensiData(data)
+    if (data) {
+      const delReg = await fetchDeletedAttendanceRegistry(supabase)
+      setAbsensiData(filterActiveAttendance(data, delReg))
+    }
     setLoadingData(false)
   }
 
@@ -760,6 +822,14 @@ export default function DashboardKepsek() {
         }
         return true
       })
+      if (filtered.length === 0) {
+        filtered.push({
+          id: 'welcome-gammara-app',
+          created_at: new Date().toISOString(),
+          pesan: `🌟 SELAMAT DATANG DI APLIKASI GAMMARAAPP 🌟\nSistem Manajemen Pendidikan, Presensi Cerdas & Administrasi Sekolah Digital Modern.\n\nFitur Unggulan GammaraApp:\n🎯 Presensi Digital Berbasis Geofencing GPS & Watermark Foto Anti-Kecurangan\n📚 Master KBM Terpadu (Presensi Siswa, Jurnal Mengajar, Modul Ajar AI & Penilaian)\n💬 Pusat Komunikasi Real-Time (Obrolan Staf, Disposisi & Lembar Instruksi Digital)\n📊 Rekapitulasi Presensi & Laporan Kedinasan Otomatis (Format Excel & PDF)\n🔔 Sistem Notifikasi Audio & Pesan Suara Seketika\n\nMari bersama mewujudkan tata kelola pendidikan yang modern, transparan, dan berintegritas tinggi bersama GammaraApp!`,
+          target_type: 'all'
+        })
+      }
       setPengumumanData(filtered)
     }
     setLoadingData(false)

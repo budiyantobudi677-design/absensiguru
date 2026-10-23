@@ -40,6 +40,7 @@ import {
   createAnnouncementWhatsAppTemplate
 } from '../../lib/schoolCommunicationManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
+import { playNotificationSound } from '../../lib/soundNotification'
 
 export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
   const [activeMainTab, setActiveMainTab] = useState('chat') // 'chat' | 'disposisi' | 'wa_tools'
@@ -209,6 +210,11 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
           const newMsg = payload.new
           if (!newMsg || !newMsg.id) return
 
+          // Bunyikan notifikasi suara jika pesan baru berasal dari pengguna lain
+          if (newMsg.sender_id !== currentUserId) {
+            playNotificationSound('message')
+          }
+
           // Cek apakah pesan cocok dengan channel/partner yang sedang dibuka
           if (activeChannel === 'private') {
             if (
@@ -263,6 +269,30 @@ export default function PusatKomunikasi({ user, supabase, darkMode = false }) {
       loadDispositionsData()
     }
   }, [activeMainTab])
+
+  // Realtime subscription untuk lembar instruksi/disposisi baru
+  useEffect(() => {
+    if (!supabase) return
+    const dispChannel = supabase
+      .channel(`realtime:disposisi_listener_${currentUserId || 'all'}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'disposisi_tugas' },
+        (payload) => {
+          const row = payload.new
+          if (!row) return
+          if (row.assigned_to === currentUserId || row.assigned_to === 'all' || !row.assigned_to) {
+            playNotificationSound('disposition')
+            loadDispositionsData()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(dispChannel)
+    }
+  }, [supabase, currentUserId])
 
   const loadDispositionsData = async () => {
     setLoadingDispositions(true)
