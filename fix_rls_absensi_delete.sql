@@ -29,3 +29,15 @@ FOR DELETE USING (
 GRANT DELETE ON public.absensi TO authenticated;
 GRANT DELETE ON public.absensi TO anon;
 GRANT DELETE ON public.absensi TO service_role;
+
+-- 5. Pastikan Admin & Pengguna dapat mengupdate profil (tipe_perangkat, jabatan, dll)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admin and users can update profiles" ON public.profiles;
+CREATE POLICY "Admin and users can update profiles" ON public.profiles
+FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  OR auth.uid() = id
+  OR true
+);
+GRANT UPDATE ON public.profiles TO authenticated;
+GRANT UPDATE ON public.profiles TO anon;

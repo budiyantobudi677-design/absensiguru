@@ -829,7 +829,8 @@ export default function DashboardAdmin() {
           ...p,
           penugasan_tipe: assign?.tipe || p.penugasan_tipe || p.role,
           jabatan: assign?.jabatan || p.jabatan,
-          mata_pelajaran: assign?.mapel || p.mata_pelajaran
+          mata_pelajaran: assign?.mapel || p.mata_pelajaran,
+          tipe_perangkat: assign?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${p.id}`) || p.tipe_perangkat || 'android'
         }
       })
       setPegawaiData(merged)
@@ -2724,7 +2725,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       // Coba update profil di database (jika diizinkan oleh RLS database)
                       try {
                         await supabase.from('profiles').update({
-                          jabatan: formattedJabatan
+                          jabatan: formattedJabatan,
+                          tipe_perangkat: newTipePerangkat
                         }).eq('id', editingPegawai.id)
                       } catch (e) {
                         console.warn('Profile update warning:', e)

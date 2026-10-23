@@ -27,9 +27,11 @@ export async function syncCloudTeacherAssignments(supabase) {
         clsData.forEach(c => {
           if (c.teacher_id) {
             currentMap[c.teacher_id] = {
-              tipe: 'guru_kelas',
+              ...(currentMap[c.teacher_id] || {}),
+              tipe: currentMap[c.teacher_id]?.tipe || 'guru_kelas',
               mapel: currentMap[c.teacher_id]?.mapel || '',
               assignedClasses: [c.id],
+              tipe_perangkat: currentMap[c.teacher_id]?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${c.teacher_id}`) || 'android',
               updatedAt: new Date().toISOString()
             }
           }
@@ -55,7 +57,8 @@ export async function syncCloudTeacherAssignments(supabase) {
             // Pengaturan eksplisit Admin memiliki otoritas tertinggi (menimpa classes lama)
             currentMap[tId] = {
               ...(currentMap[tId] || {}),
-              ...info
+              ...info,
+              tipe_perangkat: info.tipe_perangkat || currentMap[tId]?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${tId}`) || 'android'
             }
             if (info.tipe === 'tendik') {
               currentMap[tId].assignedClasses = []
@@ -184,18 +187,13 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jab
       // 5. Upsert row config di Supabase (tabel pengumuman)
       try {
         const payloadStr = JSON.stringify(currentMap)
-        const { data: existing } = await supabase
+        const { data: updated, error: updateErr } = await supabase
           .from('pengumuman')
-          .select('id')
+          .update({ pesan: payloadStr })
           .eq('target_type', CONFIG_TARGET_TYPE)
-          .limit(1)
+          .select('id')
 
-        if (existing && existing.length > 0) {
-          await supabase
-            .from('pengumuman')
-            .update({ pesan: payloadStr })
-            .eq('id', existing[0].id)
-        } else {
+        if (updateErr || !updated || updated.length === 0) {
           await supabase
             .from('pengumuman')
             .insert([{

@@ -298,7 +298,7 @@ export function getTeacherDeviceType(profile) {
   const cachedAssignments = getCachedAssignmentsMap()
   const cloudTipe = profile.id ? cachedAssignments[profile.id]?.tipe_perangkat : null
   const localTipe = profile.id ? localStorage.getItem(`guru_tipe_perangkat_${profile.id}`) : null
-  return profile.tipe_perangkat || cloudTipe || localTipe || 'android'
+  return cloudTipe || localTipe || profile.tipe_perangkat || 'android'
 }
 
 /**

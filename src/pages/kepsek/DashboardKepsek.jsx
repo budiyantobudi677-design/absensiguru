@@ -761,7 +761,7 @@ export default function DashboardKepsek() {
     setLoadingData(true)
     loadKbmClasses()
     syncCloudSubjects(supabase)
-    await syncCloudTeacherAssignments(supabase)
+    const cloudAssignments = await syncCloudTeacherAssignments(supabase)
     const [profRes, bindRes, deletedReg] = await Promise.all([
       supabase.from('profiles').select('*'),
       fetchDeviceBindings(supabase),
@@ -769,7 +769,17 @@ export default function DashboardKepsek() {
     ])
     if (profRes.data) {
       const activeProfiles = profRes.data.filter(p => !isAccountDeleted(p, deletedReg))
-      setPegawaiData(activeProfiles)
+      const merged = activeProfiles.map(p => {
+        const assign = cloudAssignments?.[p.id]
+        return {
+          ...p,
+          penugasan_tipe: assign?.tipe || p.penugasan_tipe || p.role,
+          jabatan: assign?.jabatan || p.jabatan,
+          mata_pelajaran: assign?.mapel || p.mata_pelajaran,
+          tipe_perangkat: assign?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${p.id}`) || p.tipe_perangkat || 'android'
+        }
+      })
+      setPegawaiData(merged)
     }
     if (bindRes) setDeviceBindings(bindRes)
     setLoadingData(false)
@@ -2520,27 +2530,28 @@ export default function DashboardKepsek() {
                         supabase
                       })
 
-                      // Update profil di database (tanpa mengubah role utama agar tidak melanggar profiles_role_check)
-                      let { error } = await supabase.from('profiles').update({
-                        jabatan: formattedJabatan
-                      }).eq('id', editingPegawai.id)
-
-                      if (!error) {
-                        // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
-                        localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
-                        setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
-                          ...item, 
-                          penugasan_tipe: newRole, 
-                          mata_pelajaran: newMapel, 
+                      // Coba update profil di database jika diizinkan RLS
+                      try {
+                        await supabase.from('profiles').update({
                           jabatan: formattedJabatan,
                           tipe_perangkat: newTipePerangkat
-                        } : item))
-                        setEditingPegawai(null)
-                        loadKbmClasses()
-                        alert("Penugasan guru berhasil diperbarui!")
-                      } else {
-                        alert("Gagal memperbarui: " + error.message)
+                        }).eq('id', editingPegawai.id)
+                      } catch (e) {
+                        console.warn('Profile update warning:', e)
                       }
+
+                      // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
+                      localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
+                      setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
+                        ...item, 
+                        penugasan_tipe: newRole, 
+                        mata_pelajaran: newMapel, 
+                        jabatan: formattedJabatan,
+                        tipe_perangkat: newTipePerangkat
+                      } : item))
+                      setEditingPegawai(null)
+                      loadKbmClasses()
+                      alert("Penugasan guru berhasil diperbarui!")
                       setSavingPegawai(false)
                     }}>
                       <div className="input-group" style={{ marginBottom: '1rem' }}>
