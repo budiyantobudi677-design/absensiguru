@@ -750,6 +750,13 @@ export default function DashboardGuru({ roleOverride = null }) {
     
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
+
+    // Listener reset presensi (jika dihapus oleh Admin/Kepsek, tombol presensi langsung aktif kembali)
+    const handleAttendanceReset = () => {
+      fetchUser()
+    }
+    window.addEventListener('today_attendance_reset', handleAttendanceReset)
+    window.addEventListener('attendance_updated', handleAttendanceReset)
     
     // Initial check for unsynced
     checkUnsynced()
@@ -779,6 +786,8 @@ export default function DashboardGuru({ roleOverride = null }) {
       clearInterval(reminderTimer)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('today_attendance_reset', handleAttendanceReset)
+      window.removeEventListener('attendance_updated', handleAttendanceReset)
     }
   }, [])
 

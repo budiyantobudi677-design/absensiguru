@@ -587,6 +587,15 @@ export async function getTodayUserAttendance({
 }) {
   if (!userId) return null
 
+  // 0. Ambil registry presensi yang telah dihapus oleh Admin
+  let deletedSet = new Set()
+  try {
+    const deletedReg = await fetchDeletedAttendanceRegistry(supabase)
+    if (deletedReg?.deletedIds && Array.isArray(deletedReg.deletedIds)) {
+      deletedSet = new Set(deletedReg.deletedIds.map(String))
+    }
+  } catch (e) {}
+
   // 1. Coba dari DB Supabase
   if (supabase) {
     try {
@@ -599,7 +608,15 @@ export async function getTodayUserAttendance({
         .limit(1)
 
       if (!error && data && data.length > 0) {
-        return data[0]
+        const dbRec = data[0]
+        if (dbRec?.id && deletedSet.has(String(dbRec.id))) {
+          // Presensi ini sudah dihapus oleh Admin! Bersihkan cache & kembalikan null agar guru dapat absen kembali
+          try {
+            localStorage.removeItem(`today_absensi_${today}_${userId}`)
+          } catch (e) {}
+          return null
+        }
+        return dbRec
       }
     } catch (e) {}
   }
@@ -617,7 +634,14 @@ export async function getTodayUserAttendance({
       if (cloudRows && cloudRows.length > 0) {
         const parsed = JSON.parse(cloudRows[0].pesan || '{}')
         if (parsed && parsed[userId]) {
-          return parsed[userId]
+          const mirrorRec = parsed[userId]
+          if (mirrorRec?.id && deletedSet.has(String(mirrorRec.id))) {
+            try {
+              localStorage.removeItem(`today_absensi_${today}_${userId}`)
+            } catch (e) {}
+            return null
+          }
+          return mirrorRec
         }
       }
     } catch (e) {}
@@ -626,7 +650,14 @@ export async function getTodayUserAttendance({
   // 3. Fallback ke Cache Lokal
   try {
     const raw = localStorage.getItem(`today_absensi_${today}_${userId}`)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const localRec = JSON.parse(raw)
+      if (localRec?.id && deletedSet.has(String(localRec.id))) {
+        localStorage.removeItem(`today_absensi_${today}_${userId}`)
+        return null
+      }
+      return localRec
+    }
   } catch (e) {}
 
   return null

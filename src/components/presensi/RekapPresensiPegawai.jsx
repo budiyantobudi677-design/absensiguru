@@ -433,7 +433,8 @@ export default function RekapPresensiPegawai({
         adminId: currentUser?.id,
         adminName: currentUser?.full_name || 'Admin',
         count: ids.length,
-        period: periodLabel
+        period: periodLabel,
+        deletedItems: filteredData.map(d => ({ id: d.id, userId: d.user_id, tanggal: d.tanggal }))
       })
 
       // Update registry lokal seketika agar langsung lenyap dari tabel

@@ -676,10 +676,13 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     console.warn('Gagal hapus absensi user:', e)
   }
   try {
-    await supabase.from('learning_journals').delete().eq('user_id', userId)
+    await supabase.from('learning_journals').delete().eq('teacher_id', userId)
   } catch (e) {
-    console.warn('Gagal hapus learning_journals user:', e)
+    console.warn('Gagal hapus learning_journals teacher_id user:', e)
   }
+  try {
+    await supabase.from('learning_journals').delete().eq('user_id', userId)
+  } catch (e) {}
   try {
     await supabase.from('jurnal').delete().eq('user_id', userId)
   } catch (e) {
@@ -754,11 +757,23 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
     } catch {}
   }
 
-  // 6. Coba hapus profil dari tabel profiles jika diperbolehkan
+  // 6. Hapus profil dari tabel profiles di Supabase (secara ID dan/atau Email)
   try {
-    await supabase.from('profiles').delete().eq('id', userId)
+    if (isValidUUID(userId)) {
+      const { error: delIdErr } = await supabase.from('profiles').delete().eq('id', userId)
+      if (delIdErr) console.warn('Supabase delete profile by id warning:', delIdErr)
+    }
   } catch (e) {
-    console.warn('RLS batasi delete profiles secara langsung:', e)
+    console.warn('RLS batasi delete profiles secara langsung by id:', e)
+  }
+
+  if (email) {
+    try {
+      const { error: delEmailErr } = await supabase.from('profiles').delete().eq('email', email.trim().toLowerCase())
+      if (delEmailErr) console.warn('Supabase delete profile by email warning:', delEmailErr)
+    } catch (e) {
+      console.warn('RLS batasi delete profiles secara langsung by email:', e)
+    }
   }
 
   // 7. Bersihkan cache lokal yang terkait

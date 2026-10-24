@@ -188,6 +188,9 @@ export default function DashboardAdmin() {
   const [kbmSemester, setKbmSemester] = useState('ganjil')
   const [kbmYear, setKbmYear] = useState('2026/2027')
   const [kbmStudents, setKbmStudents] = useState([])
+  const [totalStudentsCount, setTotalStudentsCount] = useState(0)
+  const [totalGradesCount, setTotalGradesCount] = useState(0)
+  const [totalJournalsCount, setTotalJournalsCount] = useState(0)
   const [kbmAttendance, setKbmAttendance] = useState([])
   const [kbmGrades, setKbmGrades] = useState([])
   const [kbmJournals, setKbmJournals] = useState([])
@@ -354,6 +357,16 @@ export default function DashboardAdmin() {
        loadKbmData()
     }
   }, [laporanTipe, laporanTanggal, laporanBulan, laporanSemester, laporanTahun, activeTab, kbmFilterMode, kbmSelectedClassId, kbmSelectedTeacherId, kbmMonth, kbmSemester, kbmYear])
+
+  useEffect(() => {
+    const handleStudentsUpdated = () => {
+      if (activeTab === 'kbm') {
+        loadKbmData()
+      }
+    }
+    window.addEventListener('students_updated', handleStudentsUpdated)
+    return () => window.removeEventListener('students_updated', handleStudentsUpdated)
+  }, [activeTab, kbmFilterMode, kbmSelectedClassId, kbmSelectedTeacherId, kbmMonth, kbmSemester, kbmYear])
 
   useEffect(() => {
     if (darkMode) {
@@ -1055,9 +1068,20 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
   const loadKbmData = async () => {
     setKbmLoading(true)
     try {
-      // 1. Ambil data siswa via Cloud Persistence
-      const stdData = await fetchStudentsFromCloud(supabase, kbmFilterMode === 'kelas' ? kbmSelectedClassId : null)
-      setKbmStudents(stdData || [])
+      // 1. Ambil data SELURUH siswa via Cloud Persistence untuk total statistik KBM sekolah
+      const allStudents = await fetchStudentsFromCloud(supabase, null)
+      const allStdList = allStudents || []
+      setTotalStudentsCount(allStdList.length)
+
+      // Filter siswa untuk rekapitulasi kelas/guru yang dipilih
+      let filteredStudents = allStdList
+      if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
+        filteredStudents = allStdList.filter(s => String(s.class_id) === String(kbmSelectedClassId))
+      } else if (kbmFilterMode === 'guru' && kbmSelectedTeacherId) {
+        const teacherClassIds = kbmClasses.filter(c => String(c.teacher_id) === String(kbmSelectedTeacherId)).map(c => String(c.id))
+        filteredStudents = allStdList.filter(s => teacherClassIds.includes(String(s.class_id)))
+      }
+      setKbmStudents(filteredStudents)
 
       // 2. Ambil data presensi
       const [year, month] = (kbmMonth || new Date().toISOString().slice(0, 7)).split('-')
@@ -1074,6 +1098,20 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
       setKbmAttendance(attData || [])
 
       // 3. Ambil data nilai
+      // 3a. Total seluruh data nilai terinput dari semua guru & kelas:
+      try {
+        const { count: grCount, error: grCountErr } = await supabase.from('student_grades').select('*', { count: 'exact', head: true })
+        if (!grCountErr && grCount !== null) {
+          setTotalGradesCount(grCount)
+        } else {
+          const { data: allGrData } = await supabase.from('student_grades').select('id')
+          setTotalGradesCount(allGrData ? allGrData.length : 0)
+        }
+      } catch (e) {
+        console.warn('Gagal ambil total nilai:', e)
+      }
+
+      // 3b. Data nilai terfilter untuk rekapitulasi kelas terpilih:
       let grQuery = supabase.from('student_grades').select('*').eq('semester', kbmSemester).eq('tahun_ajaran', kbmYear)
       if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
         grQuery = grQuery.eq('class_id', kbmSelectedClassId)
@@ -1084,6 +1122,20 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
       setKbmGrades(grData || [])
 
       // 4. Ambil data jurnal
+      // 4a. Total seluruh jurnal pembelajaran dari semua guru & kelas:
+      try {
+        const { count: jrnCount, error: jrnCountErr } = await supabase.from('learning_journals').select('*', { count: 'exact', head: true })
+        if (!jrnCountErr && jrnCount !== null) {
+          setTotalJournalsCount(jrnCount)
+        } else {
+          const { data: allJrnData } = await supabase.from('learning_journals').select('id')
+          setTotalJournalsCount(allJrnData ? allJrnData.length : 0)
+        }
+      } catch (e) {
+        console.warn('Gagal ambil total jurnal:', e)
+      }
+
+      // 4b. Data jurnal terfilter untuk rekapitulasi kelas terpilih:
       let jrnQuery = supabase.from('learning_journals').select('*, profiles(full_name, email), classes(name)').order('tanggal', { ascending: false }).limit(100)
       if (kbmFilterMode === 'kelas' && kbmSelectedClassId) {
         jrnQuery = jrnQuery.eq('class_id', kbmSelectedClassId)
@@ -3096,17 +3148,17 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   </div>
                   <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.12)' }}>
                     <Users size={28} color="#10B981" style={{ margin: '0 auto 0.5rem auto' }} />
-                    <h2 style={{ fontSize: '1.8rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{kbmStudents.length}</h2>
+                    <h2 style={{ fontSize: '1.8rem', color: '#10B981', margin: '0 0 0.25rem 0' }}>{totalStudentsCount}</h2>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>TOTAL SISWA TERDAFTAR</p>
                   </div>
                   <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(147, 51, 234, 0.12)' }}>
                     <Award size={28} color="#9333EA" style={{ margin: '0 auto 0.5rem auto' }} />
-                    <h2 style={{ fontSize: '1.8rem', color: '#9333EA', margin: '0 0 0.25rem 0' }}>{kbmGrades.length}</h2>
+                    <h2 style={{ fontSize: '1.8rem', color: '#9333EA', margin: '0 0 0.25rem 0' }}>{totalGradesCount}</h2>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>DATA NILAI TERINPUT</p>
                   </div>
                   <div className="card text-center" style={{ padding: '1.5rem 1rem', borderRadius: '20px', border: 'none', background: 'var(--surface)', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.12)' }}>
                     <BookOpen size={28} color="#F59E0B" style={{ margin: '0 auto 0.5rem auto' }} />
-                    <h2 style={{ fontSize: '1.8rem', color: '#F59E0B', margin: '0 0 0.25rem 0' }}>{kbmJournals.length}</h2>
+                    <h2 style={{ fontSize: '1.8rem', color: '#F59E0B', margin: '0 0 0.25rem 0' }}>{totalJournalsCount}</h2>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontWeight: '600' }}>JURNAL PEMBELAJARAN</p>
                   </div>
                 </div>

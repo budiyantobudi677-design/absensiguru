@@ -70,6 +70,43 @@ export async function recordDeletedAttendance(supabase, idsToDelete = [], metada
   const stringIds = idsToDelete.map(String).filter(Boolean)
   if (stringIds.length === 0) return true
 
+  // 0. Kumpulkan catatan yang terpengaruh (user_id & tanggal) untuk mereset hak absen hari itu
+  let affectedRecords = []
+  if (metadata?.userId && metadata?.tanggal) {
+    affectedRecords.push({ id: stringIds[0], user_id: metadata.userId, tanggal: metadata.tanggal })
+  }
+  if (Array.isArray(metadata?.deletedItems)) {
+    metadata.deletedItems.forEach(item => {
+      if (item && (item.userId || item.user_id) && item.tanggal) {
+        affectedRecords.push({
+          id: String(item.id),
+          user_id: item.userId || item.user_id,
+          tanggal: item.tanggal
+        })
+      }
+    })
+  }
+
+  // Jika belum ada informasi detail tanggal/user_id, coba query dari Supabase sebelum baris dihapus
+  if (supabase && affectedRecords.length === 0) {
+    try {
+      const { data: foundRecs } = await supabase
+        .from('absensi')
+        .select('id, user_id, tanggal')
+        .in('id', stringIds)
+
+      if (foundRecs && foundRecs.length > 0) {
+        affectedRecords = foundRecs.map(r => ({
+          id: String(r.id),
+          user_id: r.user_id,
+          tanggal: r.tanggal
+        }))
+      }
+    } catch (e) {
+      console.warn('Gagal preload record absensi yang dihapus:', e)
+    }
+  }
+
   // 1. Coba physical DELETE di Supabase table 'absensi'
   if (supabase) {
     try {
@@ -119,7 +156,7 @@ export async function recordDeletedAttendance(supabase, idsToDelete = [], metada
           }])
       }
 
-      // Bersihkan juga dari Cloud Mirroring Layer (__SYSTEM_ATTENDANCE_LATEST__)
+      // 4b. Bersihkan juga dari Cloud Mirroring Layer (__SYSTEM_ATTENDANCE_LATEST__)
       try {
         const { data: latestRows } = await supabase
           .from('pengumuman')
@@ -138,10 +175,56 @@ export async function recordDeletedAttendance(supabase, idsToDelete = [], metada
           }
         }
       } catch (e) {}
+
+      // 4c. Bersihkan dari Cloud Mirroring Harian (__SYSTEM_ATTENDANCE_DATE_YYYY-MM-DD__)
+      // Agar status absensi guru di hari tersebut KEMBALI KOSONG & Tombol Presensi Aktif Kembali
+      for (const rec of affectedRecords) {
+        if (rec.tanggal && rec.user_id) {
+          try {
+            const dateTarget = `__SYSTEM_ATTENDANCE_DATE_${rec.tanggal}__`
+            const { data: dateRows } = await supabase
+              .from('pengumuman')
+              .select('*')
+              .eq('target_type', dateTarget)
+              .limit(1)
+
+            if (dateRows && dateRows.length > 0) {
+              let parsedMap = JSON.parse(dateRows[0].pesan || '{}')
+              if (parsedMap && typeof parsedMap === 'object' && parsedMap[rec.user_id]) {
+                delete parsedMap[rec.user_id]
+                await supabase
+                  .from('pengumuman')
+                  .update({ pesan: JSON.stringify(parsedMap) })
+                  .eq('id', dateRows[0].id)
+              }
+            }
+          } catch (e) {
+            console.warn('Gagal bersihkan mirror attendance per tanggal:', e)
+          }
+        }
+      }
     } catch (err) {
       console.warn('Gagal menyimpan registry absensi terhapus ke cloud:', err)
     }
   }
+
+  // 5. Bersihkan cache lokal guru untuk tanggal tersebut agar hak absen pulih seketika
+  affectedRecords.forEach(rec => {
+    if (rec.tanggal && rec.user_id) {
+      try {
+        localStorage.removeItem(`today_absensi_${rec.tanggal}_${rec.user_id}`)
+        localStorage.removeItem(`today_absensi_${rec.tanggal}`)
+      } catch (e) {}
+    }
+  })
+
+  // 6. Broadcast event sistem bahwa presensi di-reset / dihapus
+  try {
+    window.dispatchEvent(new CustomEvent('today_attendance_reset', {
+      detail: { deletedIds: stringIds, affectedRecords }
+    }))
+    window.dispatchEvent(new Event('attendance_updated'))
+  } catch (e) {}
 
   return true
 }
