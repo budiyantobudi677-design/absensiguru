@@ -413,6 +413,9 @@ export default function DashboardGuru({ roleOverride = null }) {
     })
   }, [user?.id, shiftSystem])
 
+  // Toggle Tampilan Jadwal Shift Guru (Default disembunyikan agar tampilan bersih)
+  const [showShiftSchedule, setShowShiftSchedule] = useState(false)
+
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
 
@@ -2646,46 +2649,77 @@ export default function DashboardGuru({ roleOverride = null }) {
               )}
               {!isHoliday && platformCheck.allowed && (
                 <>
-                  {/* Banner Info Shift Hari Ini */}
-                  <div style={{
-                    margin: '0 auto 1.25rem auto',
-                    maxWidth: '420px',
-                    background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
-                    border: '1.5px solid #C7D2FE',
-                    borderRadius: '16px',
-                    padding: '0.85rem 1rem',
-                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)',
-                    textAlign: 'left'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={16} color="#4F46E5" />
-                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#3730A3', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                          {todayShift?.dayName || 'Hari Ini'} • {todayShift?.weekType || ''}
+                  {/* Tombol Toggle Jadwal Shift (Inline Accordion, Default Sembunyi) */}
+                  <div style={{ margin: '0 auto 0.75rem auto', maxWidth: '420px', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowShiftSchedule((prev) => !prev)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0.45rem 1rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: showShiftSchedule ? '#4338CA' : '#475569',
+                        background: showShiftSchedule ? '#EEF2FF' : '#F1F5F9',
+                        border: showShiftSchedule ? '1.5px solid #C7D2FE' : '1px solid #CBD5E1',
+                        borderRadius: '999px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      <Calendar size={14} color={showShiftSchedule ? '#4F46E5' : '#64748B'} />
+                      <span>{showShiftSchedule ? 'Sembunyikan Jadwal Shift' : 'Lihat Jadwal Pekan Ini'}</span>
+                      <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{showShiftSchedule ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+
+                  {/* Banner Info Shift Hari Ini (Tampilan Sebelumnya, Tampil Inline Tanpa Popup) */}
+                  {showShiftSchedule && (
+                    <div style={{
+                      margin: '0 auto 1.25rem auto',
+                      maxWidth: '420px',
+                      background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                      border: '1.5px solid #C7D2FE',
+                      borderRadius: '16px',
+                      padding: '0.85rem 1rem',
+                      boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)',
+                      textAlign: 'left',
+                      animation: 'fadeIn 0.2s ease-in-out'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Clock size={16} color="#4F46E5" />
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#3730A3', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                            {todayShift?.dayName || 'Hari Ini'} • {todayShift?.weekType || ''}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: '#4F46E5',
+                          color: 'white'
+                        }}>
+                          {todayShift?.shiftName || 'Shift'}
                         </span>
                       </div>
-                      <span style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        padding: '2px 8px',
-                        borderRadius: '999px',
-                        background: '#4F46E5',
-                        color: 'white'
-                      }}>
-                        {todayShift?.shiftName || 'Shift'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>
-                      <div>
-                        <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM MASUK</span>
-                        <strong>{todayShift?.jamMasuk || '07:00'}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift?.jamMasukBatas || '07:15'})</span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM PULANG</span>
-                        <strong style={{ color: '#B45309' }}>{todayShift?.jamPulang || '14:00'}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>
+                        <div>
+                          <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM MASUK</span>
+                          <strong>{todayShift?.jamMasuk || '07:00'}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift?.jamMasukBatas || '07:15'})</span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM PULANG</span>
+                          <strong style={{ color: '#B45309' }}>{todayShift?.jamPulang || '14:00'}</strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                   <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
                 </>
               )}

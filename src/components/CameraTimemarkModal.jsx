@@ -1084,7 +1084,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const video = videoRef.current
     const canvas = document.createElement('canvas')
 
-    // 1. Calculate Target Dimensions Based on Device Rotation (Landscape saat HP diputar 90 derajat)
+    // 1. Calculate Target Dimensions Based on Device Rotation & Exact Proportional Cover Cropping
+    // Mengeliminasi 100% distorsi (tanpa pelebaran/pengecilan objek) sehingga hasil foto sesuai realita preview
     let effectiveAspectRatio = aspectRatio
 
     if (isLandscape) {
@@ -1093,69 +1094,57 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       else if (aspectRatio !== '1:1') effectiveAspectRatio = '4:3'
     }
 
-    let targetWidth = isLandscape ? 1280 : (video.videoWidth || 960)
-    let targetHeight = isLandscape ? (effectiveAspectRatio === '16:9' ? 720 : 960) : (video.videoHeight || 1280)
+    const vW = video.videoWidth || (isLandscape ? 1920 : 1080)
+    const vH = video.videoHeight || (isLandscape ? 1080 : 1920)
+
+    let targetRatio = 3 / 4
+    if (effectiveAspectRatio === '9:16') targetRatio = 9 / 16
+    else if (effectiveAspectRatio === '1:1') targetRatio = 1 / 1
+    else if (effectiveAspectRatio === '4:3') targetRatio = 4 / 3
+    else if (effectiveAspectRatio === '16:9') targetRatio = 16 / 9
+
     let sourceX = 0
     let sourceY = 0
-    let sourceWidth = video.videoWidth || (isLandscape ? 1280 : 960)
-    let sourceHeight = video.videoHeight || (isLandscape ? 960 : 1280)
+    let sourceWidth = vW
+    let sourceHeight = vH
+    let targetWidth = 1080
+    let targetHeight = 1440
 
-    if (effectiveAspectRatio === '1:1') {
-      const minDim = Math.min(sourceWidth, sourceHeight)
-      sourceX = (sourceWidth - minDim) / 2
-      sourceY = (sourceHeight - minDim) / 2
-      sourceWidth = minDim
-      sourceHeight = minDim
-      targetWidth = Math.min(Math.max(sourceWidth, 1080), 2160)
-      targetHeight = targetWidth
-    } else if (effectiveAspectRatio === '9:16') {
-      if (sourceWidth > sourceHeight) {
-        const calcWidth = Math.round((sourceHeight * 9) / 16)
-        sourceX = Math.round((sourceWidth - calcWidth) / 2)
-        sourceWidth = calcWidth
+    if (isVirtualLandscape) {
+      // Rotasi virtual (HP dipegang landscape tapi sensor portrait)
+      targetWidth = effectiveAspectRatio === '16:9' ? 1920 : 1440
+      targetHeight = 1080
+    } else {
+      // Cover crop matematis simetris persis sama dengan CSS object-fit: cover pada viewfinder
+      const streamRatio = vW / vH
+      if (streamRatio > targetRatio) {
+        // Stream lebih lebar daripada target -> ambil tinggi penuh, potong sisi kiri & kanan simetris
+        sourceHeight = vH
+        sourceWidth = Math.round(vH * targetRatio)
+        sourceX = Math.round((vW - sourceWidth) / 2)
+        sourceY = 0
       } else {
-        const calcHeight = Math.round((sourceWidth * 16) / 9)
-        if (calcHeight <= sourceHeight) {
-          sourceY = Math.round((sourceHeight - calcHeight) / 2)
-          sourceHeight = calcHeight
-        }
+        // Stream lebih tinggi daripada target -> ambil lebar penuh, potong sisi atas & bawah simetris
+        sourceWidth = vW
+        sourceHeight = Math.round(vW / targetRatio)
+        sourceX = 0
+        sourceY = Math.round((vH - sourceHeight) / 2)
       }
-      targetWidth = sourceWidth >= 1440 ? 1440 : 1080
-      targetHeight = Math.round((targetWidth * 16) / 9)
-    } else if (effectiveAspectRatio === '3:4') {
-      if (sourceWidth > sourceHeight) {
-        const calcWidth = Math.round((sourceHeight * 3) / 4)
-        sourceX = Math.round((sourceWidth - calcWidth) / 2)
-        sourceWidth = calcWidth
+
+      // Target canvas size: Skala proporsional 1:1 terhadap area crop kamera
+      // (scaleX === scaleY strictly, ZERO distortion / stretching / squishing)
+      let tW = sourceWidth
+      let tH = sourceHeight
+
+      // Pastikan resolusi tinggi minimal 1080px di sisi terpendek demi ketajaman maksimal
+      const minCropDim = Math.min(tW, tH)
+      if (minCropDim < 1080) {
+        const scaleUp = 1080 / minCropDim
+        tW = Math.round(tW * scaleUp)
+        tH = Math.round(tH * scaleUp)
       }
-      targetWidth = sourceWidth >= 1440 ? 1440 : 1080
-      targetHeight = Math.round((targetWidth * 4) / 3)
-    } else if (effectiveAspectRatio === '4:3') {
-      // Landscape 4:3
-      if (sourceHeight > sourceWidth && !isVirtualLandscape) {
-        const calcHeight = Math.round((sourceWidth * 3) / 4)
-        sourceY = Math.round((sourceHeight - calcHeight) / 2)
-        sourceHeight = calcHeight
-      } else if (!isVirtualLandscape) {
-        const calcWidth = Math.round((sourceHeight * 4) / 3)
-        if (calcWidth <= sourceWidth) {
-          sourceX = Math.round((sourceWidth - calcWidth) / 2)
-          sourceWidth = calcWidth
-        }
-      }
-      targetHeight = sourceHeight >= 1440 ? 1440 : 1080
-      targetWidth = Math.round((targetHeight * 4) / 3)
-    } else if (effectiveAspectRatio === '16:9') {
-      // Landscape 16:9
-      if (!isVirtualLandscape) {
-        const calcHeight = Math.round((sourceWidth * 9) / 16)
-        if (calcHeight <= sourceHeight) {
-          sourceY = Math.round((sourceHeight - calcHeight) / 2)
-          sourceHeight = calcHeight
-        }
-      }
-      targetHeight = sourceHeight >= 1440 ? 1440 : 1080
-      targetWidth = Math.round((targetHeight * 16) / 9)
+      targetWidth = tW
+      targetHeight = tH
     }
 
     canvas.width = targetWidth
@@ -2360,6 +2349,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
   if (!isOpen) return null
 
+  const isFullScreen916 = aspectRatio === '9:16' && !isLandscape
+  const livePreviewBottom = isFullScreen916 ? '135px' : '16px'
+
   return (
     <div
       style={{
@@ -2379,8 +2371,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         display: 'flex',
         flexDirection: isLandscape ? 'row' : 'column',
         alignItems: 'center',
-        justifyContent: isLandscape ? 'center' : 'space-between',
-        padding: isLandscape ? '0.4rem 0.6rem' : '1rem',
+        justifyContent: isLandscape ? 'center' : (isFullScreen916 ? 'center' : 'space-between'),
+        padding: isLandscape ? '0.4rem 0.6rem' : (isFullScreen916 ? '0' : '1rem'),
         gap: isLandscape ? '0.6rem' : '0',
         boxSizing: 'border-box',
         overflow: 'hidden'
@@ -2388,10 +2380,46 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     >
       {/* Tombol Header saat Landscape (Floating di Kiri Atas / Kanan Atas) atau Header Standar saat Portrait */}
       {!isLandscape ? (
-        <div style={{ width: '100%', maxWidth: '480px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+        <div style={{
+          position: isFullScreen916 ? 'absolute' : 'relative',
+          top: isFullScreen916 ? 0 : 'auto',
+          left: isFullScreen916 ? 0 : 'auto',
+          right: isFullScreen916 ? 0 : 'auto',
+          width: '100%',
+          maxWidth: isFullScreen916 ? 'none' : '480px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 40,
+          padding: isFullScreen916 ? 'calc(env(safe-area-inset-top, 12px) + 10px) 16px 20px 16px' : '0',
+          background: isFullScreen916 ? 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 70%, transparent 100%)' : 'transparent',
+          boxSizing: 'border-box',
+          pointerEvents: 'auto'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
             <Camera size={22} color="#38BDF8" />
             <span style={{ fontWeight: '600', fontSize: '1rem' }}>Kamera GTag</span>
+            <button
+              type="button"
+              onClick={() => {
+                const nextRatio = aspectRatio === '3:4' ? '9:16' : aspectRatio === '9:16' ? '1:1' : '3:4'
+                handleAspectRatioChange(nextRatio)
+              }}
+              title="Ganti Rasio Foto (3:4 / 9:16 / 1:1)"
+              style={{
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                color: '#38BDF8',
+                borderRadius: '16px',
+                padding: '2px 8px',
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                marginLeft: '4px'
+              }}
+            >
+              {aspectRatio}
+            </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {/* Tombol Segarkan GPS */}
@@ -2842,23 +2870,26 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       <div
         ref={viewfinderRef}
         style={{
-          position: 'relative',
-          flex: isLandscape ? '1 1 auto' : 'none',
+          position: isFullScreen916 ? 'absolute' : 'relative',
+          inset: isFullScreen916 ? 0 : 'auto',
+          flex: isLandscape ? '1 1 auto' : (isFullScreen916 ? '1 1 100%' : 'none'),
           width: isLandscape ? 'calc(100% - 100px)' : '100%',
-          maxWidth: isLandscape ? 'none' : '480px',
-          height: isLandscape ? 'calc(100% - 8px)' : 'auto',
-          aspectRatio: isLandscape
-            ? (aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '1:1' ? '1 / 1' : '4 / 3')
-            : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4'),
-          maxHeight: isLandscape ? '100%' : (aspectRatio === '9:16' ? '64vh' : '58vh'),
+          maxWidth: isLandscape ? 'none' : (isFullScreen916 ? 'none' : '480px'),
+          height: isLandscape ? 'calc(100% - 8px)' : (isFullScreen916 ? '100%' : 'auto'),
+          aspectRatio: isFullScreen916 ? 'auto' : (
+            isLandscape
+              ? (aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '1:1' ? '1 / 1' : '4 / 3')
+              : (aspectRatio === '1:1' ? '1 / 1' : aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '9:16' ? '9 / 16' : '3 / 4')
+          ),
+          maxHeight: isLandscape ? '100%' : (isFullScreen916 ? 'none' : (aspectRatio === '9:16' ? '64vh' : '58vh')),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: isLandscape ? '16px' : '24px',
+          borderRadius: isFullScreen916 ? '0' : (isLandscape ? '16px' : '24px'),
           overflow: 'hidden',
           background: '#000',
-          margin: isLandscape ? '0' : '0.5rem 0',
-          border: '1px solid rgba(255,255,255,0.1)'
+          margin: isFullScreen916 ? '0' : (isLandscape ? '0' : '0.5rem 0'),
+          border: isFullScreen916 ? 'none' : '1px solid rgba(255,255,255,0.1)'
         }}
       >
         {cameraError ? (
@@ -2929,7 +2960,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 <div
                   style={{
                     position: 'absolute',
-                    bottom: '12px',
+                    bottom: isFullScreen916 ? '150px' : '12px',
                     left: '10px',
                     right: '10px',
                     display: 'flex',
@@ -3007,7 +3038,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                     onClick={() => setIsReviewMode(true)}
                     style={{
                       position: 'absolute',
-                      top: '12px',
+                      top: isFullScreen916 ? '70px' : '12px',
                       left: '14px',
                       background: 'rgba(15, 23, 42, 0.88)',
                       border: '1px solid #F59E0B',
@@ -3033,7 +3064,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             <div
               style={{
                 position: 'absolute',
-                top: '14px',
+                top: isFullScreen916 ? '70px' : '14px',
                 right: '16px',
                 textAlign: 'right',
                 textShadow: '0 2px 6px rgba(0,0,0,0.95)',
@@ -3054,7 +3085,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '16px',
+                  bottom: livePreviewBottom,
                   left: '16px',
                   right: '16px',
                   display: 'flex',
@@ -3124,7 +3155,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '16px',
+                  bottom: livePreviewBottom,
                   left: '16px',
                   right: '16px',
                   display: 'flex',
@@ -3195,7 +3226,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 <div
                   style={{
                     position: 'absolute',
-                    bottom: '16px',
+                    bottom: livePreviewBottom,
                     left: '16px',
                     right: '16px',
                     display: 'flex',
@@ -3220,7 +3251,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '14px',
+                  bottom: livePreviewBottom,
                   left: '14px',
                   right: '14px',
                   display: 'flex',
@@ -3273,7 +3304,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   right: '12px',
                   maxWidth: '80%',
                   display: 'flex',
@@ -3309,7 +3340,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   left: '12px',
                   right: '12px',
                   display: 'flex',
@@ -3363,7 +3394,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   right: '12px',
                   maxWidth: '85%',
                   display: 'flex',
@@ -3402,7 +3433,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   left: '12px',
                   right: '12px',
                   display: 'flex',
@@ -3442,7 +3473,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   left: '12px',
                   right: '12px',
                   display: 'flex',
@@ -3468,7 +3499,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '12px',
+                  bottom: livePreviewBottom,
                   left: '12px',
                   right: '12px',
                   display: 'flex',
@@ -3509,14 +3540,23 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       {/* Controls & Inputs (Berada di Sisi Kanan saat Landscape, di Bawah saat Portrait) */}
       <div
         style={{
+          position: isFullScreen916 ? 'absolute' : 'relative',
+          bottom: isFullScreen916 ? 0 : 'auto',
+          left: isFullScreen916 ? 0 : 'auto',
+          right: isFullScreen916 ? 0 : 'auto',
           width: isLandscape ? '85px' : '100%',
-          maxWidth: isLandscape ? '85px' : '480px',
+          maxWidth: isLandscape ? '85px' : (isFullScreen916 ? 'none' : '480px'),
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: isLandscape ? '1rem' : '0.75rem',
-          flexShrink: 0
+          gap: isLandscape ? '1rem' : (isFullScreen916 ? '0.5rem' : '0.75rem'),
+          flexShrink: 0,
+          zIndex: 40,
+          padding: isFullScreen916 ? '16px 20px calc(env(safe-area-inset-bottom, 16px) + 14px) 20px' : '0',
+          background: isFullScreen916 ? 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 75%, transparent 100%)' : 'transparent',
+          boxSizing: 'border-box',
+          pointerEvents: 'auto'
         }}
       >
         {!isReviewMode ? (
@@ -3529,14 +3569,17 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 onChange={(e) => setCustomNote(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '0.65rem 1rem',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  background: 'rgba(255,255,255,0.1)',
+                  maxWidth: isFullScreen916 ? '380px' : '100%',
+                  padding: isFullScreen916 ? '0.55rem 1rem' : '0.65rem 1rem',
+                  borderRadius: isFullScreen916 ? '20px' : '12px',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  background: isFullScreen916 ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.1)',
+                  backdropFilter: 'blur(8px)',
                   color: 'white',
-                  fontSize: '0.85rem',
+                  fontSize: '0.82rem',
                   boxSizing: 'border-box',
-                  outline: 'none'
+                  outline: 'none',
+                  marginBottom: isFullScreen916 ? '0.2rem' : '0'
                 }}
               />
             )}
@@ -3548,7 +3591,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 justifyContent: isLandscape ? 'center' : 'space-around',
                 gap: isLandscape ? '1.2rem' : '0',
                 width: '100%',
-                padding: '0.5rem 0'
+                maxWidth: isFullScreen916 ? '380px' : '100%',
+                padding: '0.25rem 0'
               }}
             >
               {/* Tombol Flip Kamera (Di atas shutter saat landscape, di kiri saat portrait) */}
@@ -3650,7 +3694,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', width: isLandscape ? '85px' : '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', width: isLandscape ? '85px' : '100%', maxWidth: isFullScreen916 ? '380px' : '100%' }}>
             {onSelectPhoto && (
               <button
                 type="button"
