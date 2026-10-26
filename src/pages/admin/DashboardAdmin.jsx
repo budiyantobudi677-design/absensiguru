@@ -31,7 +31,7 @@ import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
-import { isValidUUID, generateUUID, updateLeaderAccountCredentials, deleteUserAccountSafely } from '../../lib/developerManager'
+import { isValidUUID, generateUUID, updateLeaderAccountCredentials, deleteUserAccountSafely, getKepsekOverrideCredentials } from '../../lib/developerManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
@@ -913,14 +913,15 @@ export default function DashboardAdmin() {
     loadKbmClasses()
     syncCloudSubjects(supabase)
     const cloudAssignments = await syncCloudTeacherAssignments(supabase)
-    const [profRes, bindRes, deletedReg] = await Promise.all([
+    const [profRes, bindRes, deletedReg, overrideKepsek] = await Promise.all([
       supabase.from('profiles').select('*'),
       fetchDeviceBindings(supabase),
-      fetchDeletedAccountsRegistry(supabase)
+      fetchDeletedAccountsRegistry(supabase),
+      getKepsekOverrideCredentials(supabase)
     ])
     if (profRes.data) {
       const activeProfiles = profRes.data.filter(p => !isAccountDeleted(p, deletedReg))
-      const merged = activeProfiles.map(p => {
+      let merged = activeProfiles.map(p => {
         const assign = cloudAssignments?.[p.id]
         return {
           ...p,
@@ -930,6 +931,51 @@ export default function DashboardAdmin() {
           tipe_perangkat: assign?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${p.id}`) || p.tipe_perangkat || 'android'
         }
       })
+
+      // 1. Pastikan akun Administrator selalu ada di daftar pegawai (di urutan teratas)
+      if (admin && admin.id) {
+        const hasAdmin = merged.some(p => p.id === admin.id || (p.email && p.email.toLowerCase() === admin.email?.toLowerCase()) || p.role === 'admin' || p.penugasan_tipe === 'admin')
+        if (!hasAdmin) {
+          merged.unshift({
+            id: admin.id,
+            full_name: admin.full_name || 'Administrator',
+            email: admin.email || 'admin@sekolah.edu',
+            nip: admin.nip || '-',
+            role: 'admin',
+            penugasan_tipe: 'admin',
+            jabatan: admin.jabatan || 'Administrator',
+            tipe_perangkat: admin.tipe_perangkat || 'android'
+          })
+        }
+      }
+
+      // 2. Akun Kepala Sekolah: Muncul HANYA jika akun kepala sekolah sudah ditentukan
+      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek')
+      const hasKepsekAccount = existingKepsekIdx >= 0 || (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg))
+
+      if (hasKepsekAccount) {
+        if (existingKepsekIdx >= 0) {
+          if (overrideKepsek?.fullName) merged[existingKepsekIdx].full_name = overrideKepsek.fullName
+          if (overrideKepsek?.email) merged[existingKepsekIdx].email = overrideKepsek.email
+          if (kepsekNama && kepsekNama.trim()) merged[existingKepsekIdx].full_name = kepsekNama
+          if (kepsekNip && kepsekNip.trim()) merged[existingKepsekIdx].nip = kepsekNip
+          if (kepsekJabatan && kepsekJabatan.trim()) merged[existingKepsekIdx].jabatan = kepsekJabatan
+        } else if (overrideKepsek && overrideKepsek.email) {
+          const adminIdx = merged.findIndex(p => p.role === 'admin' || p.penugasan_tipe === 'admin')
+          const insertIdx = adminIdx >= 0 ? adminIdx + 1 : 0
+          merged.splice(insertIdx, 0, {
+            id: overrideKepsek.userId || 'kepsek-active-id',
+            full_name: kepsekNama || overrideKepsek.fullName || 'Kepala Sekolah',
+            email: overrideKepsek.email,
+            nip: kepsekNip || '-',
+            role: 'kepsek',
+            penugasan_tipe: 'kepsek',
+            jabatan: kepsekJabatan || 'Kepala Sekolah',
+            tipe_perangkat: 'android'
+          })
+        }
+      }
+
       setPegawaiData(merged)
     }
     if (bindRes) setDeviceBindings(bindRes)
@@ -1430,8 +1476,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        absensiData.forEach(a => {
           if(!userMap[a.user_id]) return;
           const tgl = new Date(a.tanggal).getDate();
+          const isLate = a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+            try {
+              const d = new Date(a.waktu_masuk);
+              return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15);
+            } catch { return false; }
+          })());
+
           userMap[a.user_id].absensi[tgl] = {
-             status: a.status,
+             status: isLate ? 'terlambat' : (a.status || 'hadir'),
              in: a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
              out: a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
           };
@@ -1446,14 +1499,22 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        });
      } else {
        columns = ['No', 'Nama', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
-       rows = getFilteredAndSortedData().map((a, index) => ({
-         No: index + 1,
-         Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
-         Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-         'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-         'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
-         Status: a.status?.toUpperCase() || 'HADIR'
-       }));
+       rows = getFilteredAndSortedData().map((a, index) => {
+         const isLate = a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+           try {
+             const d = new Date(a.waktu_masuk);
+             return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15);
+           } catch { return false; }
+         })());
+         return {
+           No: index + 1,
+           Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
+           Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+           'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+           'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
+           Status: isLate ? 'TERLAMBAT' : (a.status?.toUpperCase() || 'HADIR')
+         };
+       });
      }
 
      setExportPreviewData({ 
@@ -1518,7 +1579,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
          if (laporanTipe === 'bulanan' && col !== 'No' && col !== 'Nama') {
             const cellData = row[col];
             if (!cellData) rowData.push('-');
-            else if (cellData.status === 'hadir') rowData.push(rekapTampilJam ? `✓\nIn: ${cellData.in}\nOut: ${cellData.out}` : '✓');
+            else if (cellData.status === 'hadir' || cellData.status === 'terlambat') rowData.push(rekapTampilJam ? `✓\nIn: ${cellData.in}\nOut: ${cellData.out}` : '✓');
             else rowData.push(cellData.status.toUpperCase());
          } else {
             rowData.push(row[col]);
@@ -1544,6 +1605,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
             if (cellData && cellData !== '-') {
                if (cellData.status === 'hadir') {
                   cellFont.color = { argb: 'FF2563EB' };
+               } else if (cellData.status === 'terlambat') {
+                  cellFont.color = { argb: 'FFDC2626' };
+                  cellFont.bold = true;
                } else if (cellData.status === 'izin') {
                   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
                   cellFont.bold = true;
@@ -1590,7 +1654,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        const body = rows.map(r => columns.map(c => {
           let content = r[c] || '-';
           if (laporanTipe === 'bulanan' && c !== 'No' && c !== 'Nama' && content !== '-') {
-             if (content.status === 'hadir') content = rekapTampilJam ? `✓\nIn: ${content.in}\nOut: ${content.out}` : '✓';
+             if (content.status === 'hadir' || content.status === 'terlambat') content = rekapTampilJam ? `✓\nIn: ${content.in}\nOut: ${content.out}` : '✓';
              else if (content.status === 'izin') content = 'IZIN';
              else if (content.status === 'sakit') content = 'SAKIT';
           }
@@ -1628,6 +1692,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                if (colName !== 'No' && colName !== 'Nama' && cellData && cellData !== '-') {
                   if (cellData.status === 'hadir') {
                      data.cell.styles.textColor = [37, 99, 235];
+                  } else if (cellData.status === 'terlambat') {
+                     data.cell.styles.textColor = [220, 38, 38];
+                     data.cell.styles.fontStyle = 'bold';
                   } else if (cellData.status === 'izin') {
                      data.cell.styles.fillColor = [251, 191, 36];
                      data.cell.styles.textColor = [255, 255, 255];
@@ -5025,6 +5092,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         if (laporanTipe === 'bulanan' && cIdx > 1 && cellContent !== '-') {
                            if (cellContent.status === 'hadir') {
                               color = '#2563EB'; // Blue
+                              cellContent = rekapTampilJam ? `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}` : '✓';
+                           } else if (cellContent.status === 'terlambat') {
+                              color = '#DC2626'; // RED
+                              bold = true;
                               cellContent = rekapTampilJam ? `✓\nIn: ${cellContent.in}\nOut: ${cellContent.out}` : '✓';
                            } else if (cellContent.status === 'izin') {
                               bg = '#FBBF24'; // Yellow
