@@ -35,6 +35,7 @@ import {
   setOverrideFeatureStatus
 } from '../../lib/attendanceOverrideManager'
 import { downloadFullSystemBackup, executeAppFactoryReset, executeExtremeResetAndDeleteAccounts } from '../../lib/appResetManager'
+import { saveSchoolSettings } from '../../lib/schoolSettingsManager'
 
 export default function DashboardPengembang() {
   const navigate = useNavigate()
@@ -987,13 +988,46 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
 
               <div style={{ background: '#0B2545', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600 }}>GEOFENCE SEKOLAH</span>
+                  <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600 }}>GEOFENCE SEKOLAH (HAK AKSES PENGEMBANG)</span>
                   <MapPin size={18} color="#EC4899" />
                 </div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#FFFFFF' }}>
-                  {stats.geofenceEnabled ? `Aktif (${stats.radius}m)` : 'Non-Aktif'}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      {stats.geofenceEnabled ? `Aktif (${stats.radius}m)` : 'Non-Aktif'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.2rem' }}>{stats.schoolName}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nextState = !stats.geofenceEnabled
+                      if (!confirm(`Konfirmasi ubah status Geofencing ke: ${nextState ? 'AKTIF' : 'NON-AKTIF'}?`)) return
+                      try {
+                        await saveSchoolSettings({ geofence_enabled: nextState }, supabase)
+                        setStats(prev => ({ ...prev, geofenceEnabled: nextState }))
+                        alert(`Status Geofencing berhasil diubah menjadi: ${nextState ? 'Aktif' : 'Non-Aktif'}`)
+                      } catch (err) {
+                        alert(`Gagal mengubah status geofencing: ${err.message}`)
+                      }
+                    }}
+                    style={{
+                      background: stats.geofenceEnabled ? '#EF4444' : '#10B981',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.85rem',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    {stats.geofenceEnabled ? 'Nonaktifkan' : 'Aktifkan'}
+                  </button>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.2rem' }}>{stats.schoolName}</div>
               </div>
             </div>
 

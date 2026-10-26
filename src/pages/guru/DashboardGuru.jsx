@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare, Lock } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -415,6 +415,35 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   // Toggle Tampilan Jadwal Shift Guru (Default disembunyikan agar tampilan bersih)
   const [showShiftSchedule, setShowShiftSchedule] = useState(false)
+
+  // Validasi apakah waktu sekarang belum mencapai jam pulang shift hari ini
+  const isBeforeJamPulang = useMemo(() => {
+    if (!todayShift?.jamPulang) return false
+    const now = currentTime || new Date()
+    const currentMins = now.getHours() * 60 + now.getMinutes()
+    const [pH, pM] = (todayShift.jamPulang || '14:00').split(':').map(Number)
+    return currentMins < (pH * 60 + pM)
+  }, [currentTime, todayShift?.jamPulang])
+
+  // Cek apakah presensi masuk hari ini terlambat
+  const isTodayLate = useMemo(() => {
+    if (todayStatus === 'terlambat' || todayAbsensi?.status === 'terlambat') return true
+    if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasukBatas) return false
+    const masukDate = new Date(todayAbsensi.waktu_masuk)
+    const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
+    const [limitH, limitM] = todayShift.jamMasukBatas.split(':').map(Number)
+    return masukMins > (limitH * 60 + limitM)
+  }, [todayStatus, todayAbsensi?.status, todayAbsensi?.waktu_masuk, todayShift?.jamMasukBatas])
+
+  // Hitung jumlah menit keterlambatan hari ini
+  const lateMinutesToday = useMemo(() => {
+    if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasuk) return 0
+    const masukDate = new Date(todayAbsensi.waktu_masuk)
+    const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
+    const [inH, inM] = todayShift.jamMasuk.split(':').map(Number)
+    const scheduledMins = inH * 60 + inM
+    return Math.max(0, masukMins - scheduledMins)
+  }, [todayAbsensi?.waktu_masuk, todayShift?.jamMasuk])
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
@@ -1637,6 +1666,10 @@ export default function DashboardGuru({ roleOverride = null }) {
           if (val === 'HADIR') {
             data.cell.styles.textColor = [5, 150, 105]
             data.cell.styles.fontStyle = 'bold'
+          } else if (val === 'TERLAMBAT') {
+            data.cell.styles.fillColor = [254, 243, 199]
+            data.cell.styles.textColor = [180, 83, 9]
+            data.cell.styles.fontStyle = 'bold'
           } else if (val === 'IZIN') {
             data.cell.styles.fillColor = [254, 243, 199]
             data.cell.styles.textColor = [217, 119, 6]
@@ -1662,19 +1695,28 @@ export default function DashboardGuru({ roleOverride = null }) {
   }
 
   const saveOffline = (jenis, loc, now, today, ket = '') => {
-    const record = { user_id: user.id, jenis, loc, waktu: now, tanggal: today, keterangan: ket }
+    let offlineStatus = (jenis === 'sakit' || jenis === 'izin') ? jenis : 'hadir'
+    if (jenis === 'masuk') {
+      const nowDate = new Date(now)
+      const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
+      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:15').split(':').map(Number)
+      if (currentMins > (limitH * 60 + limitM)) {
+        offlineStatus = 'terlambat'
+      }
+    }
+    const record = { user_id: user.id, jenis, loc, waktu: now, tanggal: today, keterangan: ket, status: offlineStatus }
     enqueueOfflineAttendance(record)
     checkUnsynced()
     
     if (jenis !== 'pulang') {
        setHasCheckedIn(true)
-       setTodayStatus(jenis === 'masuk' ? 'hadir' : jenis)
+       setTodayStatus(offlineStatus)
        setTodayAbsensi({
          user_id: user.id,
          waktu_masuk: now,
          tanggal: today,
          lokasi_masuk: loc,
-         status: jenis === 'masuk' ? 'hadir' : jenis,
+         status: offlineStatus,
          keterangan: ket,
          is_offline: true
        })
@@ -1726,6 +1768,39 @@ export default function DashboardGuru({ roleOverride = null }) {
 
     setLoading(true)
     try {
+      // Proteksi Jam Pulang: Tidak boleh Clock Out sebelum jam pulang shift hari ini tiba
+      if (jenis === 'pulang') {
+        const nowDate = getSecureServerDate()
+        const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
+        const [pH, pM] = (todayShift?.jamPulang || '14:00').split(':').map(Number)
+        const pulangMins = pH * 60 + pM
+        if (currentMins < pulangMins) {
+          showPopup(
+            "Belum Waktu Pulang",
+            `Presensi pulang baru dapat dilakukan mulai pukul ${todayShift?.jamPulang || '14:00'} WITA sesuai jadwal shift Anda.`,
+            "warning"
+          )
+          setLoading(false)
+          return
+        }
+      }
+
+      // Deteksi status keterlambatan jika absen masuk
+      let masukStatus = 'hadir'
+      let lateMinutes = 0
+      if (jenis === 'masuk') {
+        const nowDate = getSecureServerDate()
+        const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
+        const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
+        const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:15').split(':').map(Number)
+        const limitMins = limitH * 60 + limitM
+        const scheduledMins = inH * 60 + inM
+        if (currentMins > limitMins) {
+          masukStatus = 'terlambat'
+          lateMinutes = Math.max(0, currentMins - scheduledMins)
+        }
+      }
+
       const position = await getSecureLocation({ enableHighAccuracy: true, timeout: 10000 })
       
       // Deteksi Fake GPS / Mock Location
@@ -1799,7 +1874,7 @@ export default function DashboardGuru({ roleOverride = null }) {
           now,
           today,
           loc,
-          status: (jenis === 'sakit' || jenis === 'izin') ? jenis : 'hadir',
+          status: (jenis === 'sakit' || jenis === 'izin') ? jenis : (jenis === 'masuk' ? masukStatus : (todayAbsensi?.status || 'hadir')),
           keterangan,
           supabase,
           userProfile: profile || user,
@@ -1811,9 +1886,13 @@ export default function DashboardGuru({ roleOverride = null }) {
 
         if (jenis === 'masuk') {
           setHasCheckedIn(true)
-          setTodayStatus('hadir')
+          setTodayStatus(masukStatus)
           setTodayAbsensi(insData)
-          showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem.", "success")
+          if (masukStatus === 'terlambat') {
+            showPopup("Absen Masuk (Terlambat)", `Data jam masuk Anda tercatat pukul ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} (Terlambat ${lateMinutes} menit).`, "warning")
+          } else {
+            showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem tepat waktu.", "success")
+          }
         } else if (jenis === 'pulang') {
           setTodayAbsensi(prev => ({ ...(prev || {}), ...(insData || {}), waktu_pulang: now, lokasi_pulang: loc }))
           showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
@@ -2754,20 +2833,27 @@ export default function DashboardGuru({ roleOverride = null }) {
                   <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
                 </div>
               ) : todayAbsensi?.waktu_pulang ? (
-                <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
-                  <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: '#16A34A' }} />
+                <div className="card" style={{ padding: '1.5rem', background: isTodayLate ? '#FFFBEB' : '#F0FDF4', border: isTodayLate ? '1.5px solid #FCD34D' : '1px solid #BBF7D0', color: isTodayLate ? '#92400E' : '#166534', textAlign: 'center' }}>
+                  <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: isTodayLate ? '#D97706' : '#16A34A' }} />
                   <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>
                     {todayAbsensi.keterangan?.includes('Tugas Luar') ? 'Presensi Tugas Luar Selesai' : 'Presensi Hari Ini Selesai'}
                   </h3>
-                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803D' }}>
-                    Anda terdaftar <strong>HADIR</strong> untuk hari ini.
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: isTodayLate ? '#B45309' : '#15803D' }}>
+                    Anda terdaftar <strong style={{ color: isTodayLate ? '#B45309' : '#15803D' }}>{isTodayLate ? 'TERLAMBAT' : 'HADIR'}</strong> untuk hari ini.
                   </p>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', background: 'white', padding: '0.75rem 1rem', borderRadius: '14px', border: isTodayLate ? '1px solid #FDE68A' : '1px solid #DCFCE7', marginBottom: '1rem', maxWidth: '320px', margin: '0 auto 1rem auto' }}>
                     <div>
-                      <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM MASUK</div>
-                      <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#059669' }}>
+                      <div style={{ fontSize: '0.65rem', color: isTodayLate ? '#B45309' : '#6B7280', fontWeight: 'bold' }}>
+                        JAM MASUK {isTodayLate ? '(TERLAMBAT)' : ''}
+                      </div>
+                      <div style={{ fontWeight: '800', fontSize: '1.05rem', color: isTodayLate ? '#D97706' : '#059669' }}>
                         {todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
                       </div>
+                      {isTodayLate && lateMinutesToday > 0 && (
+                        <div style={{ fontSize: '0.68rem', color: '#B45309', fontWeight: 600 }}>
+                          +{lateMinutesToday} mnt
+                        </div>
+                      )}
                     </div>
                     <div style={{ borderLeft: '1px solid #E5E7EB' }}></div>
                     <div>
@@ -2791,10 +2877,125 @@ export default function DashboardGuru({ roleOverride = null }) {
                   )}
                 </div>
               ) : platformCheck.allowed ? (
-                <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
-                  <Fingerprint size={48} strokeWidth={1.5} />
-                  <span>Clock Out</span>
-                </button>
+                isBeforeJamPulang ? (
+                  <div style={{ textAlign: 'center', margin: '0 auto', maxWidth: '380px' }}>
+                    {todayAbsensi?.waktu_masuk && (
+                      <div style={{
+                        background: isTodayLate ? '#FFFBEB' : '#F0FDF4',
+                        border: isTodayLate ? '1.5px solid #FCD34D' : '1.5px solid #BBF7D0',
+                        borderRadius: '16px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '1.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <div style={{ textAlign: 'left' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: isTodayLate ? '#B45309' : '#15803D', display: 'block' }}>
+                            JAM MASUK {isTodayLate ? '(TERLAMBAT)' : '(TEPAT WAKTU)'}
+                          </span>
+                          <strong style={{ fontSize: '1.1rem', color: isTodayLate ? '#D97706' : '#059669' }}>
+                            {new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                          </strong>
+                          {isTodayLate && lateMinutesToday > 0 && (
+                            <span style={{ fontSize: '0.72rem', color: '#B45309', marginLeft: '6px', fontWeight: 600 }}>
+                              (+{lateMinutesToday} mnt)
+                            </span>
+                          )}
+                        </div>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          padding: '3px 10px',
+                          borderRadius: '999px',
+                          background: isTodayLate ? '#FEF3C7' : '#DCFCE7',
+                          color: isTodayLate ? '#B45309' : '#15803D',
+                          border: isTodayLate ? '1px solid #FDE68A' : '1px solid #86EFAC'
+                        }}>
+                          {isTodayLate ? 'TERLAMBAT' : 'HADIR'}
+                        </span>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn-clock out disabled"
+                      disabled
+                      title={`Belum waktu pulang (Tersedia mulai pukul ${todayShift?.jamPulang || '14:00'})`}
+                      style={{
+                        background: 'linear-gradient(135deg, #94A3B8 0%, #64748B 100%)',
+                        boxShadow: 'none',
+                        cursor: 'not-allowed',
+                        opacity: 0.85,
+                        margin: '0 auto'
+                      }}
+                    >
+                      <Lock size={44} strokeWidth={1.5} />
+                      <span>Clock Out</span>
+                    </button>
+
+                    <div style={{
+                      marginTop: '1rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.45rem 1rem',
+                      borderRadius: '999px',
+                      background: '#FEF3C7',
+                      border: '1px solid #FDE68A',
+                      color: '#92400E',
+                      fontSize: '0.8rem',
+                      fontWeight: 600
+                    }}>
+                      <Clock size={14} color="#D97706" />
+                      <span>Belum waktu pulang (Tersedia mulai {todayShift?.jamPulang || '14:00'} WITA)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', margin: '0 auto', maxWidth: '380px' }}>
+                    {todayAbsensi?.waktu_masuk && (
+                      <div style={{
+                        background: isTodayLate ? '#FFFBEB' : '#F0FDF4',
+                        border: isTodayLate ? '1.5px solid #FCD34D' : '1.5px solid #BBF7D0',
+                        borderRadius: '16px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '1.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <div style={{ textAlign: 'left' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: isTodayLate ? '#B45309' : '#15803D', display: 'block' }}>
+                            JAM MASUK {isTodayLate ? '(TERLAMBAT)' : '(TEPAT WAKTU)'}
+                          </span>
+                          <strong style={{ fontSize: '1.1rem', color: isTodayLate ? '#D97706' : '#059669' }}>
+                            {new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                          </strong>
+                          {isTodayLate && lateMinutesToday > 0 && (
+                            <span style={{ fontSize: '0.72rem', color: '#B45309', marginLeft: '6px', fontWeight: 600 }}>
+                              (+{lateMinutesToday} mnt)
+                            </span>
+                          )}
+                        </div>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          padding: '3px 10px',
+                          borderRadius: '999px',
+                          background: isTodayLate ? '#FEF3C7' : '#DCFCE7',
+                          color: isTodayLate ? '#B45309' : '#15803D',
+                          border: isTodayLate ? '1px solid #FDE68A' : '1px solid #86EFAC'
+                        }}>
+                          {isTodayLate ? 'TERLAMBAT' : 'HADIR'}
+                        </span>
+                      </div>
+                    )}
+                    <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
+                      <Fingerprint size={48} strokeWidth={1.5} />
+                      <span>Clock Out</span>
+                    </button>
+                  </div>
+                )
               ) : null}
 
             {izinMode && (

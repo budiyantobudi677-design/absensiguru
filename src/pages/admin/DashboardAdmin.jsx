@@ -4554,13 +4554,13 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   setLoadingData(true);
-                  const isEnabled = e.target.geofence_enabled.value === 'true';
+                  const isEnabled = true;
                   const lat = parseFloat(e.target.school_lat.value) || 0;
                   const lng = parseFloat(e.target.school_lng.value) || 0;
                   const radius = parseInt(e.target.school_radius.value) || 100;
 
                   const payload = {
-                    geofence_enabled: isEnabled,
+                    geofence_enabled: true,
                     school_lat: lat,
                     school_lng: lng,
                     school_radius: radius
@@ -4568,7 +4568,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
                   try {
                     await saveSchoolSettings(payload, supabase);
-                    setGeofenceEnabled(isEnabled);
+                    setGeofenceEnabled(true);
                     setSchoolLat(lat);
                     setSchoolLng(lng);
                     setSchoolRadius(radius);
@@ -4579,12 +4579,22 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     setLoadingData(false);
                   }
                 }}>
-                  <div className="input-group">
-                    <label className="input-label" style={{ fontSize: '0.85rem' }}>Status Geofencing</label>
-                    <select name="geofence_enabled" className="input" defaultValue={geofenceEnabled.toString()}>
-                       <option value="false">Nonaktif (Bisa absen dari mana saja)</option>
-                       <option value="true">Aktif (Wajib di area sekolah)</option>
-                    </select>
+                  <div className="input-group" style={{ marginBottom: '1.25rem' }}>
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '0.65rem 1rem',
+                      borderRadius: '12px',
+                      background: '#F0FDF4',
+                      border: '1.5px solid #BBF7D0',
+                      color: '#166534',
+                      fontSize: '0.875rem',
+                      fontWeight: 700
+                    }}>
+                      <span>🔒 Status Geofencing: Aktif (Wajib di Area Sekolah)</span>
+                    </div>
+                    <input type="hidden" name="geofence_enabled" value="true" />
                   </div>
 
                   {/* Interactive Map Picker */}

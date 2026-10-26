@@ -900,7 +900,18 @@ export default function RekapPresensiPegawai({
                     const tl = isTugasLuar(item)
                     const photo = extractPhoto(item)
                     const note = cleanKeterangan(item.keterangan)
-                    const isHadir = !item.status || item.status === 'hadir' || tl
+                    const isLate = !tl && (
+                      item.status === 'terlambat' || 
+                      ((!item.status || item.status === 'hadir') && item.waktu_masuk && (() => {
+                        try {
+                          const d = new Date(item.waktu_masuk)
+                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15)
+                        } catch (e) {
+                          return false
+                        }
+                      })())
+                    )
+                    const isHadir = !item.status || item.status === 'hadir' || isLate || tl
 
                     // Warna badge status: Tugas Luar statusnya tetap HADIR
                     let statusLabel = 'HADIR'
@@ -923,6 +934,11 @@ export default function RekapPresensiPegawai({
                       badgeBg = '#FEE2E2'
                       badgeColor = '#DC2626'
                       badgeBorder = '#FECACA'
+                    } else if (isLate) {
+                      statusLabel = 'TERLAMBAT'
+                      badgeBg = '#FEF3C7'
+                      badgeColor = '#B45309'
+                      badgeBorder = '#FDE68A'
                     } else {
                       // Hadir biasa atau Tugas Luar -> Status tetap HADIR
                       statusLabel = 'HADIR'
@@ -967,7 +983,16 @@ export default function RekapPresensiPegawai({
                         )}
 
                         <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-block', background: '#ECFDF5', color: '#047857', padding: '3px 8px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700, border: '1px solid #A7F3D0' }}>
+                          <span style={{ 
+                            display: 'inline-block', 
+                            background: isLate ? '#FEF3C7' : '#ECFDF5', 
+                            color: isLate ? '#B45309' : '#047857', 
+                            padding: '3px 8px', 
+                            borderRadius: '8px', 
+                            fontSize: '0.8rem', 
+                            fontWeight: 700, 
+                            border: isLate ? '1px solid #FDE68A' : '1px solid #A7F3D0' 
+                          }}>
                             {inTime}
                           </span>
                         </td>
@@ -1151,9 +1176,20 @@ export default function RekapPresensiPegawai({
                     statusText = 'ALPA'
                     badgeColor = '#DC2626'
                   } else {
-                    bgBox = '#ECFDF5'
-                    borderColor = '#A7F3D0'
-                    badgeColor = '#059669'
+                    const isAttLate = !tl && (
+                      att.status === 'terlambat' || 
+                      ((!att.status || att.status === 'hadir') && att.waktu_masuk && (() => {
+                        try {
+                          const d = new Date(att.waktu_masuk)
+                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15)
+                        } catch (e) {
+                          return false
+                        }
+                      })())
+                    )
+                    bgBox = isAttLate ? '#FEF3C7' : '#ECFDF5'
+                    borderColor = isAttLate ? '#FDE68A' : '#A7F3D0'
+                    badgeColor = isAttLate ? '#B45309' : '#059669'
                     if (tl) {
                       statusText = 'HADIR (TL)'
                     } else {
@@ -1367,7 +1403,19 @@ export default function RekapPresensiPegawai({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Status Kehadiran:</span>
-                  <span style={{ fontWeight: 800, textTransform: 'uppercase', color: '#059669' }}>
+                  <span style={{ 
+                    fontWeight: 800, 
+                    textTransform: 'uppercase', 
+                    color: activeDayDetail.tl ? '#059669' : (
+                      activeDayDetail.att.status === 'terlambat' ? '#D97706' : (
+                        activeDayDetail.att.status === 'sakit' ? '#D97706' : (
+                          activeDayDetail.att.status === 'izin' ? '#2563EB' : (
+                            activeDayDetail.att.status === 'alpa' ? '#DC2626' : '#059669'
+                          )
+                        )
+                      )
+                    )
+                  }}>
                     {activeDayDetail.tl ? 'HADIR (TUGAS LUAR)' : (activeDayDetail.att.status || 'HADIR')}
                   </span>
                 </div>
