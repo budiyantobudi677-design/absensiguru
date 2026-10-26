@@ -52,7 +52,9 @@ export async function saveAttendanceRecord({
   waktuMasuk = null,
   waktuPulang = null,
   supabase = null,
-  userProfile = null
+  userProfile = null,
+  shiftNama = null,
+  shiftId = null
 }) {
   if (!userId) {
     throw new Error('User ID wajib diisi untuk mencatat presensi.')
@@ -256,6 +258,8 @@ export async function saveAttendanceRecord({
     lokasi_pulang: dbResult?.lokasi_pulang || (jenis === 'pulang' ? loc : null),
     status: dbResult?.status || effectiveStatus,
     keterangan: dbResult?.keterangan || keterangan || '',
+    shift_nama: dbResult?.shift_nama || shiftNama || '',
+    shift_id: dbResult?.shift_id || shiftId || '',
     updated_at: now,
     profiles: cachedProf ? {
       full_name: cachedProf.full_name || cachedProf.email,

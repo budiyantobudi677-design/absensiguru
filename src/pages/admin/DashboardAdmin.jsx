@@ -37,6 +37,16 @@ import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
 import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
+import {
+  DEFAULT_SHIFTS,
+  fetchShiftSystemData,
+  saveShiftSystemData,
+  saveTeacherShiftAssignment,
+  resolveTeacherShiftForDate,
+  getIsoWeekNumber,
+  isOddWeek,
+  getIndonesianDayName
+} from '../../lib/shiftManager'
 
 export default function DashboardAdmin() {
   const isNative = Capacitor.isNativePlatform()

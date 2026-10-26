@@ -28,6 +28,14 @@ import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, getTodayUserAttendance, fetchAttendanceRecords } from '../../lib/attendanceCloudManager'
 import { fetchSchoolSettings } from '../../lib/schoolSettingsManager'
+import {
+  DEFAULT_SHIFTS,
+  fetchShiftSystemData,
+  resolveTeacherShiftForDate,
+  getIsoWeekNumber,
+  isOddWeek,
+  getIndonesianDayName
+} from '../../lib/shiftManager'
 import { fetchClassesFromCloud, sortClassesNaturally } from '../../lib/classCloudManager'
 import { 
   saveActiveSession, 
@@ -391,6 +399,9 @@ export default function DashboardGuru({ roleOverride = null }) {
     lng: 119.432732,
     radius: 100
   })
+
+  // State Sistem Shift & Jadwal Guru
+  const [shiftSystem, setShiftSystem] = useState({ shifts: DEFAULT_SHIFTS, assignments: {} })
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
@@ -1111,6 +1122,13 @@ export default function DashboardGuru({ roleOverride = null }) {
         settings = getCachedSchoolSettings()
       }
 
+      try {
+        const sData = await fetchShiftSystemData(supabase)
+        if (sData) setShiftSystem(sData)
+      } catch (e) {
+        console.warn('Gagal fetchShiftSystemData di Guru:', e)
+      }
+
       const hariKerjaVal = settings?.hari_kerja || 5
       setHariKerja(hariKerjaVal)
       const hariKerja = hariKerjaVal
@@ -1771,7 +1789,9 @@ export default function DashboardGuru({ roleOverride = null }) {
           status: (jenis === 'sakit' || jenis === 'izin') ? jenis : 'hadir',
           keterangan,
           supabase,
-          userProfile: profile || user
+          userProfile: profile || user,
+          shiftNama: todayShift?.shiftName,
+          shiftId: todayShift?.shiftId
         })
 
         const insData = res.data
@@ -1843,9 +1863,11 @@ export default function DashboardGuru({ roleOverride = null }) {
     const today = getLocalDateString()
     const [year, month, day] = today.split('-').map(Number)
 
-    // Jam masuk otomatis 07.00, jam pulang otomatis 14.00 waktu lokal
-    const jamMasukDate = new Date(year, month - 1, day, 7, 0, 0)
-    const jamPulangDate = new Date(year, month - 1, day, 14, 0, 0)
+    // Jam masuk & pulang otomatis sesuai shift aktif hari ini
+    const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
+    const [outH, outM] = (todayShift?.jamPulang || '14:00').split(':').map(Number)
+    const jamMasukDate = new Date(year, month - 1, day, inH, inM, 0)
+    const jamPulangDate = new Date(year, month - 1, day, outH, outM, 0)
     const waktuMasuk = jamMasukDate.toISOString()
     const waktuPulang = jamPulangDate.toISOString()
 
@@ -2613,7 +2635,49 @@ export default function DashboardGuru({ roleOverride = null }) {
                 )
               )}
               {!isHoliday && platformCheck.allowed && (
-                <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+                <>
+                  {/* Banner Info Shift Hari Ini */}
+                  <div style={{
+                    margin: '0 auto 1.25rem auto',
+                    maxWidth: '420px',
+                    background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                    border: '1.5px solid #C7D2FE',
+                    borderRadius: '16px',
+                    padding: '0.85rem 1rem',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)',
+                    textAlign: 'left'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={16} color="#4F46E5" />
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#3730A3', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                          {todayShift.dayName} • {todayShift.weekType}
+                        </span>
+                      </div>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: '#4F46E5',
+                        color: 'white'
+                      }}>
+                        {todayShift.shiftName}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>
+                      <div>
+                        <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM MASUK</span>
+                        <strong>{todayShift.jamMasuk}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift.jamMasukBatas})</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM PULANG</span>
+                        <strong style={{ color: '#B45309' }}>{todayShift.jamPulang}</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>Sentuh tombol di bawah untuk absensi</p>
+                </>
               )}
 
               {isHoliday ? (
