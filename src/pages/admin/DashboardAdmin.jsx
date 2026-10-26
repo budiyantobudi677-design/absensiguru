@@ -2734,14 +2734,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                             {(() => {
                               const assign = shiftSystem.assignments?.[p.id]
                               const mode = assign?.mode || 'fixed'
-                              let label = 'Shift Ganjil'
+                              const sGanjil = shiftSystem.shifts?.['shift-ganjil']
+                              const sGenap = shiftSystem.shifts?.['shift-genap']
+                              let label = sGanjil?.name || 'Shift Ganjil'
                               let badgeColor = '#059669'
                               let badgeBg = '#ECFDF5'
                               let badgeBorder = '#A7F3D0'
 
                               if (mode === 'fixed') {
                                 const sObj = shiftSystem.shifts?.[assign?.fixedShiftId || 'shift-ganjil']
-                                label = sObj?.name || 'Shift Ganjil'
+                                label = sObj?.name || (assign?.fixedShiftId === 'shift-genap' ? (sGenap?.name || 'Shift Genap') : (sGanjil?.name || 'Shift Ganjil'))
                                 if (assign?.fixedShiftId === 'shift-genap') {
                                   badgeColor = '#D97706'
                                   badgeBg = '#FFFBEB'
@@ -3198,17 +3200,44 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#4B5563' }}>
-                    Guru dengan pengaturan <strong>Rolling Mingguan</strong> otomatis mengikuti giliran {isOddWeek() ? 'Pekan Ganjil' : 'Pekan Genap'} hari ini.
+                    Guru dengan pengaturan <strong>Rolling Mingguan</strong> otomatis mengikuti giliran {isOddWeek() ? (shiftSystem.shifts?.['shift-ganjil']?.name || 'Pekan Ganjil') : (shiftSystem.shifts?.['shift-genap']?.name || 'Pekan Genap')} hari ini.
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' }}>
-                    Shift Ganjil: 07:00 - 14:00
-                  </span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>
-                    Shift Genap: 10:00 - 17:00
-                  </span>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {(() => {
+                    const shiftsMap = shiftSystem.shifts && Object.keys(shiftSystem.shifts).length > 0 ? shiftSystem.shifts : DEFAULT_SHIFTS
+                    const shiftsList = Object.values(shiftsMap)
+                    const todayName = getIndonesianDayName()
+
+                    return shiftsList.map((s, idx) => {
+                      const rule = (todayName !== 'Minggu' ? s.rules?.[todayName] : null) || s.rules?.['Senin'] || {
+                        jamMasuk: idx === 1 ? '10:00' : '07:00',
+                        jamPulang: idx === 1 ? '17:00' : '14:00'
+                      }
+                      const isGenap = s.id === 'shift-genap' || idx % 2 === 1
+                      const jamMasuk = rule.jamMasuk || (isGenap ? '10:00' : '07:00')
+                      const jamPulang = rule.jamPulang || (isGenap ? '17:00' : '14:00')
+                      const shiftDisplayName = s.name || (isGenap ? 'Shift Genap' : 'Shift Ganjil')
+
+                      return (
+                        <span
+                          key={s.id || idx}
+                          style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            background: isGenap ? '#FFFBEB' : '#ECFDF5',
+                            color: isGenap ? '#D97706' : '#059669',
+                            border: isGenap ? '1px solid #FDE68A' : '1px solid #A7F3D0' 
+                          }}
+                        >
+                          {shiftDisplayName}: {jamMasuk} - {jamPulang}
+                        </span>
+                      )
+                    })
+                  })()}
                 </div>
              </div>
 
@@ -3218,21 +3247,23 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   {filteredPegawai.map(p => {
                     const assign = shiftSystem.assignments?.[p.id] || { mode: 'fixed', fixedShiftId: 'shift-ganjil' }
                     const mode = assign.mode || 'fixed'
-                    let label = 'Shift Ganjil'
+                    const sGanjil = shiftSystem.shifts?.['shift-ganjil']
+                    const sGenap = shiftSystem.shifts?.['shift-genap']
+                    let label = sGanjil?.name || 'Shift Ganjil'
                     let badgeColor = '#059669'
                     let badgeBg = '#ECFDF5'
                     let badgeBorder = '#A7F3D0'
 
                     if (mode === 'fixed') {
                       const sObj = shiftSystem.shifts?.[assign.fixedShiftId || 'shift-ganjil']
-                      label = sObj?.name || 'Shift Ganjil'
+                      label = sObj?.name || (assign.fixedShiftId === 'shift-genap' ? (sGenap?.name || 'Shift Genap') : (sGanjil?.name || 'Shift Ganjil'))
                       if (assign.fixedShiftId === 'shift-genap') {
                         badgeColor = '#D97706'
                         badgeBg = '#FFFBEB'
                         badgeBorder = '#FDE68A'
                       }
                     } else if (mode === 'rolling_weekly') {
-                      label = 'Rotasi Mingguan (Ganjil & Genap)'
+                      label = 'Rotasi Mingguan (' + (sGanjil?.name || 'Ganjil') + ' & ' + (sGenap?.name || 'Genap') + ')'
                       badgeColor = '#4F46E5'
                       badgeBg = '#EEF2FF'
                       badgeBorder = '#C7D2FE'
@@ -3448,7 +3479,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                               Sedang Mengatur Jadwal Khusus:
                             </span>
                             <h4 style={{ margin: '2px 0 0 0', fontSize: '0.98rem', fontWeight: 800, color: isGenap ? '#92400E' : '#065F46' }}>
-                              {currShift.name} ({currShift.code || currShift.id}) — {isGenap ? 'Shift Siang' : 'Shift Pagi'}
+                              {currShift.name} ({currShift.code || currShift.id})
                             </h4>
                           </div>
                           <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 9px', borderRadius: '8px', background: 'white', color: isGenap ? '#D97706' : '#059669', border: `1px solid ${isGenap ? '#FDE68A' : '#A7F3D0'}` }}>
@@ -3728,7 +3759,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E293B' }}>1. Shift Tetap (Non-Rolling)</div>
-                          <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Masuk pada shift yang sama setiap hari (misal: selalu Shift Ganjil).</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Masuk pada shift yang sama setiap hari (misal: selalu {shiftSystem.shifts?.['shift-ganjil']?.name || 'Shift Ganjil'}).</div>
                         </div>
                       </label>
 
