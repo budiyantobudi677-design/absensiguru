@@ -78,14 +78,35 @@ export function getCachedShiftSystem() {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object') {
+        const baseShifts = JSON.parse(JSON.stringify(DEFAULT_SHIFTS))
+        const savedShifts = parsed.shifts || {}
+        Object.keys(savedShifts).forEach(k => {
+          baseShifts[k] = {
+            ...(baseShifts[k] || {}),
+            ...savedShifts[k],
+            rules: {
+              ...(baseShifts[k]?.rules || {}),
+              ...(savedShifts[k]?.rules || {})
+            }
+          }
+        })
+        // Self-healing: Pastikan Shift Genap tidak tertukar atau bernama Shift Ganjil
+        if (baseShifts['shift-genap']) {
+          if (!baseShifts['shift-genap'].name || baseShifts['shift-genap'].name === 'Shift Ganjil') {
+            baseShifts['shift-genap'].name = 'Shift Genap'
+          }
+          if (!baseShifts['shift-genap'].code || baseShifts['shift-genap'].code === 'GANJIL') {
+            baseShifts['shift-genap'].code = 'GENAP'
+          }
+        }
         return {
-          shifts: { ...DEFAULT_SHIFTS, ...(parsed.shifts || {}) },
+          shifts: baseShifts,
           assignments: parsed.assignments || {}
         }
       }
     }
   } catch (e) {}
-  return { shifts: { ...DEFAULT_SHIFTS }, assignments: {} }
+  return { shifts: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)), assignments: {} }
 }
 
 /**
@@ -96,28 +117,27 @@ export async function fetchShiftSystemData(supabase) {
 
   if (!supabase) return systemData
 
+  let currentShifts = JSON.parse(JSON.stringify(systemData.shifts || DEFAULT_SHIFTS))
+  let currentAssignments = { ...(systemData.assignments || {}) }
+
   // 1. Coba baca dari tabel SQL resmi 'school_shifts' & 'teacher_shift_assignments'
-  let sqlLoaded = false
   try {
     const { data: shiftRows, error: shiftErr } = await supabase
       .from('school_shifts')
       .select('*')
 
     if (!shiftErr && Array.isArray(shiftRows) && shiftRows.length > 0) {
-      const mappedShifts = {}
       shiftRows.forEach(row => {
         if (row && row.id) {
-          mappedShifts[row.id] = {
+          currentShifts[row.id] = {
             id: row.id,
-            name: row.nama || row.name || row.id,
-            code: row.code || row.kode || row.id.toUpperCase(),
+            name: row.nama || row.name || (row.id === 'shift-genap' ? 'Shift Genap' : 'Shift Ganjil'),
+            code: row.code || row.kode || (row.id === 'shift-genap' ? 'GENAP' : 'GANJIL'),
             description: row.deskripsi || row.description || '',
             rules: row.rules || DEFAULT_SHIFTS[row.id]?.rules || {}
           }
         }
       })
-      systemData.shifts = { ...DEFAULT_SHIFTS, ...mappedShifts }
-      sqlLoaded = true
     }
 
     const { data: assignRows, error: assignErr } = await supabase
@@ -125,10 +145,9 @@ export async function fetchShiftSystemData(supabase) {
       .select('*')
 
     if (!assignErr && Array.isArray(assignRows)) {
-      const mappedAssigns = {}
       assignRows.forEach(row => {
         if (row && row.teacher_id) {
-          mappedAssigns[row.teacher_id] = {
+          currentAssignments[row.teacher_id] = {
             teacherId: row.teacher_id,
             mode: row.mode || 'fixed',
             fixedShiftId: row.fixed_shift_id || 'shift-ganjil',
@@ -141,7 +160,6 @@ export async function fetchShiftSystemData(supabase) {
           }
         }
       })
-      systemData.assignments = { ...(systemData.assignments || {}), ...mappedAssigns }
     }
   } catch (err) {
     console.warn('Query tabel SQL shift (handled fallback to cloud mirror):', err)
@@ -160,14 +178,51 @@ export async function fetchShiftSystemData(supabase) {
     if (!cloudErr && cloudRow?.pesan) {
       const parsedCloud = JSON.parse(cloudRow.pesan)
       if (parsedCloud && typeof parsedCloud === 'object') {
-        systemData = {
-          shifts: { ...DEFAULT_SHIFTS, ...(parsedCloud.shifts || {}), ...(systemData.shifts || {}) },
-          assignments: { ...(parsedCloud.assignments || {}), ...(systemData.assignments || {}) }
+        if (parsedCloud.shifts && typeof parsedCloud.shifts === 'object') {
+          Object.keys(parsedCloud.shifts).forEach(key => {
+            currentShifts[key] = {
+              ...(currentShifts[key] || {}),
+              ...parsedCloud.shifts[key],
+              rules: {
+                ...(currentShifts[key]?.rules || {}),
+                ...(parsedCloud.shifts[key]?.rules || {})
+              }
+            }
+          })
+        }
+        if (parsedCloud.assignments && typeof parsedCloud.assignments === 'object') {
+          currentAssignments = {
+            ...currentAssignments,
+            ...parsedCloud.assignments
+          }
         }
       }
     }
   } catch (e) {
     console.warn('Cloud fallback shift query handled:', e)
+  }
+
+  // Self-healing: Pastikan Shift Genap tidak tertukar atau bernama Shift Ganjil
+  if (currentShifts['shift-genap']) {
+    if (!currentShifts['shift-genap'].name || currentShifts['shift-genap'].name === 'Shift Ganjil') {
+      currentShifts['shift-genap'].name = 'Shift Genap'
+    }
+    if (!currentShifts['shift-genap'].code || currentShifts['shift-genap'].code === 'GANJIL') {
+      currentShifts['shift-genap'].code = 'GENAP'
+    }
+  }
+  if (currentShifts['shift-ganjil']) {
+    if (!currentShifts['shift-ganjil'].name) {
+      currentShifts['shift-ganjil'].name = 'Shift Ganjil'
+    }
+    if (!currentShifts['shift-ganjil'].code) {
+      currentShifts['shift-ganjil'].code = 'GANJIL'
+    }
+  }
+
+  systemData = {
+    shifts: currentShifts,
+    assignments: currentAssignments
   }
 
   // Simpan kembali ke LocalStorage agar seketika bisa dipakai di semua halaman

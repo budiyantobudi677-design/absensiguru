@@ -3373,77 +3373,127 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </button>
                   </div>
 
-                  {/* Form Detail Shift Aktif */}
+                  {/* Form Detail Shift Aktif (Terisolasi per-Shift dengan key={activeShiftSettingId}) */}
                   {(() => {
-                    const currShift = shiftSystem.shifts?.[activeShiftSettingId] || shiftSystem.shifts?.['shift-ganjil'] || DEFAULT_SHIFTS['shift-ganjil']
+                    const activeId = activeShiftSettingId || 'shift-ganjil'
+                    const currShift = shiftSystem.shifts?.[activeId] || (DEFAULT_SHIFTS[activeId] ? JSON.parse(JSON.stringify(DEFAULT_SHIFTS[activeId])) : JSON.parse(JSON.stringify(DEFAULT_SHIFTS['shift-ganjil'])))
                     const daysList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+                    const isGenap = activeId === 'shift-genap'
 
                     return (
-                      <form onSubmit={async (e) => {
-                        e.preventDefault()
-                        setLoadingData(true)
-                        const formData = new FormData(e.target)
-                        const shiftName = formData.get('nama_shift')?.toString().trim() || currShift.name
-                        const shiftCode = formData.get('code_shift')?.toString().trim() || currShift.code || ''
-                        const shiftDesc = formData.get('desc_shift')?.toString().trim() || ''
+                      <form
+                        key={activeId}
+                        onSubmit={async (e) => {
+                          e.preventDefault()
+                          setLoadingData(true)
+                          const formData = new FormData(e.target)
+                          const targetShiftId = activeId
+                          const shiftName = formData.get('nama_shift')?.toString().trim() || currShift.name
+                          const shiftCode = formData.get('code_shift')?.toString().trim() || currShift.code || ''
+                          const shiftDesc = formData.get('desc_shift')?.toString().trim() || currShift.description || ''
 
-                        const newRules = {}
-                        daysList.forEach(day => {
-                          newRules[day] = {
-                            jamMasuk: formData.get(`masuk_${day}`) || '07:00',
-                            toleransi: parseInt(formData.get(`toleransi_${day}`)) || 15,
-                            jamPulang: formData.get(`pulang_${day}`) || '14:00'
+                          const newRules = {}
+                          daysList.forEach(day => {
+                            newRules[day] = {
+                              jamMasuk: formData.get(`masuk_${day}`) || (isGenap ? '10:00' : '07:00'),
+                              toleransi: parseInt(formData.get(`toleransi_${day}`)) || 15,
+                              jamPulang: formData.get(`pulang_${day}`) || (isGenap ? '17:00' : '14:00')
+                            }
+                          })
+
+                          const updatedShift = {
+                            id: targetShiftId,
+                            name: shiftName,
+                            code: shiftCode,
+                            description: shiftDesc,
+                            rules: newRules
                           }
-                        })
 
-                        const updatedShift = {
-                          ...currShift,
-                          name: shiftName,
-                          code: shiftCode,
-                          description: shiftDesc,
-                          rules: newRules
-                        }
+                          // Salin seluruh shift yang ada dengan deep-clone agar perubahan tidak saling mempengaruhi
+                          const prevShifts = JSON.parse(JSON.stringify(shiftSystem.shifts || DEFAULT_SHIFTS))
+                          const newShifts = {
+                            ...prevShifts,
+                            [targetShiftId]: updatedShift
+                          }
 
-                        const newShifts = {
-                          ...(shiftSystem.shifts || {}),
-                          [currShift.id]: updatedShift
-                        }
+                          try {
+                            await saveShiftSystemData({
+                              shifts: newShifts,
+                              assignments: shiftSystem.assignments
+                            }, supabase)
+                            setShiftSystem(prev => ({ ...prev, shifts: newShifts }))
+                            alert(`Jadwal ${shiftName} berhasil disimpan secara terpisah!`)
+                          } catch (err) {
+                            alert('Gagal menyimpan shift: ' + err.message)
+                          } finally {
+                            setLoadingData(false)
+                          }
+                        }}
+                      >
+                        {/* Indikator Shift yang Sedang Diedit */}
+                        <div style={{
+                          background: isGenap ? '#FFFBEB' : '#ECFDF5',
+                          border: `1.5px solid ${isGenap ? '#FDE68A' : '#A7F3D0'}`,
+                          borderRadius: '12px',
+                          padding: '0.75rem 1rem',
+                          marginBottom: '1.25rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '0.5rem'
+                        }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: isGenap ? '#B45309' : '#047857', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Sedang Mengatur Jadwal Khusus:
+                            </span>
+                            <h4 style={{ margin: '2px 0 0 0', fontSize: '0.98rem', fontWeight: 800, color: isGenap ? '#92400E' : '#065F46' }}>
+                              {currShift.name} ({currShift.code || currShift.id}) — {isGenap ? 'Shift Siang' : 'Shift Pagi'}
+                            </h4>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 9px', borderRadius: '8px', background: 'white', color: isGenap ? '#D97706' : '#059669', border: `1px solid ${isGenap ? '#FDE68A' : '#A7F3D0'}` }}>
+                            ID: {activeId}
+                          </span>
+                        </div>
 
-                        try {
-                          await saveShiftSystemData({
-                            shifts: newShifts,
-                            assignments: shiftSystem.assignments
-                          }, supabase)
-                          setShiftSystem(prev => ({ ...prev, shifts: newShifts }))
-                          alert(`Pengaturan ${shiftName} berhasil disimpan!`)
-                        } catch (err) {
-                          alert('Gagal menyimpan shift: ' + err.message)
-                        } finally {
-                          setLoadingData(false)
-                        }
-                      }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                           <div className="input-group">
                             <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Nama Shift</label>
-                            <input type="text" name="nama_shift" className="input" defaultValue={currShift.name} required />
+                            <input
+                              type="text"
+                              name="nama_shift"
+                              className="input"
+                              defaultValue={currShift.name}
+                              key={'name_' + activeId}
+                              required
+                            />
                           </div>
                           <div className="input-group">
                             <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Kode Singkatan (Contoh: GANJIL / GENAP)</label>
-                            <input type="text" name="code_shift" className="input" defaultValue={currShift.code || ''} required />
+                            <input
+                              type="text"
+                              name="code_shift"
+                              className="input"
+                              defaultValue={currShift.code || ''}
+                              key={'code_' + activeId}
+                              required
+                            />
                           </div>
                         </div>
 
                         {/* Matriks Hari: Senin s.d. Sabtu */}
                         <div style={{ border: '1px solid #E2E8F0', borderRadius: '14px', overflow: 'hidden', marginBottom: '1.25rem' }}>
-                          <div style={{ background: '#F8FAFC', padding: '0.65rem 1rem', borderBottom: '1px solid #E2E8F0', fontWeight: 800, fontSize: '0.82rem', color: '#1E293B' }}>
-                            Jadwal Jam Masuk & Jam Pulang ({currShift.name})
+                          <div style={{ background: '#F8FAFC', padding: '0.65rem 1rem', borderBottom: '1px solid #E2E8F0', fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Tabel Jam ({currShift.name})</span>
+                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>Tersimpan Mandiri Khusus {currShift.name}</span>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             {daysList.map((day, idx) => {
-                              const r = currShift.rules?.[day] || { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' }
+                              const defaultDayRule = DEFAULT_SHIFTS[activeId]?.rules?.[day] || { jamMasuk: isGenap ? '10:00' : '07:00', toleransi: 15, jamPulang: isGenap ? '17:00' : '14:00' }
+                              const r = currShift.rules?.[day] || defaultDayRule
                               return (
                                 <div
-                                  key={day}
+                                  key={activeId + '_' + day}
                                   style={{
                                     display: 'grid',
                                     gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
@@ -3461,15 +3511,41 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                   </div>
                                   <div>
                                     <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Jam Masuk</label>
-                                    <input type="time" name={`masuk_${day}`} className="input" defaultValue={r.jamMasuk || '07:00'} style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                    <input
+                                      type="time"
+                                      name={`masuk_${day}`}
+                                      className="input"
+                                      defaultValue={r.jamMasuk || (isGenap ? '10:00' : '07:00')}
+                                      key={'masuk_' + activeId + '_' + day}
+                                      style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }}
+                                      required
+                                    />
                                   </div>
                                   <div>
                                     <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Toleransi (Menit)</label>
-                                    <input type="number" name={`toleransi_${day}`} className="input" defaultValue={r.toleransi || 15} min="0" max="60" style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                    <input
+                                      type="number"
+                                      name={`toleransi_${day}`}
+                                      className="input"
+                                      defaultValue={r.toleransi ?? 15}
+                                      key={'tol_' + activeId + '_' + day}
+                                      min="0"
+                                      max="60"
+                                      style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }}
+                                      required
+                                    />
                                   </div>
                                   <div>
                                     <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Jam Pulang</label>
-                                    <input type="time" name={`pulang_${day}`} className="input" defaultValue={r.jamPulang || '14:00'} style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                    <input
+                                      type="time"
+                                      name={`pulang_${day}`}
+                                      className="input"
+                                      defaultValue={r.jamPulang || (isGenap ? '17:00' : '14:00')}
+                                      key={'pulang_' + activeId + '_' + day}
+                                      style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }}
+                                      required
+                                    />
                                   </div>
                                 </div>
                               )
@@ -3478,25 +3554,40 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '0.85rem', background: '#4F46E5', color: 'white', fontWeight: 700, borderRadius: '12px' }}>
-                            Simpan Pengaturan {currShift.name}
+                          <button
+                            type="submit"
+                            className="btn btn-primary"
+                            style={{
+                              flex: 1.5,
+                              padding: '0.85rem',
+                              background: isGenap ? '#D97706' : '#059669',
+                              color: 'white',
+                              fontWeight: 700,
+                              borderRadius: '12px'
+                            }}
+                          >
+                            💾 Simpan Pengaturan {currShift.name} Saja
                           </button>
+
                           <button
                             type="button"
                             onClick={async () => {
-                              if (window.confirm('Kembalikan seluruh jam Shift Ganjil & Shift Genap ke setelan bawaan?')) {
+                              if (window.confirm(`Kembalikan jam ${currShift.name} ke setelan bawaan (${isGenap ? '10:00 - 17:00' : '07:00 - 14:00'})? Shift lainnya tidak akan diubah.`)) {
+                                const prevShifts = JSON.parse(JSON.stringify(shiftSystem.shifts || DEFAULT_SHIFTS))
+                                prevShifts[activeId] = JSON.parse(JSON.stringify(DEFAULT_SHIFTS[activeId] || DEFAULT_SHIFTS['shift-ganjil']))
+                                
                                 await saveShiftSystemData({
-                                  shifts: DEFAULT_SHIFTS,
+                                  shifts: prevShifts,
                                   assignments: shiftSystem.assignments
                                 }, supabase)
-                                setShiftSystem(prev => ({ ...prev, shifts: DEFAULT_SHIFTS }))
-                                alert('Jam Shift telah di-reset ke setelan bawaan!')
+                                setShiftSystem(prev => ({ ...prev, shifts: prevShifts }))
+                                alert(`Jam ${currShift.name} berhasil dikembalikan ke standar bawaan!`)
                               }
                             }}
                             className="btn"
-                            style={{ padding: '0.85rem 1.25rem', background: '#F1F5F9', color: '#475569', borderRadius: '12px', fontSize: '0.8rem' }}
+                            style={{ padding: '0.85rem 1rem', background: '#F1F5F9', color: '#475569', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 }}
                           >
-                            Reset Bawaan
+                            🔄 Reset {currShift.name} Saja
                           </button>
                         </div>
                       </form>
