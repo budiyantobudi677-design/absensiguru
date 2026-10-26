@@ -45,7 +45,8 @@ import {
   resolveTeacherShiftForDate,
   getIsoWeekNumber,
   isOddWeek,
-  getIndonesianDayName
+  getIndonesianDayName,
+  getAlternateShiftId
 } from '../../lib/shiftManager'
 
 export default function DashboardAdmin() {
@@ -1343,6 +1344,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
       setActiveTab('pengaturan')
       fetchSettings()
       loadHariLibur()
+    } else if (path === '/shift' || path === '/admin/shift') {
+      setActiveTab('shift')
+      loadPegawai()
     } else if (path === '/admin') {
       setActiveTab('overview')
       fetchOverviewStats()
@@ -1353,6 +1357,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     setActiveTab(menu)
     if (menu === 'pegawai') {
        navigate('/admin/pegawai')
+       loadPegawai()
+    }
+    if (menu === 'shift') {
+       navigate('/shift')
        loadPegawai()
     }
     if (menu === 'persuratan') {
@@ -2826,6 +2834,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                 badgeColor = '#7C3AED'
                                 badgeBg = '#F5F3FF'
                                 badgeBorder = '#DDD6FE'
+                              } else if (mode === 'rolling_flexible') {
+                                label = 'Rotasi Fleksibel'
+                                badgeColor = '#0284C7'
+                                badgeBg = '#F0F9FF'
+                                badgeBorder = '#BAE6FD'
                               }
 
                               return (
@@ -3339,6 +3352,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       badgeColor = '#7C3AED'
                       badgeBg = '#F5F3FF'
                       badgeBorder = '#DDD6FE'
+                    } else if (mode === 'rolling_flexible') {
+                      label = 'Rotasi Fleksibel'
+                      badgeColor = '#0284C7'
+                      badgeBg = '#F0F9FF'
+                      badgeBorder = '#BAE6FD'
                     }
 
                     return (
@@ -3357,7 +3375,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
                         <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                            Mode: <strong>{mode === 'rolling_weekly' ? 'Rolling Otomatis' : (mode === 'custom_days' ? 'Custom Hari' : 'Tetap')}</strong>
+                            Mode: <strong>{mode === 'rolling_flexible' ? 'Rotasi Fleksibel' : (mode === 'rolling_weekly' ? 'Rolling Otomatis' : (mode === 'custom_days' ? 'Custom Hari' : 'Tetap'))}</strong>
                           </span>
                           <button
                             type="button"
@@ -3709,6 +3727,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
             evenWeek: { monWed: 'shift-genap', thuSat: 'shift-ganjil' }
           }
           const currentCustomDays = currentAssign.customDaysConfig || {}
+          const currentFlexibleDays = currentAssign.flexibleDaysConfig || currentAssign.rollingConfig?.flexibleDaysConfig || {}
           const oddNow = isOddWeek()
           const weekNum = getIsoWeekNumber()
           const availableShifts = Object.values(shiftSystem.shifts || {})
@@ -3772,6 +3791,19 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       'Jumat': formData.get('custom_Jumat') || 'shift-ganjil',
                       'Sabtu': formData.get('custom_Sabtu') || 'shift-ganjil'
                     }
+                  } else if (mode === 'rolling_flexible') {
+                    const flexDays = {
+                      'Senin': formData.get('flexible_Senin') || 'shift-ganjil',
+                      'Selasa': formData.get('flexible_Selasa') || 'shift-ganjil',
+                      'Rabu': formData.get('flexible_Rabu') || 'shift-ganjil',
+                      'Kamis': formData.get('flexible_Kamis') || 'shift-genap',
+                      'Jumat': formData.get('flexible_Jumat') || 'shift-ganjil',
+                      'Sabtu': formData.get('flexible_Sabtu') || 'shift-genap'
+                    }
+                    assignmentData.flexibleDaysConfig = flexDays
+                    assignmentData.rollingConfig = {
+                      flexibleDaysConfig: flexDays
+                    }
                   }
 
                   try {
@@ -3818,9 +3850,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                             const sf = document.getElementById('sec-fixed')
                             const sr = document.getElementById('sec-rolling')
                             const sc = document.getElementById('sec-custom')
+                            const sflx = document.getElementById('sec-flexible')
                             if (sf) sf.style.display = 'block'
                             if (sr) sr.style.display = 'none'
                             if (sc) sc.style.display = 'none'
+                            if (sflx) sflx.style.display = 'none'
                           }}
                           style={{ marginTop: '2px' }}
                         />
@@ -3840,9 +3874,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                             const sf = document.getElementById('sec-fixed')
                             const sr = document.getElementById('sec-rolling')
                             const sc = document.getElementById('sec-custom')
+                            const sflx = document.getElementById('sec-flexible')
                             if (sf) sf.style.display = 'none'
                             if (sr) sr.style.display = 'block'
                             if (sc) sc.style.display = 'none'
+                            if (sflx) sflx.style.display = 'none'
                           }}
                           style={{ marginTop: '2px' }}
                         />
@@ -3862,15 +3898,41 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                             const sf = document.getElementById('sec-fixed')
                             const sr = document.getElementById('sec-rolling')
                             const sc = document.getElementById('sec-custom')
+                            const sflx = document.getElementById('sec-flexible')
                             if (sf) sf.style.display = 'none'
                             if (sr) sr.style.display = 'none'
                             if (sc) sc.style.display = 'block'
+                            if (sflx) sflx.style.display = 'none'
                           }}
                           style={{ marginTop: '2px' }}
                         />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E293B' }}>3. Jadwal Khusus Per-Hari</div>
                           <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Atur shift yang berbeda secara spesifik untuk masing-masing hari (Senin s.d. Sabtu).</div>
+                        </div>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1.5px solid #0284C7', background: '#F0F9FF', cursor: 'pointer' }}>
+                        <input 
+                          type="radio" 
+                          name="shift_mode" 
+                          value="rolling_flexible" 
+                          defaultChecked={currentMode === 'rolling_flexible'}
+                          onChange={() => {
+                            const sf = document.getElementById('sec-fixed')
+                            const sr = document.getElementById('sec-rolling')
+                            const sc = document.getElementById('sec-custom')
+                            const sflx = document.getElementById('sec-flexible')
+                            if (sf) sf.style.display = 'none'
+                            if (sr) sr.style.display = 'none'
+                            if (sc) sc.style.display = 'none'
+                            if (sflx) sflx.style.display = 'block'
+                          }}
+                          style={{ marginTop: '2px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0369A1' }}>4. Rotasi Mingguan Fleksibel (Otomatis Bergantian Tiap Pekan) 🔄</div>
+                          <div style={{ fontSize: '0.74rem', color: '#0C4A6E' }}>Tentukan shift per hari (Senin s.d. Sabtu) secara beracak. Pekan berikutnya otomatis menukar/membalik shift tanpa perlu menekan tombol manual.</div>
                         </div>
                       </label>
                     </div>
@@ -3942,6 +4004,91 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           </select>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Bagian 4: Pengaturan Rotasi Mingguan Fleksibel */}
+                  <div id="sec-flexible" style={{ display: currentMode === 'rolling_flexible' ? 'block' : 'none', marginBottom: '1.25rem' }}>
+                    <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '12px', padding: '0.85rem', marginBottom: '0.75rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0369A1', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>⚡</span> <span>Pola Shift Harian Dasar (Senin s.d. Sabtu)</span>
+                      </div>
+                      <p style={{ fontSize: '0.74rem', color: '#0284C7', margin: '0 0 0.75rem 0' }}>
+                        Pilih shift untuk masing-masing hari. Pada pekan berikutnya, sistem akan <strong>otomatis membalik/menukar jadwal</strong> ke shift sebaliknya tanpa perlu tombol manual!
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                        {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(day => (
+                          <div key={day}>
+                            <label style={{ fontSize: '0.72rem', color: '#0369A1', display: 'block', marginBottom: '3px', fontWeight: 600 }}>{day}</label>
+                            <select 
+                              name={`flexible_${day}`} 
+                              id={`flexible_sel_${day}`}
+                              className="input" 
+                              style={{ fontSize: '0.82rem', borderColor: '#BAE6FD', background: 'white' }} 
+                              defaultValue={currentFlexibleDays[day] || (day === 'Kamis' || day === 'Sabtu' ? 'shift-genap' : 'shift-ganjil')}
+                              onChange={(e) => {
+                                const elGenap = document.getElementById(`preview_even_${day}`)
+                                const elGanjil = document.getElementById(`preview_odd_${day}`)
+                                const selShift = shiftSystem.shifts?.[e.target.value]
+                                const altId = getAlternateShiftId(e.target.value, shiftSystem.shifts)
+                                const altShift = shiftSystem.shifts?.[altId]
+                                if (elGanjil) elGanjil.innerText = `${day}: ${selShift?.name || e.target.value}`
+                                if (elGenap) elGenap.innerText = `${day}: ${altShift?.name || altId}`
+                              }}
+                            >
+                              {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code || s.id})</option>)}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pratinjau Perbandingan Otomatis 2 Pekan */}
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>👁️</span> <span>Pratinjau Otomatis Rotasi 2 Pekan (Tanpa Tombol Manual):</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '0.5rem' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.74rem', color: '#1D4ED8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>📅</span> Pekan Ganjil (Minggu 1, 3, 5...)
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.71rem', color: '#1E40AF' }}>
+                            {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(d => {
+                              const sId = currentFlexibleDays[d] || (d === 'Kamis' || d === 'Sabtu' ? 'shift-genap' : 'shift-ganjil')
+                              const sObj = shiftSystem.shifts?.[sId]
+                              return (
+                                <div key={d} id={`preview_odd_${d}`} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>{d}:</span>
+                                  <strong>{sObj?.name || sId}</strong>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: '8px', padding: '0.5rem' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.74rem', color: '#7E22CE', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>🔄</span> Pekan Genap (Minggu 2, 4, 6...)
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.71rem', color: '#6B21A8' }}>
+                            {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(d => {
+                              const sId = currentFlexibleDays[d] || (d === 'Kamis' || d === 'Sabtu' ? 'shift-genap' : 'shift-ganjil')
+                              const altId = getAlternateShiftId(sId, shiftSystem.shifts)
+                              const altObj = shiftSystem.shifts?.[altId]
+                              return (
+                                <div key={d} id={`preview_even_${d}`} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>{d}:</span>
+                                  <strong>{altObj?.name || altId}</strong>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '6px', textAlign: 'center', fontStyle: 'italic' }}>
+                        *Pekan berikutnya kembali otomatis ke Pekan Ganjil dan bergantian secara berkelanjutan.
+                      </div>
                     </div>
                   </div>
 

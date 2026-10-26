@@ -156,6 +156,7 @@ export async function fetchShiftSystemData(supabase) {
               evenWeek: { monWed: 'shift-genap', thuSat: 'shift-ganjil' }
             },
             customDaysConfig: row.custom_days_config || {},
+            flexibleDaysConfig: row.flexible_days_config || row.rolling_config?.flexibleDaysConfig || {},
             updatedAt: row.updated_at
           }
         }
@@ -303,8 +304,9 @@ export async function saveShiftSystemData({ shifts, assignments }, supabase) {
         teacher_id: teacherId,
         mode: val.mode || 'fixed',
         fixed_shift_id: val.fixedShiftId || 'shift-ganjil',
-        rolling_config: val.rollingConfig || {},
+        rolling_config: val.rollingConfig || (val.flexibleDaysConfig ? { flexibleDaysConfig: val.flexibleDaysConfig } : {}),
         custom_days_config: val.customDaysConfig || {},
+        flexible_days_config: val.flexibleDaysConfig || {},
         updated_at: new Date().toISOString()
       }))
       for (const aRow of assignRows) {
@@ -316,6 +318,18 @@ export async function saveShiftSystemData({ shifts, assignments }, supabase) {
   }
 
   return { success: true, data: payload }
+}
+
+/**
+ * Mengambil shift alternatif/kebalikannya untuk rotasi otomatis
+ * Default: shift-ganjil (Pagi) <-> shift-genap (Siang)
+ */
+export function getAlternateShiftId(currentShiftId, shifts = DEFAULT_SHIFTS) {
+  if (currentShiftId === 'shift-ganjil') return 'shift-genap'
+  if (currentShiftId === 'shift-genap') return 'shift-ganjil'
+  const allKeys = Object.keys(shifts || {})
+  const other = allKeys.find(k => k !== currentShiftId)
+  return other || currentShiftId
 }
 
 /**
@@ -379,6 +393,17 @@ export function resolveTeacherShiftForDate({
   } else if (userAssignment.mode === 'custom_days') {
     const customDays = userAssignment.customDaysConfig || {}
     targetShiftId = customDays[dayName] || userAssignment.fixedShiftId || 'shift-ganjil'
+  } else if (userAssignment.mode === 'rolling_flexible') {
+    // Mode 4: Rotasi Mingguan Fleksibel (Acak Per-Hari & Otomatis Bergantian Tiap Pekan)
+    const flexibleDays = userAssignment.flexibleDaysConfig || userAssignment.rollingConfig?.flexibleDaysConfig || {}
+    const baseShiftId = flexibleDays[dayName] || userAssignment.fixedShiftId || (dayName === 'Kamis' || dayName === 'Sabtu' ? 'shift-genap' : 'shift-ganjil')
+    if (odd) {
+      // Pekan Ganjil: Menjalankan jadwal pilihan
+      targetShiftId = baseShiftId
+    } else {
+      // Pekan Genap: Otomatis menukar/membalik shift tanpa perlu menekan tombol manual!
+      targetShiftId = getAlternateShiftId(baseShiftId, shifts)
+    }
   }
 
   const shiftObj = shifts[targetShiftId] || shifts['shift-ganjil'] || DEFAULT_SHIFTS['shift-ganjil']

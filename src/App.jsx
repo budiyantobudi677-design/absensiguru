@@ -395,6 +395,17 @@ function App() {
                 : <Navigate to="/" replace />
             } 
           />
+          {/* Halaman Khusus Manajemen Shift Guru (/shift) */}
+          <Route 
+            path="/shift/*" 
+            element={
+              session 
+                ? (isAdminRole || isDevRole || isKepsekRole 
+                    ? <DashboardAdmin /> 
+                    : <Navigate to="/guru" replace />) 
+                : <Navigate to="/" replace />
+            } 
+          />
           {/* Alias /kepalasekolah diarahkan langsung ke /kepsek */}
           <Route path="/kepalasekolah/*" element={<Navigate to="/kepsek" replace />} />
           <Route path="/pengembang/*" element={session && isDevRole ? <DashboardPengembang /> : <Navigate to="/" replace />} />
