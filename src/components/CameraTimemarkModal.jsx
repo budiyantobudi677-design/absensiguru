@@ -703,8 +703,10 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const neighborhood = selectedPoi?.nbrhd || revAddr?.Neighborhood || revAddr?.District || ''
       const subdistrict = selectedPoi?.city || revAddr?.City || ''
       const city = selectedPoi?.subregion || revAddr?.Subregion || revAddr?.MetroArea || ''
+      const postal = revAddr?.Postal || revAddr?.PostalExt || ''
+      const cityWithPostal = postal ? `${city} ${postal}`.trim() : city
 
-      const formatted = buildDeduplicatedAddress([placeName, street, neighborhood, subdistrict, city])
+      const formatted = buildDeduplicatedAddress([placeName, street, neighborhood, subdistrict, cityWithPostal])
       if (formatted) {
         return formatted
       }
@@ -742,12 +744,14 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           const village = addr.village || addr.suburb || addr.neighbourhood || ''
           const district = addr.city_district || addr.subdistrict || addr.municipality || ''
           const city = addr.city || addr.town || addr.county || ''
+          const postal = addr.postcode || ''
+          const cityWithPostal = postal ? `${city} ${postal}`.trim() : city
 
-          const formatted = buildDeduplicatedAddress([poiName, road, village, district, city])
+          const formatted = buildDeduplicatedAddress([poiName, road, village, district, cityWithPostal])
           if (formatted) {
             return formatted
           } else if (data.display_name) {
-            return data.display_name.split(',').slice(0, 4).join(',').trim()
+            return postal ? `${data.display_name.split(',').slice(0, 4).join(',').trim()} ${postal}` : data.display_name.split(',').slice(0, 4).join(',').trim()
           }
         }
       }
@@ -769,7 +773,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
         const locality = data.locality || data.neighbourhood || ''
         const city = data.city || data.localityInfo?.administrative?.[2]?.name || ''
         const province = data.principalSubdivision || ''
-        const formatted = buildDeduplicatedAddress([locality, city, province])
+        const postal = data.postcode || ''
+        const provWithPostal = postal ? `${province} ${postal}`.trim() : province
+        const formatted = buildDeduplicatedAddress([locality, city, provWithPostal])
         if (formatted) {
           return formatted
         }
@@ -905,20 +911,41 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
     // Daftar strategi constraint dari yang paling kompatibel hingga fallback fleksibel
     // Khusus kamera depan ('user'), tidak memasang ukuran piksel tetap yang kaku agar tidak ditolak sensor selfie ponsel
+    const isFront = targetFacing === 'user'
     const constraintAttempts = [
-      // 1. Constraint standar ideal facingMode (sangat kompatibel untuk kamera depan di Android WebView & iOS)
-      { video: { facingMode: { ideal: targetFacing } }, audio: false },
-      // 2. Constraint exact facingMode
-      { video: { facingMode: targetFacing }, audio: false },
-      // 3. Constraint resolusi proporsional
+      // 1. Prioritas Utama: Resolusi Maksimal Kemampuan Sensor HP (ideal 4K/QHD) + Autofokus Kontinu
       {
         video: {
           facingMode: { ideal: targetFacing },
-          width: { ideal: targetFacing === 'user' ? 720 : 1280 },
-          height: { ideal: targetFacing === 'user' ? 1280 : 720 }
+          width: { ideal: isFront ? 2160 : 3840 },
+          height: { ideal: isFront ? 3840 : 2160 },
+          focusMode: { ideal: 'continuous' }
         },
         audio: false
-      }
+      },
+      // 2. Resolusi Full HD 1080p
+      {
+        video: {
+          facingMode: { ideal: targetFacing },
+          width: { ideal: isFront ? 1080 : 1920 },
+          height: { ideal: isFront ? 1920 : 1080 },
+          focusMode: { ideal: 'continuous' }
+        },
+        audio: false
+      },
+      // 3. Resolusi HD 720p
+      {
+        video: {
+          facingMode: { ideal: targetFacing },
+          width: { ideal: isFront ? 720 : 1280 },
+          height: { ideal: isFront ? 1280 : 720 }
+        },
+        audio: false
+      },
+      // 4. Constraint standar ideal facingMode jika sensor menolak resolusi tertentu
+      { video: { facingMode: { ideal: targetFacing } }, audio: false },
+      // 5. Constraint exact facingMode
+      { video: { facingMode: targetFacing }, audio: false }
     ]
 
     for (const c of constraintAttempts) {
@@ -984,6 +1011,30 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     if (mediaStream) {
       streamRef.current = mediaStream
       setStream(mediaStream)
+
+      // Aktifkan hardware autofocus kontinu dan exposure otomatis jika didukung perangkat
+      try {
+        const track = mediaStream.getVideoTracks()[0]
+        if (track && track.applyConstraints) {
+          const capabilities = track.getCapabilities ? track.getCapabilities() : {}
+          const advanced = []
+          if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+            advanced.push({ focusMode: 'continuous' })
+          }
+          if (capabilities.exposureMode && capabilities.exposureMode.includes('continuous')) {
+            advanced.push({ exposureMode: 'continuous' })
+          }
+          if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('continuous')) {
+            advanced.push({ whiteBalanceMode: 'continuous' })
+          }
+          if (advanced.length > 0) {
+            track.applyConstraints({ advanced }).catch(() => {})
+          }
+        }
+      } catch (trackErr) {
+        console.warn('Track constraint application handled:', trackErr)
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
         videoRef.current.onloadedmetadata = () => {
@@ -1055,8 +1106,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       sourceY = (sourceHeight - minDim) / 2
       sourceWidth = minDim
       sourceHeight = minDim
-      targetWidth = 1080
-      targetHeight = 1080
+      targetWidth = Math.min(Math.max(sourceWidth, 1080), 2160)
+      targetHeight = targetWidth
     } else if (effectiveAspectRatio === '9:16') {
       if (sourceWidth > sourceHeight) {
         const calcWidth = Math.round((sourceHeight * 9) / 16)
@@ -1069,16 +1120,16 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           sourceHeight = calcHeight
         }
       }
-      targetWidth = 1080
-      targetHeight = 1920
+      targetWidth = sourceWidth >= 1440 ? 1440 : 1080
+      targetHeight = Math.round((targetWidth * 16) / 9)
     } else if (effectiveAspectRatio === '3:4') {
       if (sourceWidth > sourceHeight) {
         const calcWidth = Math.round((sourceHeight * 3) / 4)
         sourceX = Math.round((sourceWidth - calcWidth) / 2)
         sourceWidth = calcWidth
       }
-      targetWidth = 960
-      targetHeight = 1280
+      targetWidth = sourceWidth >= 1440 ? 1440 : 1080
+      targetHeight = Math.round((targetWidth * 4) / 3)
     } else if (effectiveAspectRatio === '4:3') {
       // Landscape 4:3
       if (sourceHeight > sourceWidth && !isVirtualLandscape) {
@@ -1092,8 +1143,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           sourceWidth = calcWidth
         }
       }
-      targetWidth = 1280
-      targetHeight = 960
+      targetHeight = sourceHeight >= 1440 ? 1440 : 1080
+      targetWidth = Math.round((targetHeight * 4) / 3)
     } else if (effectiveAspectRatio === '16:9') {
       // Landscape 16:9
       if (!isVirtualLandscape) {
@@ -1103,8 +1154,8 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           sourceHeight = calcHeight
         }
       }
-      targetWidth = 1280
-      targetHeight = 720
+      targetHeight = sourceHeight >= 1440 ? 1440 : 1080
+      targetWidth = Math.round((targetHeight * 16) / 9)
     }
 
     canvas.width = targetWidth
@@ -1178,7 +1229,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
 
     // Format Text
     const teacherName = profile?.full_name || user?.email?.split('@')[0] || 'Guru'
-    const nipText = profile?.nip ? ` • NIP: ${profile.nip}` : ''
+    const nipText = '' // Privasi ASN/Guru: NIP disembunyikan dari watermark foto
     const dayName = currentDateTime.toLocaleDateString('id-ID', { weekday: 'long' })
     const dateFormattedOnly = currentDateTime.toLocaleDateString('id-ID', {
       day: 'numeric',
@@ -1271,7 +1322,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const teacherFontSize = Math.round(16 * baseFactor)
       const addressFontSize = Math.round(15 * baseFactor)
       const textStartX = leftX + (14 * baseFactor)
-      const maxAddrWidth = targetWidth - textStartX - (35 * baseFactor)
+      const maxAddrWidth = Math.min(targetWidth * 0.62, 500 * baseFactor)
       const words = displayAddress.split(' ')
       let lines = []
       let tempLine = ''
@@ -1439,7 +1490,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       ctx.font = `500 ${addressFontSize}px Outfit, sans-serif`
       ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
       
-      const maxAddrWidth = targetWidth - leftX - (35 * baseFactor)
+      const maxAddrWidth = Math.min(targetWidth * 0.62, 500 * baseFactor)
       const words = displayAddress.split(' ')
       let currentLine = ''
       
@@ -1534,7 +1585,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
       const addressFontSize = Math.round(15 * baseFactor)
 
       // Estimasi tinggi teks untuk posisi garis
-      const maxAddrWidth = targetWidth - textStartX - (35 * baseFactor)
+      const maxAddrWidth = Math.min(targetWidth * 0.62, 500 * baseFactor)
       const words = displayAddress.split(' ')
       let lines = []
       let tempLine = ''
@@ -2071,7 +2122,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     // Render Watermark GammaraApp ("GammaraApp" & "100% foto asli") di Pojok Kanan Atas untuk SEMUA TEMPLATE
     drawGammaraAppBrand()
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
     setIsFlashActive(true)
     setTimeout(() => setIsFlashActive(false), 120)
 
@@ -3049,9 +3100,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                 </div>
 
                 {/* Blok Teks dengan Garis Vertikal Oranye di Samping Kiri */}
-                <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', maxWidth: '75%' }}>
                   <div style={{ width: '3.5px', background: '#F59E0B', borderRadius: '3px', flexShrink: 0 }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', wordBreak: 'break-word' }}>
                     <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#FFFFFF' }}>
                       {customTitle.trim() || customNote.trim() || 'Hadir'}
                     </div>
@@ -3063,7 +3114,7 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
                         Guru: {profile?.full_name || user?.email?.split('@')[0] || 'Guru'}
                       </div>
                     )}
-                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.3' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.35', maxWidth: '280px' }}>
                       {locationText}
                     </div>
                   </div>
