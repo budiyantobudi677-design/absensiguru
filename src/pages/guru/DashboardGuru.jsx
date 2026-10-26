@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare } from 'lucide-react'
@@ -402,6 +402,16 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   // State Sistem Shift & Jadwal Guru
   const [shiftSystem, setShiftSystem] = useState({ shifts: DEFAULT_SHIFTS, assignments: {} })
+
+  // Shift aktif hari ini untuk guru (diperbarui otomatis berdasarkan shiftSystem & user)
+  const todayShift = useMemo(() => {
+    return resolveTeacherShiftForDate({
+      teacherId: user?.id,
+      date: new Date(),
+      shifts: shiftSystem?.shifts || DEFAULT_SHIFTS,
+      assignments: shiftSystem?.assignments || {}
+    })
+  }, [user?.id, shiftSystem])
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
@@ -2651,7 +2661,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Clock size={16} color="#4F46E5" />
                         <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#3730A3', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                          {todayShift.dayName} • {todayShift.weekType}
+                          {todayShift?.dayName || 'Hari Ini'} • {todayShift?.weekType || ''}
                         </span>
                       </div>
                       <span style={{
@@ -2662,17 +2672,17 @@ export default function DashboardGuru({ roleOverride = null }) {
                         background: '#4F46E5',
                         color: 'white'
                       }}>
-                        {todayShift.shiftName}
+                        {todayShift?.shiftName || 'Shift'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>
                       <div>
                         <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM MASUK</span>
-                        <strong>{todayShift.jamMasuk}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift.jamMasukBatas})</span>
+                        <strong>{todayShift?.jamMasuk || '07:00'}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift?.jamMasukBatas || '07:15'})</span>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM PULANG</span>
-                        <strong style={{ color: '#B45309' }}>{todayShift.jamPulang}</strong>
+                        <strong style={{ color: '#B45309' }}>{todayShift?.jamPulang || '14:00'}</strong>
                       </div>
                     </div>
                   </div>
