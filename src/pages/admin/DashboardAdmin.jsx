@@ -186,6 +186,13 @@ export default function DashboardAdmin() {
   const [editingPegawai, setEditingPegawai] = useState(null) // Pegawai yang sedang diedit perannya oleh Admin
   const [savingPegawai, setSavingPegawai] = useState(false)
 
+  // State Manajemen Shift & Pola Rotasi Pegawai
+  const [shiftSystem, setShiftSystem] = useState({ shifts: DEFAULT_SHIFTS, assignments: {} })
+  const [editingShiftTeacher, setEditingShiftTeacher] = useState(null)
+  const [activeShiftSettingId, setActiveShiftSettingId] = useState('shift-ganjil')
+  const [shiftAdminSubTab, setShiftAdminSubTab] = useState('plotting') // 'plotting' | 'master'
+  const [savingShift, setSavingShift] = useState(false)
+
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   // KBM Pembelajaran States
   const [kbmAdminSubTab, setKbmAdminSubTab] = useState('menu') // 'menu' | 'presensi' | 'jurnal' | 'nilai' | 'rekap' | 'master_siswa'
@@ -251,8 +258,15 @@ export default function DashboardAdmin() {
     fetchSettings()
     fetchOverviewStats()
     checkAutoBackupSchedule(supabase)
+    const handleShiftUpdated = (e) => {
+      if (e.detail) setShiftSystem(e.detail)
+    }
+    window.addEventListener('shift_system_updated', handleShiftUpdated)
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('shift_system_updated', handleShiftUpdated)
+    }
   }, [])
 
   // Sinkronisasi status aktif/nonaktif fitur Presensi Khusus dari Pengembang
@@ -435,6 +449,13 @@ export default function DashboardAdmin() {
       }
     } catch (e) {
       console.warn('Gagal memuat config kepsek:', e)
+    }
+
+    try {
+      const sData = await fetchShiftSystemData(supabase)
+      if (sData) setShiftSystem(sData)
+    } catch (e) {
+      console.warn('Gagal memuat sistem shift:', e)
     }
 
     const dayOfWeek = new Date().getDay()
@@ -1728,6 +1749,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
               <span>Data Guru dan Tendik</span>
             </button>
             
+            <button className={`admin-nav-item ${activeTab === 'shift' ? 'active' : ''}`} onClick={() => { handleMenuClick('shift'); setIsSidebarOpen(false); }}>
+              <Clock size={18} />
+              <span>Jadwal Shift & Rotasi</span>
+            </button>
+            
             <button className={`admin-nav-item ${activeTab === 'kbm' ? 'active' : ''}`} onClick={() => { handleMenuClick('kbm'); setIsSidebarOpen(false); }}>
               <BookOpen size={18} />
               <span>Sistem Pembelajaran (KBM)</span>
@@ -1951,6 +1977,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   {activeTab === 'absensi' && 'Presensi Mandiri Administrator'}
                   {activeTab === 'riwayat' && 'Riwayat Kehadiran Administrator'}
                   {activeTab === 'pegawai' && 'Data Guru dan Tendik'}
+                  {activeTab === 'shift' && 'Sistem Manajemen Shift & Rotasi Pegawai'}
                   {activeTab === 'kbm' && 'Sistem Pembelajaran Terpadu (KBM, Nilai, Jurnal & Rekap)'}
                   {activeTab === 'laporan' && 'Laporan & Rekapitulasi Presensi'}
                   {activeTab === 'persuratan' && 'Administrasi & Pembuatan Persuratan Resmi'}
@@ -2703,6 +2730,61 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
                           {/* Kanan: Tombol Atur & Tombol Hapus Guru */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                            {/* Tombol Status Shift Pegawai */}
+                            {(() => {
+                              const assign = shiftSystem.assignments?.[p.id]
+                              const mode = assign?.mode || 'fixed'
+                              let label = 'Shift Ganjil'
+                              let badgeColor = '#059669'
+                              let badgeBg = '#ECFDF5'
+                              let badgeBorder = '#A7F3D0'
+
+                              if (mode === 'fixed') {
+                                const sObj = shiftSystem.shifts?.[assign?.fixedShiftId || 'shift-ganjil']
+                                label = sObj?.name || 'Shift Ganjil'
+                                if (assign?.fixedShiftId === 'shift-genap') {
+                                  badgeColor = '#D97706'
+                                  badgeBg = '#FFFBEB'
+                                  badgeBorder = '#FDE68A'
+                                }
+                              } else if (mode === 'rolling_weekly') {
+                                label = 'Rolling Mingguan'
+                                badgeColor = '#4F46E5'
+                                badgeBg = '#EEF2FF'
+                                badgeBorder = '#C7D2FE'
+                              } else if (mode === 'custom_days') {
+                                label = 'Jadwal Khusus'
+                                badgeColor = '#7C3AED'
+                                badgeBg = '#F5F3FF'
+                                badgeBorder = '#DDD6FE'
+                              }
+
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingShiftTeacher(p)}
+                                  title="Klik untuk mengatur Shift & Rotasi mingguan guru ini"
+                                  style={{
+                                    padding: '0.45rem 0.75rem',
+                                    borderRadius: '9px',
+                                    background: badgeBg,
+                                    border: `1px solid ${badgeBorder}`,
+                                    color: badgeColor,
+                                    fontSize: '0.74rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    transition: 'all 0.15s'
+                                  }}
+                                >
+                                  <Clock size={12} />
+                                  <span>{label}</span>
+                                </button>
+                              )
+                            })()}
+
                             <button
                               type="button"
                               onClick={() => setEditingPegawai(p)}
@@ -3039,6 +3121,654 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
               )}
            </div>
         )}
+
+        {/* TAB KHUSUS JADWAL SHIFT & ROTASI GURU */}
+        {activeTab === 'shift' && (
+          <div className="fade-in">
+             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setActiveTab('overview')} style={{ background: 'white', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.05)' }}>
+                    <ArrowLeft size={20} />
+                  </button>
+                  <div>
+                    <h3 style={{ fontSize: '1.2rem', margin: 0, fontWeight: 800 }}>Jadwal Shift & Rotasi Pegawai</h3>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Kelola pembagian Shift Ganjil & Genap, rotasi mingguan, dan jam kerja fleksibel
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sub-tab pills */}
+                <div style={{ display: 'flex', gap: '8px', background: '#F1F5F9', padding: '4px', borderRadius: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShiftAdminSubTab('plotting')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '9px',
+                      border: 'none',
+                      background: shiftAdminSubTab === 'plotting' ? 'white' : 'transparent',
+                      color: shiftAdminSubTab === 'plotting' ? '#4F46E5' : '#64748B',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      boxShadow: shiftAdminSubTab === 'plotting' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none'
+                    }}
+                  >
+                    👥 Plotting Shift Guru
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShiftAdminSubTab('master')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '9px',
+                      border: 'none',
+                      background: shiftAdminSubTab === 'master' ? 'white' : 'transparent',
+                      color: shiftAdminSubTab === 'master' ? '#4F46E5' : '#64748B',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      boxShadow: shiftAdminSubTab === 'master' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none'
+                    }}
+                  >
+                    ⚙️ Master Jam Shift Sekolah
+                  </button>
+                </div>
+             </div>
+
+             {/* Banner Pekan Berjalan */}
+             <div style={{
+                background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                border: '1.5px solid #C7D2FE',
+                borderRadius: '16px',
+                padding: '1rem 1.25rem',
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '1rem'
+             }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.25rem' }}>
+                    <Calendar size={18} color="#4338CA" />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#3730A3' }}>
+                      Status Kalender Pekan Ini: Minggu Ke-{getIsoWeekNumber()} ({isOddWeek() ? 'Pekan Ganjil' : 'Pekan Genap'})
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#4B5563' }}>
+                    Guru dengan pengaturan <strong>Rolling Mingguan</strong> otomatis mengikuti giliran {isOddWeek() ? 'Pekan Ganjil' : 'Pekan Genap'} hari ini.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' }}>
+                    Shift Ganjil: 07:00 - 14:00
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>
+                    Shift Genap: 10:00 - 17:00
+                  </span>
+                </div>
+             </div>
+
+             {/* SUB-TAB 1: PLOTTING SHIFT GURU */}
+             {shiftAdminSubTab === 'plotting' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1rem' }}>
+                  {filteredPegawai.map(p => {
+                    const assign = shiftSystem.assignments?.[p.id] || { mode: 'fixed', fixedShiftId: 'shift-ganjil' }
+                    const mode = assign.mode || 'fixed'
+                    let label = 'Shift Ganjil'
+                    let badgeColor = '#059669'
+                    let badgeBg = '#ECFDF5'
+                    let badgeBorder = '#A7F3D0'
+
+                    if (mode === 'fixed') {
+                      const sObj = shiftSystem.shifts?.[assign.fixedShiftId || 'shift-ganjil']
+                      label = sObj?.name || 'Shift Ganjil'
+                      if (assign.fixedShiftId === 'shift-genap') {
+                        badgeColor = '#D97706'
+                        badgeBg = '#FFFBEB'
+                        badgeBorder = '#FDE68A'
+                      }
+                    } else if (mode === 'rolling_weekly') {
+                      label = 'Rotasi Mingguan (Ganjil & Genap)'
+                      badgeColor = '#4F46E5'
+                      badgeBg = '#EEF2FF'
+                      badgeBorder = '#C7D2FE'
+                    } else if (mode === 'custom_days') {
+                      label = 'Jadwal Harian Khusus'
+                      badgeColor = '#7C3AED'
+                      badgeBg = '#F5F3FF'
+                      badgeBorder = '#DDD6FE'
+                    }
+
+                    return (
+                      <div key={p.id} className="card" style={{ padding: '1.15rem', borderRadius: '16px', background: 'white', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.75rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{p.full_name || p.email}</h4>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: badgeBg, color: badgeColor, border: `1px solid ${badgeBorder}` }}>
+                              {label}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            {p.jabatan || 'Guru'} {p.nip ? `• NIP: ${p.nip}` : ''}
+                          </p>
+                        </div>
+
+                        <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                            Mode: <strong>{mode === 'rolling_weekly' ? 'Rolling Otomatis' : (mode === 'custom_days' ? 'Custom Hari' : 'Tetap')}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingShiftTeacher(p)}
+                            style={{
+                              padding: '0.45rem 0.9rem',
+                              borderRadius: '8px',
+                              background: '#4F46E5',
+                              color: 'white',
+                              border: 'none',
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Clock size={13} />
+                            <span>Atur Shift</span>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+             )}
+
+             {/* SUB-TAB 2: MASTER JAM SHIFT SEKOLAH */}
+             {shiftAdminSubTab === 'master' && (
+                <div className="card" style={{ background: 'white', border: 'none', padding: '1.5rem', borderRadius: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.5rem' }}>
+                    <Clock size={20} color="#4F46E5" />
+                    <h4 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 800 }}>Master Shift & Jam Kerja Sekolah</h4>
+                  </div>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1.25rem', lineHeight: '1.5' }}>
+                    Atur jam masuk, jam pulang, dan toleransi keterlambatan untuk masing-masing shift. Hari <strong>Kamis, Jumat, dan Sabtu</strong> dapat diatur dengan jam berbeda sesuai operasional sekolah.
+                  </p>
+
+                  {/* Tab Pemilihan Shift */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                    {Object.values(shiftSystem.shifts || {}).map(s => {
+                      const isActive = activeShiftSettingId === s.id
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setActiveShiftSettingId(s.id)}
+                          style={{
+                            padding: '0.55rem 1.1rem',
+                            borderRadius: '12px',
+                            border: isActive ? '2px solid #4F46E5' : '1px solid #CBD5E1',
+                            background: isActive ? '#EEF2FF' : '#F8FAFC',
+                            color: isActive ? '#4338CA' : '#475569',
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Clock size={14} />
+                          <span>{s.name}</span>
+                          <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '6px', background: isActive ? '#4F46E5' : '#E2E8F0', color: isActive ? 'white' : '#64748B' }}>
+                            {s.code || s.id}
+                          </span>
+                        </button>
+                      )
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const shiftName = prompt('Masukkan nama shift baru (contoh: Shift Sore / Shift Khusus):')
+                        if (!shiftName || !shiftName.trim()) return
+                        const newId = 'shift-' + Date.now().toString(36)
+                        const newShift = {
+                          id: newId,
+                          name: shiftName.trim(),
+                          code: shiftName.trim().substring(0, 6).toUpperCase(),
+                          description: `Shift Tambahan: ${shiftName.trim()}`,
+                          rules: {
+                            'Senin':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
+                            'Selasa': { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
+                            'Rabu':   { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
+                            'Kamis':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
+                            'Jumat':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '11:30' },
+                            'Sabtu':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '12:30' },
+                            'Minggu': { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00', libur: true }
+                          }
+                        }
+                        setShiftSystem(prev => ({
+                          ...prev,
+                          shifts: { ...(prev.shifts || {}), [newId]: newShift }
+                        }))
+                        setActiveShiftSettingId(newId)
+                      }}
+                      style={{
+                        padding: '0.55rem 1rem',
+                        borderRadius: '12px',
+                        border: '1.5px dashed #94A3B8',
+                        background: 'transparent',
+                        color: '#475569',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      + Tambah Shift Baru
+                    </button>
+                  </div>
+
+                  {/* Form Detail Shift Aktif */}
+                  {(() => {
+                    const currShift = shiftSystem.shifts?.[activeShiftSettingId] || shiftSystem.shifts?.['shift-ganjil'] || DEFAULT_SHIFTS['shift-ganjil']
+                    const daysList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+
+                    return (
+                      <form onSubmit={async (e) => {
+                        e.preventDefault()
+                        setLoadingData(true)
+                        const formData = new FormData(e.target)
+                        const shiftName = formData.get('nama_shift')?.toString().trim() || currShift.name
+                        const shiftCode = formData.get('code_shift')?.toString().trim() || currShift.code || ''
+                        const shiftDesc = formData.get('desc_shift')?.toString().trim() || ''
+
+                        const newRules = {}
+                        daysList.forEach(day => {
+                          newRules[day] = {
+                            jamMasuk: formData.get(`masuk_${day}`) || '07:00',
+                            toleransi: parseInt(formData.get(`toleransi_${day}`)) || 15,
+                            jamPulang: formData.get(`pulang_${day}`) || '14:00'
+                          }
+                        })
+
+                        const updatedShift = {
+                          ...currShift,
+                          name: shiftName,
+                          code: shiftCode,
+                          description: shiftDesc,
+                          rules: newRules
+                        }
+
+                        const newShifts = {
+                          ...(shiftSystem.shifts || {}),
+                          [currShift.id]: updatedShift
+                        }
+
+                        try {
+                          await saveShiftSystemData({
+                            shifts: newShifts,
+                            assignments: shiftSystem.assignments
+                          }, supabase)
+                          setShiftSystem(prev => ({ ...prev, shifts: newShifts }))
+                          alert(`Pengaturan ${shiftName} berhasil disimpan!`)
+                        } catch (err) {
+                          alert('Gagal menyimpan shift: ' + err.message)
+                        } finally {
+                          setLoadingData(false)
+                        }
+                      }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                          <div className="input-group">
+                            <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Nama Shift</label>
+                            <input type="text" name="nama_shift" className="input" defaultValue={currShift.name} required />
+                          </div>
+                          <div className="input-group">
+                            <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 700 }}>Kode Singkatan (Contoh: GANJIL / GENAP)</label>
+                            <input type="text" name="code_shift" className="input" defaultValue={currShift.code || ''} required />
+                          </div>
+                        </div>
+
+                        {/* Matriks Hari: Senin s.d. Sabtu */}
+                        <div style={{ border: '1px solid #E2E8F0', borderRadius: '14px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                          <div style={{ background: '#F8FAFC', padding: '0.65rem 1rem', borderBottom: '1px solid #E2E8F0', fontWeight: 800, fontSize: '0.82rem', color: '#1E293B' }}>
+                            Jadwal Jam Masuk & Jam Pulang ({currShift.name})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            {daysList.map((day, idx) => {
+                              const r = currShift.rules?.[day] || { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' }
+                              return (
+                                <div
+                                  key={day}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
+                                    gap: '0.65rem',
+                                    alignItems: 'center',
+                                    padding: '0.65rem 1rem',
+                                    background: idx % 2 === 0 ? 'white' : '#FBFCFD',
+                                    borderBottom: idx === daysList.length - 1 ? 'none' : '1px solid #F1F5F9'
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E293B' }}>
+                                    {day}
+                                    {day === 'Kamis' && <span style={{ display: 'block', fontSize: '0.68rem', color: '#6366F1' }}>Beda Jam</span>}
+                                    {day === 'Jumat' && <span style={{ display: 'block', fontSize: '0.68rem', color: '#10B981' }}>Jumat Pendek</span>}
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Jam Masuk</label>
+                                    <input type="time" name={`masuk_${day}`} className="input" defaultValue={r.jamMasuk || '07:00'} style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Toleransi (Menit)</label>
+                                    <input type="number" name={`toleransi_${day}`} className="input" defaultValue={r.toleransi || 15} min="0" max="60" style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: '#64748B', display: 'block', fontWeight: 600 }}>Jam Pulang</label>
+                                    <input type="time" name={`pulang_${day}`} className="input" defaultValue={r.jamPulang || '14:00'} style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem' }} required />
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '0.85rem', background: '#4F46E5', color: 'white', fontWeight: 700, borderRadius: '12px' }}>
+                            Simpan Pengaturan {currShift.name}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm('Kembalikan seluruh jam Shift Ganjil & Shift Genap ke setelan bawaan?')) {
+                                await saveShiftSystemData({
+                                  shifts: DEFAULT_SHIFTS,
+                                  assignments: shiftSystem.assignments
+                                }, supabase)
+                                setShiftSystem(prev => ({ ...prev, shifts: DEFAULT_SHIFTS }))
+                                alert('Jam Shift telah di-reset ke setelan bawaan!')
+                              }
+                            }}
+                            className="btn"
+                            style={{ padding: '0.85rem 1.25rem', background: '#F1F5F9', color: '#475569', borderRadius: '12px', fontSize: '0.8rem' }}
+                          >
+                            Reset Bawaan
+                          </button>
+                        </div>
+                      </form>
+                    )
+                  })()}
+                </div>
+             )}
+          </div>
+        )}
+
+        {/* MODAL ATUR SHIFT & ROTASI PEGAWAI */}
+        {editingShiftTeacher && (() => {
+          const teacherId = editingShiftTeacher.id
+          const currentAssign = shiftSystem.assignments?.[teacherId] || {
+            mode: 'fixed',
+            fixedShiftId: 'shift-ganjil'
+          }
+          const currentMode = currentAssign.mode || 'fixed'
+          const currentRolling = currentAssign.rollingConfig || {
+            oddWeek: { monWed: 'shift-ganjil', thuSat: 'shift-genap' },
+            evenWeek: { monWed: 'shift-genap', thuSat: 'shift-ganjil' }
+          }
+          const currentCustomDays = currentAssign.customDaysConfig || {}
+          const oddNow = isOddWeek()
+          const weekNum = getIsoWeekNumber()
+          const availableShifts = Object.values(shiftSystem.shifts || {})
+
+          return (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.55)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+              zIndex: 9999
+            }}>
+              <div className="card" style={{ maxWidth: '520px', width: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'white', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={18} color="#4F46E5" /> Atur Shift & Rotasi Pegawai
+                    </h3>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                      {editingShiftTeacher.full_name || editingShiftTeacher.email} {editingShiftTeacher.nip ? `• NIP: ${editingShiftTeacher.nip}` : ''}
+                    </p>
+                  </div>
+                  <button onClick={() => setEditingShiftTeacher(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault()
+                  setSavingShift(true)
+                  const formData = new FormData(e.target)
+                  const mode = formData.get('shift_mode') || 'fixed'
+                  let assignmentData = { mode }
+
+                  if (mode === 'fixed') {
+                    assignmentData.fixedShiftId = formData.get('fixed_shift_id') || 'shift-ganjil'
+                  } else if (mode === 'rolling_weekly') {
+                    assignmentData.rollingConfig = {
+                      oddWeek: {
+                        monWed: formData.get('odd_mon_wed') || 'shift-ganjil',
+                        thuSat: formData.get('odd_thu_sat') || 'shift-genap'
+                      },
+                      evenWeek: {
+                        monWed: formData.get('even_mon_wed') || 'shift-genap',
+                        thuSat: formData.get('even_thu_sat') || 'shift-ganjil'
+                      }
+                    }
+                  } else if (mode === 'custom_days') {
+                    assignmentData.customDaysConfig = {
+                      'Senin': formData.get('custom_Senin') || 'shift-ganjil',
+                      'Selasa': formData.get('custom_Selasa') || 'shift-ganjil',
+                      'Rabu': formData.get('custom_Rabu') || 'shift-ganjil',
+                      'Kamis': formData.get('custom_Kamis') || 'shift-ganjil',
+                      'Jumat': formData.get('custom_Jumat') || 'shift-ganjil',
+                      'Sabtu': formData.get('custom_Sabtu') || 'shift-ganjil'
+                    }
+                  }
+
+                  try {
+                    await saveTeacherShiftAssignment({
+                      teacherId,
+                      assignmentData,
+                      supabase
+                    })
+                    setShiftSystem(prev => ({
+                      ...prev,
+                      assignments: {
+                        ...(prev.assignments || {}),
+                        [teacherId]: {
+                          teacherId,
+                          ...assignmentData,
+                          updatedAt: new Date().toISOString()
+                        }
+                      }
+                    }))
+                    alert(`Jadwal shift untuk ${editingShiftTeacher.full_name || editingShiftTeacher.email} berhasil disimpan!`)
+                    setEditingShiftTeacher(null)
+                  } catch (err) {
+                    alert('Gagal menyimpan shift: ' + err.message)
+                  } finally {
+                    setSavingShift(false)
+                  }
+                }}>
+                  {/* Info Status Kalender Pekan Berjalan */}
+                  <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.75rem', color: '#475569', marginBottom: '1.15rem' }}>
+                    📅 <strong>Kalender Pekan Ini:</strong> Minggu Ke-${weekNum} (${oddNow ? 'Pekan Ganjil' : 'Pekan Genap'}). Sistem otomatis menerapkan jam masuk sesuai giliran pekan ini.
+                  </div>
+
+                  {/* Pilihan Mode Shift */}
+                  <div className="input-group" style={{ marginBottom: '1rem' }}>
+                    <label className="input-label" style={{ fontWeight: 700 }}>Tipe Penjadwalan Shift</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1.5px solid #E2E8F0', background: '#FAFAFA', cursor: 'pointer' }}>
+                        <input 
+                          type="radio" 
+                          name="shift_mode" 
+                          value="fixed" 
+                          defaultChecked={currentMode === 'fixed'}
+                          onChange={() => {
+                            const sf = document.getElementById('sec-fixed')
+                            const sr = document.getElementById('sec-rolling')
+                            const sc = document.getElementById('sec-custom')
+                            if (sf) sf.style.display = 'block'
+                            if (sr) sr.style.display = 'none'
+                            if (sc) sc.style.display = 'none'
+                          }}
+                          style={{ marginTop: '2px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E293B' }}>1. Shift Tetap (Non-Rolling)</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Masuk pada shift yang sama setiap hari (misal: selalu Shift Ganjil).</div>
+                        </div>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1.5px solid #C7D2FE', background: '#F5F3FF', cursor: 'pointer' }}>
+                        <input 
+                          type="radio" 
+                          name="shift_mode" 
+                          value="rolling_weekly" 
+                          defaultChecked={currentMode === 'rolling_weekly'}
+                          onChange={() => {
+                            const sf = document.getElementById('sec-fixed')
+                            const sr = document.getElementById('sec-rolling')
+                            const sc = document.getElementById('sec-custom')
+                            if (sf) sf.style.display = 'none'
+                            if (sr) sr.style.display = 'block'
+                            if (sc) sc.style.display = 'none'
+                          }}
+                          style={{ marginTop: '2px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#4338CA' }}>2. Rotasi Mingguan Otomatis (Pekan Ganjil & Pekan Genap) ⭐</div>
+                          <div style={{ fontSize: '0.74rem', color: '#4B5563' }}>Bergantian otomatis tiap minggu: Senin-Rabu vs Kamis-Sabtu (cocok untuk Guru Mapel Agama, PJOK, dll).</div>
+                        </div>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1.5px solid #E2E8F0', background: '#FAFAFA', cursor: 'pointer' }}>
+                        <input 
+                          type="radio" 
+                          name="shift_mode" 
+                          value="custom_days" 
+                          defaultChecked={currentMode === 'custom_days'}
+                          onChange={() => {
+                            const sf = document.getElementById('sec-fixed')
+                            const sr = document.getElementById('sec-rolling')
+                            const sc = document.getElementById('sec-custom')
+                            if (sf) sf.style.display = 'none'
+                            if (sr) sr.style.display = 'none'
+                            if (sc) sc.style.display = 'block'
+                          }}
+                          style={{ marginTop: '2px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E293B' }}>3. Jadwal Khusus Per-Hari</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Atur shift yang berbeda secara spesifik untuk masing-masing hari (Senin s.d. Sabtu).</div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Bagian 1: Pengaturan Shift Tetap */}
+                  <div id="sec-fixed" style={{ display: currentMode === 'fixed' ? 'block' : 'none', marginBottom: '1.25rem' }}>
+                    <label className="input-label">Pilih Shift Tetap</label>
+                    <select name="fixed_shift_id" className="input" defaultValue={currentAssign.fixedShiftId || 'shift-ganjil'}>
+                      {availableShifts.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.code || s.id})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Bagian 2: Pengaturan Rotasi Mingguan (Pekan Ganjil vs Pekan Genap) */}
+                  <div id="sec-rolling" style={{ display: currentMode === 'rolling_weekly' ? 'block' : 'none', marginBottom: '1.25rem' }}>
+                    {/* Box Pekan Ganjil */}
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem', marginBottom: '0.75rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>🔵</span> <span>Pola Saat PEKAN GANJIL (Minggu ke-1, 3, 5, 7, ...)</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginBottom: '3px', fontWeight: 600 }}>Senin - Rabu</label>
+                          <select name="odd_mon_wed" className="input" style={{ fontSize: '0.82rem' }} defaultValue={currentRolling.oddWeek?.monWed || 'shift-ganjil'}>
+                            {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginBottom: '3px', fontWeight: 600 }}>Kamis - Sabtu</label>
+                          <select name="odd_thu_sat" className="input" style={{ fontSize: '0.82rem' }} defaultValue={currentRolling.oddWeek?.thuSat || 'shift-genap'}>
+                            {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Box Pekan Genap */}
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>🟣</span> <span>Pola Saat PEKAN GENAP (Minggu ke-2, 4, 6, 8, ...)</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginBottom: '3px', fontWeight: 600 }}>Senin - Rabu</label>
+                          <select name="even_mon_wed" className="input" style={{ fontSize: '0.82rem' }} defaultValue={currentRolling.evenWeek?.monWed || 'shift-genap'}>
+                            {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginBottom: '3px', fontWeight: 600 }}>Kamis - Sabtu</label>
+                          <select name="even_thu_sat" className="input" style={{ fontSize: '0.82rem' }} defaultValue={currentRolling.evenWeek?.thuSat || 'shift-ganjil'}>
+                            {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bagian 3: Pengaturan Jadwal Harian Khusus */}
+                  <div id="sec-custom" style={{ display: currentMode === 'custom_days' ? 'block' : 'none', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                      {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(day => (
+                        <div key={day}>
+                          <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginBottom: '3px', fontWeight: 600 }}>{day}</label>
+                          <select name={`custom_${day}`} className="input" style={{ fontSize: '0.82rem' }} defaultValue={currentCustomDays[day] || 'shift-ganjil'}>
+                            {availableShifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                    <button type="button" onClick={() => setEditingShiftTeacher(null)} className="btn" style={{ width: 'auto', padding: '0.65rem 1rem', background: '#F1F5F9', color: '#475569', borderRadius: '10px', fontSize: '0.85rem' }}>
+                      Batal
+                    </button>
+                    <button type="submit" disabled={savingShift} className="btn btn-primary" style={{ width: 'auto', padding: '0.65rem 1.25rem', borderRadius: '10px', fontSize: '0.85rem', background: '#4F46E5', color: 'white' }}>
+                      {savingShift ? 'Menyimpan...' : 'Simpan Pola Shift Guru'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )
+        })()}
 
         {activeTab === 'laporan' && (
           <div className="fade-in">
