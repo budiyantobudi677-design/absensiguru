@@ -1301,12 +1301,16 @@ export default function DashboardKepsek() {
           if(!userMap[a.user_id]) return;
           const tgl = new Date(a.tanggal).getDate();
           const tl = isTugasLuar(a);
-          const isLate = !tl && (a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+          const isLate = !tl && (() => {
+            if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
+            if (!a.waktu_masuk) return a.status === 'terlambat';
             try {
               const d = new Date(a.waktu_masuk);
-              return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30);
-            } catch { return false; }
-          })()));
+              const mins = d.getHours() * 60 + d.getMinutes();
+              if (mins <= 7 * 60 + 30) return false;
+              return mins > (7 * 60 + 30) || a.status === 'terlambat';
+            } catch { return a.status === 'terlambat'; }
+          })();
 
           const inTime = tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
           const outTime = tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
@@ -1329,12 +1333,16 @@ export default function DashboardKepsek() {
        columns = ['No', 'Nama', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
        rows = getFilteredAndSortedData().map((a, index) => {
          const tl = isTugasLuar(a);
-         const isLate = !tl && (a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+         const isLate = !tl && (() => {
+           if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
+           if (!a.waktu_masuk) return a.status === 'terlambat';
            try {
              const d = new Date(a.waktu_masuk);
-             return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30);
-           } catch { return false; }
-         })()));
+             const mins = d.getHours() * 60 + d.getMinutes();
+             if (mins <= 7 * 60 + 30) return false;
+             return mins > (7 * 60 + 30) || a.status === 'terlambat';
+           } catch { return a.status === 'terlambat'; }
+         })();
          return {
            No: index + 1,
            Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,

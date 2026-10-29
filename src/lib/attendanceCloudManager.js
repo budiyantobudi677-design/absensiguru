@@ -79,12 +79,18 @@ export async function saveAttendanceRecord({
           .limit(1)
 
         if (existRows && existRows.length > 0) {
+          // Proteksi Permanen Jam Masuk: Jika record hari ini sudah punya waktu_masuk, jangan pernah ditimpa jam siang!
+          const existingMasuk = existRows[0].waktu_masuk
+          const finalWaktuMasuk = existingMasuk || effectiveWaktuMasuk
+          const finalStatus = existingMasuk ? (existRows[0].status || effectiveStatus) : effectiveStatus
+          const finalLocMasuk = existingMasuk ? (existRows[0].lokasi_masuk || loc) : loc
+
           const { data, error } = await supabase
             .from('absensi')
             .update({
-              waktu_masuk: effectiveWaktuMasuk,
-              lokasi_masuk: loc,
-              status: effectiveStatus,
+              waktu_masuk: finalWaktuMasuk,
+              lokasi_masuk: finalLocMasuk,
+              status: finalStatus,
               keterangan: keterangan || existRows[0].keterangan || ''
             })
             .eq('id', existRows[0].id)
@@ -621,6 +627,9 @@ export async function getTodayUserAttendance({
           } catch (e) {}
           return null
         }
+        try {
+          localStorage.setItem(`today_absensi_${today}_${userId}`, JSON.stringify(dbRec))
+        } catch (e) {}
         return dbRec
       }
     } catch (e) {}
@@ -646,6 +655,9 @@ export async function getTodayUserAttendance({
             } catch (e) {}
             return null
           }
+          try {
+            localStorage.setItem(`today_absensi_${today}_${userId}`, JSON.stringify(mirrorRec))
+          } catch (e) {}
           return mirrorRec
         }
       }

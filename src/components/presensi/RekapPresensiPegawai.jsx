@@ -900,17 +900,19 @@ export default function RekapPresensiPegawai({
                     const tl = isTugasLuar(item)
                     const photo = extractPhoto(item)
                     const note = cleanKeterangan(item.keterangan)
-                    const isLate = !tl && (
-                      item.status === 'terlambat' || 
-                      ((!item.status || item.status === 'hadir') && item.waktu_masuk && (() => {
-                        try {
-                          const d = new Date(item.waktu_masuk)
-                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30)
-                        } catch (e) {
-                          return false
-                        }
-                      })())
-                    )
+                    const isLate = !tl && (() => {
+                      if (['izin', 'sakit', 'alpa'].includes(item.status)) return false
+                      if (!item.waktu_masuk) return item.status === 'terlambat'
+                      try {
+                        const d = new Date(item.waktu_masuk)
+                        const mins = d.getHours() * 60 + d.getMinutes()
+                        // Rentang 07.00 - 07.30 (atau <= 07:30) dipastikan TIDAK TERLAMBAT (HADIR)
+                        if (mins <= 7 * 60 + 30) return false
+                        return mins > (7 * 60 + 30) || item.status === 'terlambat'
+                      } catch (e) {
+                        return item.status === 'terlambat'
+                      }
+                    })()
                     const isHadir = !item.status || item.status === 'hadir' || isLate || tl
 
                     // Warna badge status: Tugas Luar statusnya tetap HADIR
@@ -1176,17 +1178,19 @@ export default function RekapPresensiPegawai({
                     statusText = 'ALPA'
                     badgeColor = '#DC2626'
                   } else {
-                    const isAttLate = !tl && (
-                      att.status === 'terlambat' || 
-                      ((!att.status || att.status === 'hadir') && att.waktu_masuk && (() => {
-                        try {
-                          const d = new Date(att.waktu_masuk)
-                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30)
-                        } catch (e) {
-                          return false
-                        }
-                      })())
-                    )
+                    const isAttLate = !tl && (() => {
+                      if (['izin', 'sakit', 'alpa'].includes(att.status)) return false
+                      if (!att.waktu_masuk) return att.status === 'terlambat'
+                      try {
+                        const d = new Date(att.waktu_masuk)
+                        const mins = d.getHours() * 60 + d.getMinutes()
+                        // Rentang 07.00 - 07.30 (atau <= 07:30) dipastikan TIDAK TERLAMBAT (HADIR)
+                        if (mins <= 7 * 60 + 30) return false
+                        return mins > (7 * 60 + 30) || att.status === 'terlambat'
+                      } catch (e) {
+                        return att.status === 'terlambat'
+                      }
+                    })()
                     bgBox = isAttLate ? '#FEF3C7' : '#ECFDF5'
                     borderColor = isAttLate ? '#FDE68A' : '#A7F3D0'
                     badgeColor = isAttLate ? '#B45309' : '#059669'
@@ -1399,7 +1403,21 @@ export default function RekapPresensiPegawai({
               </button>
             </div>
 
-            {activeDayDetail.att ? (
+            {activeDayDetail.att ? (() => {
+              const isDetailLate = !activeDayDetail.tl && (() => {
+                if (['izin', 'sakit', 'alpa'].includes(activeDayDetail.att?.status)) return false
+                if (!activeDayDetail.att?.waktu_masuk) return activeDayDetail.att?.status === 'terlambat'
+                try {
+                  const d = new Date(activeDayDetail.att.waktu_masuk)
+                  const mins = d.getHours() * 60 + d.getMinutes()
+                  if (mins <= 7 * 60 + 30) return false
+                  return mins > (7 * 60 + 30) || activeDayDetail.att.status === 'terlambat'
+                } catch (e) {
+                  return activeDayDetail.att?.status === 'terlambat'
+                }
+              })()
+
+              return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Status Kehadiran:</span>
@@ -1407,7 +1425,7 @@ export default function RekapPresensiPegawai({
                     fontWeight: 800, 
                     textTransform: 'uppercase', 
                     color: activeDayDetail.tl ? '#059669' : (
-                      activeDayDetail.att.status === 'terlambat' ? '#D97706' : (
+                      isDetailLate ? '#D97706' : (
                         activeDayDetail.att.status === 'sakit' ? '#D97706' : (
                           activeDayDetail.att.status === 'izin' ? '#2563EB' : (
                             activeDayDetail.att.status === 'alpa' ? '#DC2626' : '#059669'
@@ -1416,7 +1434,7 @@ export default function RekapPresensiPegawai({
                       )
                     )
                   }}>
-                    {activeDayDetail.tl ? 'HADIR (TUGAS LUAR)' : (activeDayDetail.att.status || 'HADIR')}
+                    {activeDayDetail.tl ? 'HADIR (TUGAS LUAR)' : (isDetailLate ? 'TERLAMBAT' : (['izin', 'sakit', 'alpa'].includes(activeDayDetail.att.status) ? activeDayDetail.att.status.toUpperCase() : 'HADIR'))}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1482,7 +1500,8 @@ export default function RekapPresensiPegawai({
                   </button>
                 )}
               </div>
-            ) : (
+              )
+            })() : (
               <p style={{ margin: 0, color: '#94A3B8', fontSize: '0.85rem' }}>Tidak ada rekaman presensi pada hari ini.</p>
             )}
           </div>

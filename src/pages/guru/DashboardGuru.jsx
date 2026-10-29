@@ -362,8 +362,34 @@ export default function DashboardGuru({ roleOverride = null }) {
     kkm: 75,
     appMode: 'SD'
   })
-  const [hasCheckedIn, setHasCheckedIn] = useState(false)
-  const [todayAbsensi, setTodayAbsensi] = useState(null)
+  const [isVerifyingStatus, setIsVerifyingStatus] = useState(true)
+  const [hasCheckedIn, setHasCheckedIn] = useState(() => {
+    try {
+      const today = getLocalDateString()
+      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
+      const uid = authUser?.id
+      if (uid) {
+        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          return !!(parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin'))
+        }
+      }
+    } catch (e) {}
+    return false
+  })
+  const [todayAbsensi, setTodayAbsensi] = useState(() => {
+    try {
+      const today = getLocalDateString()
+      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
+      const uid = authUser?.id
+      if (uid) {
+        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
+        if (raw) return JSON.parse(raw)
+      }
+    } catch (e) {}
+    return null
+  })
   const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
   const [keterangan, setKeterangan] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -428,23 +454,34 @@ export default function DashboardGuru({ roleOverride = null }) {
   // Cek apakah presensi masuk hari ini terlambat (Tugas Luar tidak pernah terlambat, toleransi s.d. 07.30)
   const isTodayLate = useMemo(() => {
     if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return false
-    if (todayStatus === 'terlambat' || todayAbsensi?.status === 'terlambat') return true
-    if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasukBatas) return false
-    const masukDate = new Date(todayAbsensi.waktu_masuk)
-    const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-    const [limitH, limitM] = (todayShift.jamMasukBatas || '07:30').split(':').map(Number)
-    return masukMins > (limitH * 60 + limitM)
+    if (!todayAbsensi?.waktu_masuk) return false
+    try {
+      const masukDate = new Date(todayAbsensi.waktu_masuk)
+      const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
+      // Khusus rentang 07.00 - 07.30 (atau <= 07:30) dipastikan TIDAK TERLAMBAT
+      if (masukMins <= 7 * 60 + 30) return false
+      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
+      return masukMins > (limitH * 60 + limitM)
+    } catch {
+      return todayStatus === 'terlambat' || todayAbsensi?.status === 'terlambat'
+    }
   }, [todayStatus, todayAbsensi?.status, todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayShift?.jamMasukBatas])
 
   // Hitung jumlah menit keterlambatan hari ini
   const lateMinutesToday = useMemo(() => {
     if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return 0
     if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasuk) return 0
-    const masukDate = new Date(todayAbsensi.waktu_masuk)
-    const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-    const [inH, inM] = (todayShift.jamMasuk || '07:00').split(':').map(Number)
-    const scheduledMins = inH * 60 + inM
-    return Math.max(0, masukMins - scheduledMins)
+    try {
+      const masukDate = new Date(todayAbsensi.waktu_masuk)
+      const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
+      // Jika masih dalam rentang 07.00 - 07.30, lateMinutes adalah 0
+      if (masukMins <= 7 * 60 + 30) return 0
+      const [inH, inM] = (todayShift.jamMasuk || '07:00').split(':').map(Number)
+      const scheduledMins = inH * 60 + inM
+      return Math.max(0, masukMins - scheduledMins)
+    } catch {
+      return 0
+    }
   }, [todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayAbsensi?.status, todayShift?.jamMasuk])
 
   // Theme mode
@@ -1263,6 +1300,9 @@ export default function DashboardGuru({ roleOverride = null }) {
         setHasCheckedIn(true)
         setTodayStatus(absensi.status)
         setTodayAbsensi(absensi)
+        try {
+          localStorage.setItem(`today_absensi_${today}_${currentUser.id}`, JSON.stringify(absensi))
+        } catch (e) {}
       } else if (offlineToday) {
         const combined = { ...offlineToday }
         if (offlinePulang) {
@@ -1272,11 +1312,18 @@ export default function DashboardGuru({ roleOverride = null }) {
         setHasCheckedIn(true)
         setTodayStatus(offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
         setTodayAbsensi(combined)
+        try {
+          localStorage.setItem(`today_absensi_${today}_${currentUser.id}`, JSON.stringify(combined))
+        } catch (e) {}
       } else {
         setHasCheckedIn(false)
         setTodayStatus(null)
         setTodayAbsensi(null)
+        try {
+          localStorage.removeItem(`today_absensi_${today}_${currentUser.id}`)
+        } catch (e) {}
       }
+      setIsVerifyingStatus(false)
 
       // Muat ulang riwayat kehadiran untuk akun aktif ini
       await loadHistory(historyMonth, currentUser, isTendikCheck)
@@ -1332,6 +1379,8 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
     } catch (err) {
       console.error(err)
+    } finally {
+      setIsVerifyingStatus(false)
     }
   }
 
@@ -1770,6 +1819,20 @@ export default function DashboardGuru({ roleOverride = null }) {
 
     setLoading(true)
     try {
+      // Proteksi Presensi Masuk Ganda: Jika hari ini sudah ada jam masuk, batalkan dan jangan izinkan menimpa!
+      if (jenis === 'masuk') {
+        if (todayAbsensi && (todayAbsensi.waktu_masuk || todayAbsensi.status === 'sakit' || todayAbsensi.status === 'izin')) {
+          setHasCheckedIn(true)
+          setLoading(false)
+          showPopup(
+            "Sudah Melakukan Presensi",
+            `Anda telah melakukan presensi masuk hari ini pada pukul ${todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'pagi'}. Jam masuk tidak dapat diubah kembali.`,
+            "info"
+          )
+          return
+        }
+      }
+
       // Proteksi Jam Pulang: Tidak boleh Clock Out sebelum jam pulang shift hari ini tiba
       if (jenis === 'pulang') {
         const nowDate = getSecureServerDate()
@@ -1794,9 +1857,13 @@ export default function DashboardGuru({ roleOverride = null }) {
         const nowDate = getSecureServerDate()
         const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
         const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
-        const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
-        const limitMins = limitH * 60 + limitM
         const scheduledMins = inH * 60 + inM
+        let [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
+        let limitMins = limitH * 60 + limitM
+        // Rentang pagi (07.00 - 07.30) dipastikan batas toleransinya minimal s.d. 07.30 (tidak terlambat)
+        if (scheduledMins <= 7 * 60 + 30 && limitMins < 7 * 60 + 30) {
+          limitMins = 7 * 60 + 30
+        }
         if (currentMins > limitMins) {
           masukStatus = 'terlambat'
           lateMinutes = Math.max(0, currentMins - scheduledMins)
@@ -1890,19 +1957,29 @@ export default function DashboardGuru({ roleOverride = null }) {
           setHasCheckedIn(true)
           setTodayStatus(masukStatus)
           setTodayAbsensi(insData)
+          try {
+            localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(insData))
+          } catch (e) {}
           if (masukStatus === 'terlambat') {
             showPopup("Absen Masuk (Terlambat)", `Data jam masuk Anda tercatat pukul ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} (Terlambat ${lateMinutes} menit).`, "warning")
           } else {
             showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem tepat waktu.", "success")
           }
         } else if (jenis === 'pulang') {
-          setTodayAbsensi(prev => ({ ...(prev || {}), ...(insData || {}), waktu_pulang: now, lokasi_pulang: loc }))
+          const updated = { ...(todayAbsensi || {}), ...(insData || {}), waktu_pulang: now, lokasi_pulang: loc }
+          setTodayAbsensi(updated)
+          try {
+            localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(updated))
+          } catch (e) {}
           showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
         } else if (jenis === 'sakit' || jenis === 'izin') {
           setHasCheckedIn(true)
           setTodayStatus(jenis)
           setTodayAbsensi(insData)
           setIzinMode(null)
+          try {
+            localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(insData))
+          } catch (e) {}
           showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
         }
       } catch (error) {
@@ -2031,11 +2108,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         tanggal: today,
         keterangan: keteranganLengkap
       }
-      enqueueOfflineAttendance(record)
-      checkUnsynced()
-      setHasCheckedIn(true)
-      setTodayStatus('hadir')
-      setTodayAbsensi({
+      const offlineRec = {
         user_id: user.id,
         waktu_masuk: waktuMasuk,
         waktu_pulang: waktuPulang,
@@ -2044,7 +2117,15 @@ export default function DashboardGuru({ roleOverride = null }) {
         lokasi_pulang: loc,
         status: 'hadir',
         keterangan: keteranganLengkap
-      })
+      }
+      enqueueOfflineAttendance(record)
+      checkUnsynced()
+      setHasCheckedIn(true)
+      setTodayStatus('hadir')
+      setTodayAbsensi(offlineRec)
+      try {
+        localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(offlineRec))
+      } catch (e) {}
       setShowTugasLuarModal(false)
       showPopup("Tersimpan Luring (Offline)", "Presensi Tugas Luar disimpan di HP. Otomatis Hadir (07:00 - 14:00).", "success")
       setLoading(false)
@@ -2071,6 +2152,9 @@ export default function DashboardGuru({ roleOverride = null }) {
       setHasCheckedIn(true)
       setTodayStatus('hadir')
       setTodayAbsensi(inserted)
+      try {
+        localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(inserted))
+      } catch (e) {}
       setShowTugasLuarModal(false)
       showPopup("Presensi Berhasil!", "Presensi Tugas Luar tersimpan. Anda otomatis tercatat HADIR (07:00 - 14:00).", "success")
       loadHistory()
@@ -2809,6 +2893,16 @@ export default function DashboardGuru({ roleOverride = null }) {
                   <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Hari Libur</h3>
                   <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>{holidayReason}</p>
                   <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem' }}>Anda tidak perlu melakukan presensi hari ini. Selamat beristirahat!</p>
+                </div>
+              ) : (isVerifyingStatus && !todayAbsensi) ? (
+                <div style={{ textAlign: 'center', margin: '1rem auto 1.5rem auto', maxWidth: '380px' }}>
+                  <button className="btn-clock" disabled style={{ opacity: 0.75, cursor: 'not-allowed', background: '#94A3B8', marginBottom: '1rem', boxShadow: 'none' }}>
+                    <Fingerprint size={48} strokeWidth={1.5} />
+                    <span style={{ fontSize: '0.88rem' }}>Menghubungkan...</span>
+                  </button>
+                  <p style={{ fontSize: '0.82rem', color: '#64748B', margin: 0, fontWeight: 500 }}>
+                    Memeriksa status presensi hari ini ke server...
+                  </p>
                 </div>
               ) : !hasCheckedIn ? (
                 platformCheck.allowed ? (
