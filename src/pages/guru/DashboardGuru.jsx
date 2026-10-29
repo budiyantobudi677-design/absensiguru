@@ -425,25 +425,27 @@ export default function DashboardGuru({ roleOverride = null }) {
     return currentMins < (pH * 60 + pM)
   }, [currentTime, todayShift?.jamPulang])
 
-  // Cek apakah presensi masuk hari ini terlambat
+  // Cek apakah presensi masuk hari ini terlambat (Tugas Luar tidak pernah terlambat, toleransi s.d. 07.30)
   const isTodayLate = useMemo(() => {
+    if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return false
     if (todayStatus === 'terlambat' || todayAbsensi?.status === 'terlambat') return true
     if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasukBatas) return false
     const masukDate = new Date(todayAbsensi.waktu_masuk)
     const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-    const [limitH, limitM] = todayShift.jamMasukBatas.split(':').map(Number)
+    const [limitH, limitM] = (todayShift.jamMasukBatas || '07:30').split(':').map(Number)
     return masukMins > (limitH * 60 + limitM)
-  }, [todayStatus, todayAbsensi?.status, todayAbsensi?.waktu_masuk, todayShift?.jamMasukBatas])
+  }, [todayStatus, todayAbsensi?.status, todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayShift?.jamMasukBatas])
 
   // Hitung jumlah menit keterlambatan hari ini
   const lateMinutesToday = useMemo(() => {
+    if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return 0
     if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasuk) return 0
     const masukDate = new Date(todayAbsensi.waktu_masuk)
     const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-    const [inH, inM] = todayShift.jamMasuk.split(':').map(Number)
+    const [inH, inM] = (todayShift.jamMasuk || '07:00').split(':').map(Number)
     const scheduledMins = inH * 60 + inM
     return Math.max(0, masukMins - scheduledMins)
-  }, [todayAbsensi?.waktu_masuk, todayShift?.jamMasuk])
+  }, [todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayAbsensi?.status, todayShift?.jamMasuk])
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
@@ -1699,7 +1701,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     if (jenis === 'masuk') {
       const nowDate = new Date(now)
       const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
-      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:15').split(':').map(Number)
+      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
       if (currentMins > (limitH * 60 + limitM)) {
         offlineStatus = 'terlambat'
       }
@@ -1792,7 +1794,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         const nowDate = getSecureServerDate()
         const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
         const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
-        const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:15').split(':').map(Number)
+        const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
         const limitMins = limitH * 60 + limitM
         const scheduledMins = inH * 60 + inM
         if (currentMins > limitMins) {
@@ -1955,11 +1957,9 @@ export default function DashboardGuru({ roleOverride = null }) {
     const today = getLocalDateString()
     const [year, month, day] = today.split('-').map(Number)
 
-    // Jam masuk & pulang otomatis sesuai shift aktif hari ini
-    const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
-    const [outH, outM] = (todayShift?.jamPulang || '14:00').split(':').map(Number)
-    const jamMasukDate = new Date(year, month - 1, day, inH, inM, 0)
-    const jamPulangDate = new Date(year, month - 1, day, outH, outM, 0)
+    // Jam masuk otomatis 07.00, jam pulang otomatis 14.00 (bukan 07.15 atau jam shift lainnya)
+    const jamMasukDate = new Date(year, month - 1, day, 7, 0, 0)
+    const jamPulangDate = new Date(year, month - 1, day, 14, 0, 0)
     const waktuMasuk = jamMasukDate.toISOString()
     const waktuPulang = jamPulangDate.toISOString()
 
@@ -2790,7 +2790,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>
                         <div>
                           <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM MASUK</span>
-                          <strong>{todayShift?.jamMasuk || '07:00'}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift?.jamMasukBatas || '07:15'})</span>
+                          <strong>{todayShift?.jamMasuk || '07:00'}</strong> <span style={{ fontSize: '0.7rem', color: '#6366F1' }}>(Batas {todayShift?.jamMasukBatas || '07:30'})</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <span style={{ color: '#4338CA', fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>JAM PULANG</span>
@@ -2847,7 +2847,9 @@ export default function DashboardGuru({ roleOverride = null }) {
                         JAM MASUK {isTodayLate ? '(TERLAMBAT)' : ''}
                       </div>
                       <div style={{ fontWeight: '800', fontSize: '1.05rem', color: isTodayLate ? '#D97706' : '#059669' }}>
-                        {todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00'}
+                        {(todayAbsensi.keterangan?.includes('Tugas Luar') || todayAbsensi.status === 'tugas_luar')
+                          ? '07.00'
+                          : (todayAbsensi.waktu_masuk ? new Date(todayAbsensi.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '07.00')}
                       </div>
                       {isTodayLate && lateMinutesToday > 0 && (
                         <div style={{ fontSize: '0.68rem', color: '#B45309', fontWeight: 600 }}>
@@ -2859,7 +2861,9 @@ export default function DashboardGuru({ roleOverride = null }) {
                     <div>
                       <div style={{ fontSize: '0.65rem', color: '#6B7280', fontWeight: 'bold' }}>JAM PULANG</div>
                       <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#D97706' }}>
-                        {todayAbsensi.waktu_pulang ? new Date(todayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00'}
+                        {(todayAbsensi.keterangan?.includes('Tugas Luar') || todayAbsensi.status === 'tugas_luar')
+                          ? '14.00'
+                          : (todayAbsensi.waktu_pulang ? new Date(todayAbsensi.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '14.00')}
                       </div>
                     </div>
                   </div>

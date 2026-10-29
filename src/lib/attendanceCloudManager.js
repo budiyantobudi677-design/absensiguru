@@ -295,15 +295,16 @@ export async function saveAttendanceRecord({
       }
 
       // Gabungkan rekaman guru ini dengan rekaman yang sudah ada
+      const isTL = jenis === 'tugas_luar' || keterangan?.includes('Tugas Luar')
       const existingUserRec = dateMap[userId] || {}
       dateMap[userId] = {
         ...existingUserRec,
         ...attendanceRecord,
-        waktu_masuk: attendanceRecord.waktu_masuk || existingUserRec.waktu_masuk || now,
-        waktu_pulang: attendanceRecord.waktu_pulang || existingUserRec.waktu_pulang || null,
+        waktu_masuk: isTL ? attendanceRecord.waktu_masuk : (attendanceRecord.waktu_masuk || existingUserRec.waktu_masuk || now),
+        waktu_pulang: isTL ? attendanceRecord.waktu_pulang : (attendanceRecord.waktu_pulang || existingUserRec.waktu_pulang || null),
         lokasi_masuk: attendanceRecord.lokasi_masuk || existingUserRec.lokasi_masuk || loc,
         lokasi_pulang: attendanceRecord.lokasi_pulang || existingUserRec.lokasi_pulang || (jenis === 'pulang' ? loc : null),
-        status: attendanceRecord.status || existingUserRec.status || 'hadir',
+        status: isTL ? 'hadir' : (attendanceRecord.status || existingUserRec.status || 'hadir'),
         keterangan: attendanceRecord.keterangan || existingUserRec.keterangan || ''
       }
 

@@ -17,13 +17,13 @@ export const DEFAULT_SHIFTS = {
     code: 'GANJIL',
     description: 'Shift Ganjil (Masuk Pagi)',
     rules: {
-      'Senin':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
-      'Selasa': { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
-      'Rabu':   { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
-      'Kamis':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' },
-      'Jumat':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '11:30' },
-      'Sabtu':  { jamMasuk: '07:00', toleransi: 15, jamPulang: '12:30' },
-      'Minggu': { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00', libur: true }
+      'Senin':  { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00' },
+      'Selasa': { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00' },
+      'Rabu':   { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00' },
+      'Kamis':  { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00' },
+      'Jumat':  { jamMasuk: '07:00', toleransi: 30, jamPulang: '11:30' },
+      'Sabtu':  { jamMasuk: '07:00', toleransi: 30, jamPulang: '12:30' },
+      'Minggu': { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00', libur: true }
     }
   },
   'shift-genap': {
@@ -90,6 +90,14 @@ export function getCachedShiftSystem() {
             }
           }
         })
+        // Self-healing: Pastikan Shift Ganjil toleransi default 30 menit (rentang 07.00 - 07.30 tidak terlambat)
+        if (baseShifts['shift-ganjil']?.rules) {
+          Object.keys(baseShifts['shift-ganjil'].rules).forEach(day => {
+            if (!baseShifts['shift-ganjil'].rules[day].toleransi || baseShifts['shift-ganjil'].rules[day].toleransi === 15) {
+              baseShifts['shift-ganjil'].rules[day].toleransi = 30
+            }
+          })
+        }
         // Self-healing: Pastikan Shift Genap tidak tertukar atau bernama Shift Ganjil
         if (baseShifts['shift-genap']) {
           if (!baseShifts['shift-genap'].name || baseShifts['shift-genap'].name === 'Shift Ganjil') {
@@ -407,11 +415,12 @@ export function resolveTeacherShiftForDate({
   }
 
   const shiftObj = shifts[targetShiftId] || shifts['shift-ganjil'] || DEFAULT_SHIFTS['shift-ganjil']
-  const dayRule = shiftObj.rules?.[dayName] || { jamMasuk: '07:00', toleransi: 15, jamPulang: '14:00' }
+  const dayRule = shiftObj.rules?.[dayName] || { jamMasuk: '07:00', toleransi: 30, jamPulang: '14:00' }
 
-  // Hitung batas jam masuk (jamMasuk + toleransi menit)
+  // Hitung batas jam masuk (jamMasuk + toleransi menit, rentang 07.00 - 07.30 tidak terlambat)
   const [inHour, inMin] = (dayRule.jamMasuk || '07:00').split(':').map(Number)
-  const totalMin = inHour * 60 + inMin + (Number(dayRule.toleransi) || 15)
+  const defaultTol = (dayRule.jamMasuk === '07:00' && (!dayRule.toleransi || dayRule.toleransi === 15)) ? 30 : (Number(dayRule.toleransi) || 30)
+  const totalMin = inHour * 60 + inMin + defaultTol
   const limitHour = String(Math.floor(totalMin / 60)).padStart(2, '0')
   const limitMin = String(totalMin % 60).padStart(2, '0')
   const jamMasukBatas = `${limitHour}:${limitMin}`
@@ -425,7 +434,7 @@ export function resolveTeacherShiftForDate({
     isOddWeek: odd,
     weekType,
     jamMasuk: dayRule.jamMasuk || '07:00',
-    toleransi: Number(dayRule.toleransi) || 15,
+    toleransi: defaultTol,
     jamMasukBatas,
     jamPulang: dayRule.jamPulang || '14:00',
     isLibur: !!dayRule.libur,

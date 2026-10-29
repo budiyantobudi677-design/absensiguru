@@ -1484,17 +1484,21 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        absensiData.forEach(a => {
           if(!userMap[a.user_id]) return;
           const tgl = new Date(a.tanggal).getDate();
-          const isLate = a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+          const tl = isTugasLuar(a);
+          const isLate = !tl && (a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
             try {
               const d = new Date(a.waktu_masuk);
-              return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15);
+              return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30);
             } catch { return false; }
-          })());
+          })()));
+
+          const inTime = tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
+          const outTime = tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
 
           userMap[a.user_id].absensi[tgl] = {
-             status: isLate ? 'terlambat' : (a.status || 'hadir'),
-             in: a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
-             out: a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
+             status: tl ? 'hadir' : (isLate ? 'terlambat' : (a.status || 'hadir')),
+             in: inTime,
+             out: outTime
           };
        })
 
@@ -1508,19 +1512,20 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
      } else {
        columns = ['No', 'Nama', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
        rows = getFilteredAndSortedData().map((a, index) => {
-         const isLate = a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
+         const tl = isTugasLuar(a);
+         const isLate = !tl && (a.status === 'terlambat' || (!['izin', 'sakit', 'alpa'].includes(a.status) && a.waktu_masuk && (() => {
            try {
              const d = new Date(a.waktu_masuk);
-             return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15);
+             return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30);
            } catch { return false; }
-         })());
+         })()));
          return {
            No: index + 1,
            Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
            Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-           'Jam Masuk': new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-           'Jam Pulang': a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
-           Status: isLate ? 'TERLAMBAT' : (a.status?.toUpperCase() || 'HADIR')
+           'Jam Masuk': tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
+           'Jam Pulang': tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
+           Status: tl ? 'HADIR' : (isLate ? 'TERLAMBAT' : (a.status?.toUpperCase() || 'HADIR'))
          };
        });
      }

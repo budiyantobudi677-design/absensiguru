@@ -905,7 +905,7 @@ export default function RekapPresensiPegawai({
                       ((!item.status || item.status === 'hadir') && item.waktu_masuk && (() => {
                         try {
                           const d = new Date(item.waktu_masuk)
-                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15)
+                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30)
                         } catch (e) {
                           return false
                         }
@@ -947,9 +947,9 @@ export default function RekapPresensiPegawai({
                       badgeBorder = '#A7F3D0'
                     }
 
-                    const inTime = item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'
-                    const outTime = item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'
-                    const duration = calculateDuration(item.waktu_masuk, item.waktu_pulang)
+                    const inTime = tl ? '07.00' : (item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--')
+                    const outTime = tl ? '14.00' : (item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--')
+                    const duration = tl ? '7 Jam' : calculateDuration(item.waktu_masuk, item.waktu_pulang)
 
                     return (
                       <tr
@@ -1181,7 +1181,7 @@ export default function RekapPresensiPegawai({
                       ((!att.status || att.status === 'hadir') && att.waktu_masuk && (() => {
                         try {
                           const d = new Date(att.waktu_masuk)
-                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 15)
+                          return (d.getHours() * 60 + d.getMinutes()) > (7 * 60 + 30)
                         } catch (e) {
                           return false
                         }
@@ -1191,7 +1191,7 @@ export default function RekapPresensiPegawai({
                     borderColor = isAttLate ? '#FDE68A' : '#A7F3D0'
                     badgeColor = isAttLate ? '#B45309' : '#059669'
                     if (tl) {
-                      statusText = 'HADIR (TL)'
+                      statusText = '07.00 - 14.00 (TL)'
                     } else {
                       const inStr = att.waktu_masuk ? new Date(att.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
                       const outStr = att.waktu_pulang ? new Date(att.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
@@ -1422,19 +1422,19 @@ export default function RekapPresensiPegawai({
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Jam Masuk (IN):</span>
                   <span style={{ fontWeight: 700, color: '#059669' }}>
-                    {activeDayDetail.att.waktu_masuk ? new Date(activeDayDetail.att.waktu_masuk).toLocaleTimeString('id-ID') : '-'}
+                    {activeDayDetail.tl ? '07.00' : (activeDayDetail.att.waktu_masuk ? new Date(activeDayDetail.att.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Jam Pulang (OUT):</span>
                   <span style={{ fontWeight: 700, color: '#D97706' }}>
-                    {activeDayDetail.att.waktu_pulang ? new Date(activeDayDetail.att.waktu_pulang).toLocaleTimeString('id-ID') : '-'}
+                    {activeDayDetail.tl ? '14.00' : (activeDayDetail.att.waktu_pulang ? new Date(activeDayDetail.att.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748B' }}>Durasi Kerja:</span>
                   <span style={{ fontWeight: 700, color: '#1E293B' }}>
-                    {calculateDuration(activeDayDetail.att.waktu_masuk, activeDayDetail.att.waktu_pulang)}
+                    {activeDayDetail.tl ? '7 Jam 00 Menit' : calculateDuration(activeDayDetail.att.waktu_masuk, activeDayDetail.att.waktu_pulang)}
                   </span>
                 </div>
 
