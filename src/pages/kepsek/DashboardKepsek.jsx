@@ -13,7 +13,7 @@ import InputNilaiSiswa from '../../components/kbm/InputNilaiSiswa'
 import RekapDanLaporan from '../../components/kbm/RekapDanLaporan'
 import MasterSiswaDanKelas from '../../components/kbm/MasterSiswaDanKelas'
 import { exportAttendanceRecapExcel, exportGradesRecapExcel, exportJournalsRecapExcel } from '../../lib/excelExport'
-import { getCustomSubjects, syncCloudSubjects } from '../../lib/subjectsManager'
+import { getCustomSubjects, syncCloudSubjects, saveCustomSubjects } from '../../lib/subjectsManager'
 import { getSavedGeminiKey, loadSavedGeminiKeyAsync, saveGeminiKey, testGeminiConnection } from '../../lib/gemini'
 import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTakenByOtherTeachers, getCachedAssignmentsMap } from '../../lib/assignmentManager'
 import { Capacitor } from '@capacitor/core'
@@ -168,6 +168,22 @@ export default function DashboardKepsek() {
   const [pegawaiSort, setPegawaiSort] = useState('name-asc')
   const [editingPegawai, setEditingPegawai] = useState(null) // Pegawai yang sedang diedit perannya oleh Admin
   const [savingPegawai, setSavingPegawai] = useState(false)
+  const [editPegawaiRole, setEditPegawaiRole] = useState('guru_kelas')
+  const [editPegawaiMapel, setEditPegawaiMapel] = useState('')
+  const [isCustomMapelMode, setIsCustomMapelMode] = useState(false)
+  const [customMapelText, setCustomMapelText] = useState('')
+
+  const handleOpenEditPegawai = (p) => {
+    const r = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || (p.role === 'guru_mapel' ? 'guru_mapel' : (p.role === 'tendik' || p.penugasan_tipe === 'tendik' ? 'tendik' : 'guru_kelas'))
+    const m = p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`) || ''
+    setEditPegawaiRole(r)
+    setEditPegawaiMapel(m)
+    const allSubs = getCustomSubjects()
+    const isCustom = Boolean(m && !allSubs.includes(m))
+    setIsCustomMapelMode(isCustom)
+    setCustomMapelText(isCustom ? m : '')
+    setEditingPegawai(p)
+  }
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   // KBM Pembelajaran States
@@ -817,7 +833,7 @@ export default function DashboardKepsek() {
           ...p,
           penugasan_tipe: assign?.tipe || p.penugasan_tipe || p.role,
           jabatan: assign?.jabatan || p.jabatan,
-          mata_pelajaran: assign?.mapel || p.mata_pelajaran,
+          mata_pelajaran: assign?.mapel || p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`) || '',
           tipe_perangkat: assign?.tipe_perangkat || localStorage.getItem(`guru_tipe_perangkat_${p.id}`) || p.tipe_perangkat || 'android'
         }
       })
@@ -2477,10 +2493,23 @@ export default function DashboardKepsek() {
                               })()}
                             </div>
                             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.jabatan || 'Pegawai'} {p.nip && `• NIP: ${p.nip}`}</p>
-                            {isMapel && (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) && (
-                              <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.72rem', color: '#6366F1', fontWeight: '600' }}>
-                                Mapel: {p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)}
-                              </p>
+                            {isMapel && (
+                              <div style={{ marginTop: '0.25rem' }}>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  background: (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) ? '#EEF2FF' : '#FEF3C7',
+                                  color: (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) ? '#4338CA' : '#B45309',
+                                  border: `1px solid ${(p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`)) ? '#C7D2FE' : '#FDE68A'}`,
+                                  fontSize: '0.73rem',
+                                  fontWeight: '700'
+                                }}>
+                                  📖 Mapel: {p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`) || 'Belum diatur (Klik Atur)'}
+                                </span>
+                              </div>
                             )}
                             {(() => {
                               const assigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${p.id}`) || '[]')
@@ -2578,24 +2607,25 @@ export default function DashboardKepsek() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
                             <button
                               type="button"
-                              onClick={() => setEditingPegawai(p)}
+                              onClick={() => handleOpenEditPegawai(p)}
                               style={{
                                 padding: '0.45rem 0.85rem',
                                 borderRadius: '9px',
-                                background: 'var(--surface-hover, #F1F5F9)',
-                                border: '1px solid var(--border)',
-                                color: 'var(--text)',
+                                background: isMapel ? '#EEF2FF' : 'var(--surface-hover, #F1F5F9)',
+                                border: isMapel ? '1px solid #C7D2FE' : '1px solid var(--border)',
+                                color: isMapel ? '#4338CA' : 'var(--text)',
                                 fontSize: '0.76rem',
-                                fontWeight: '600',
+                                fontWeight: '700',
                                 cursor: 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
                                 transition: 'all 0.15s'
                               }}
+                              title={isMapel ? "Atur Mata Pelajaran & Kelas guru ini" : "Atur peran dan penugasan guru ini"}
                             >
                               <Edit3 size={13} />
-                              <span>Atur</span>
+                              <span>{isMapel ? 'Atur Mapel' : 'Atur'}</span>
                             </button>
                           </div>
                         </div>
@@ -2620,10 +2650,12 @@ export default function DashboardKepsek() {
                   padding: '1rem',
                   zIndex: 9999
                 }}>
-                  <div className="card" style={{ maxWidth: '460px', width: '100%', background: 'white', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                  <div className="card" style={{ maxWidth: '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'white', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
                       <div>
-                        <h3 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>Atur Peran & Mapel Guru</h3>
+                        <h3 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>
+                          {editPegawaiRole === 'guru_mapel' ? 'Atur Mata Pelajaran & Guru Mapel' : 'Atur Peran & Penugasan Pegawai'}
+                        </h3>
                         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>{editingPegawai.full_name || editingPegawai.email}</p>
                       </div>
                       <button onClick={() => setEditingPegawai(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
@@ -2635,8 +2667,18 @@ export default function DashboardKepsek() {
                       e.preventDefault()
                       setSavingPegawai(true)
                       const formData = new FormData(e.target)
-                      const newRole = formData.get('role')
-                      const newMapel = newRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || '') : ''
+                      const newRole = editPegawaiRole
+                      let newMapel = ''
+                      if (newRole === 'guru_mapel') {
+                        newMapel = isCustomMapelMode ? customMapelText.trim() : (formData.get('mata_pelajaran') || editPegawaiMapel || '')
+                        if (newMapel) {
+                          const currentSubs = getCustomSubjects()
+                          if (!currentSubs.includes(newMapel)) {
+                            const updatedSubs = [...currentSubs, newMapel]
+                            await saveCustomSubjects(updatedSubs, supabase)
+                          }
+                        }
+                      }
                       const tendikJabatan = formData.get('tendik_jabatan')
                       let newJabatan = formData.get('jabatan') || editingPegawai.jabatan
 
@@ -2644,7 +2686,7 @@ export default function DashboardKepsek() {
                       if (newRole === 'tendik') {
                         formattedJabatan = tendikJabatan || 'Operator Dapodik';
                       } else if (newRole === 'guru_mapel' && newMapel) {
-                        formattedJabatan = `Guru ${newMapel} • ${newJabatan || 'Guru Mapel'}`;
+                        formattedJabatan = `Guru ${newMapel} • Guru Mapel`;
                       }
 
                       // Ambil assigned_classes dari formData
@@ -2653,14 +2695,15 @@ export default function DashboardKepsek() {
 
                       // Simpan tipe penugasan di localStorage
                       localStorage.setItem(`guru_tipe_${editingPegawai.id}`, newRole)
+                      localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
+                      const newTipePerangkat = formData.get('tipe_perangkat') || 'android'
+                      localStorage.setItem(`guru_tipe_perangkat_${editingPegawai.id}`, newTipePerangkat)
+
                       if (newRole === 'tendik') {
                         const isNonOp = ['Pustakawan', 'Bujang', 'Satpam'].includes(formattedJabatan)
                         localStorage.setItem(`tendik_kategori_${editingPegawai.id}`, isNonOp ? 'non_operator' : 'operator')
                         localStorage.setItem(`tendik_penugasan_${editingPegawai.id}`, formattedJabatan)
                       }
-
-                      const newTipePerangkat = formData.get('tipe_perangkat') || 'android'
-                      localStorage.setItem(`guru_tipe_perangkat_${editingPegawai.id}`, newTipePerangkat)
 
                       // Simpan ke Cloud Supabase agar otomatis tersinkron ke semua perangkat guru
                       await saveTeacherAssignmentToCloud({
@@ -2677,14 +2720,14 @@ export default function DashboardKepsek() {
                       try {
                         await supabase.from('profiles').update({
                           jabatan: formattedJabatan,
+                          mata_pelajaran: newMapel,
+                          penugasan_tipe: newRole,
                           tipe_perangkat: newTipePerangkat
                         }).eq('id', editingPegawai.id)
                       } catch (e) {
                         console.warn('Profile update warning:', e)
                       }
 
-                      // Simpan juga mapel guru ke penyimpanan lokal/state agar dashboard langsung sinkron
-                      localStorage.setItem(`guru_mapel_${editingPegawai.id}`, newMapel)
                       setPegawaiData(prev => prev.map(item => item.id === editingPegawai.id ? { 
                         ...item, 
                         penugasan_tipe: newRole, 
@@ -2694,23 +2737,19 @@ export default function DashboardKepsek() {
                       } : item))
                       setEditingPegawai(null)
                       loadKbmClasses()
-                      alert("Penugasan guru berhasil diperbarui!")
+                      alert(newRole === 'guru_mapel' && newMapel 
+                        ? `Mata pelajaran ${newMapel} berhasil diatur untuk ${editingPegawai.full_name || 'guru'}!` 
+                        : "Penugasan pegawai berhasil diperbarui!")
                       setSavingPegawai(false)
                     }}>
                       <div className="input-group" style={{ marginBottom: '1rem' }}>
-                        <label className="input-label">Peran Penugasan</label>
+                        <label className="input-label" style={{ fontWeight: 700 }}>Peran Penugasan</label>
                         <select 
                           name="role" 
                           className="input" 
-                          defaultValue={localStorage.getItem(`guru_tipe_${editingPegawai.id}`) || (editingPegawai.penugasan_tipe === 'guru_mapel' || editingPegawai.role === 'guru_mapel' ? 'guru_mapel' : (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' ? 'tendik' : 'guru_kelas'))}
-                          onChange={(e) => {
-                            const mapelBox = document.getElementById('admin-edit-mapel-box')
-                            const classBox = document.getElementById('admin-edit-class-box')
-                            const tendikBox = document.getElementById('admin-edit-tendik-box')
-                            if (mapelBox) mapelBox.style.display = e.target.value === 'guru_mapel' ? 'block' : 'none'
-                            if (classBox) classBox.style.display = e.target.value === 'tendik' ? 'none' : 'block'
-                            if (tendikBox) tendikBox.style.display = e.target.value === 'tendik' ? 'block' : 'none'
-                          }}
+                          value={editPegawaiRole}
+                          onChange={(e) => setEditPegawaiRole(e.target.value)}
+                          style={{ fontWeight: 700 }}
                         >
                           <option value="guru_kelas">Guru Kelas (Wali Kelas)</option>
                           <option value="guru_mapel">Guru Mata Pelajaran (Bidang Studi)</option>
@@ -2718,97 +2757,201 @@ export default function DashboardKepsek() {
                         </select>
                       </div>
 
-                      <div 
-                        id="admin-edit-tendik-box" 
-                        className="input-group" 
-                        style={{ 
-                          marginBottom: '1rem', 
-                          display: (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(editingPegawai.jabatan)) ? 'block' : 'none',
-                          background: '#F0F9FF',
-                          padding: '0.85rem',
-                          borderRadius: '14px',
-                          border: '1.5px solid #BAE6FD'
-                        }}
-                      >
-                        <label className="input-label" style={{ color: '#0369A1', fontWeight: 800 }}>Tugas & Jabatan Tendik</label>
-                        <select 
-                          name="tendik_jabatan" 
-                          className="input" 
-                          defaultValue={editingPegawai.jabatan || 'Operator Dapodik'}
-                          style={{ fontWeight: 700 }}
+                      {/* Box Khusus Guru Mapel: Pengaturan Mata Pelajaran */}
+                      {editPegawaiRole === 'guru_mapel' && (
+                        <div 
+                          className="input-group" 
+                          style={{ 
+                            marginBottom: '1.15rem', 
+                            background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                            padding: '1rem',
+                            borderRadius: '16px',
+                            border: '1.5px solid #C7D2FE'
+                          }}
                         >
-                          <optgroup label="Akun Operator (Presensi & Master KBM)">
-                            <option value="Operator Dapodik">💻 Operator Dapodik</option>
-                            <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
-                          </optgroup>
-                          <optgroup label="Akun Non-Operator (Presensi & Tambah/Hapus Siswa)">
-                            <option value="Pustakawan">📚 Pustakawan</option>
-                            <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
-                            <option value="Satpam">🛡️ Satpam (Keamanan)</option>
-                          </optgroup>
-                        </select>
-                        <small style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '4px', display: 'block' }}>
-                          *Tendik tidak perlu memilih kelas binaan rombel.
-                        </small>
-                      </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <label className="input-label" style={{ color: '#3730A3', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📖</span>
+                              <span>Mata Pelajaran yang Diampu</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextMode = !isCustomMapelMode
+                                setIsCustomMapelMode(nextMode)
+                                if (nextMode) setCustomMapelText(editPegawaiMapel || '')
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#4F46E5',
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                textDecoration: 'underline'
+                              }}
+                            >
+                              {isCustomMapelMode ? '← Pilih dari Daftar' : '+ Tulis Mapel Lain'}
+                            </button>
+                          </div>
 
-                      <div 
-                        id="admin-edit-mapel-box" 
-                        className="input-group" 
-                        style={{ marginBottom: '1rem', display: editingPegawai.role === 'guru_mapel' ? 'block' : 'none' }}
-                      >
-                        <label className="input-label">Mata Pelajaran yang Diampu</label>
-                        <select 
-                          name="mata_pelajaran" 
-                          className="input" 
-                          defaultValue={editingPegawai.mata_pelajaran || localStorage.getItem(`guru_mapel_${editingPegawai.id}`) || ''}
+                          {!isCustomMapelMode ? (
+                            <select 
+                              name="mata_pelajaran" 
+                              className="input" 
+                              value={editPegawaiMapel}
+                              onChange={(e) => {
+                                if (e.target.value === '__custom__') {
+                                  setIsCustomMapelMode(true)
+                                  setCustomMapelText('')
+                                } else {
+                                  setEditPegawaiMapel(e.target.value)
+                                }
+                              }}
+                              style={{ fontWeight: 700, background: 'white' }}
+                              required
+                            >
+                              <option value="">-- Pilih Mata Pelajaran --</option>
+                              {getCustomSubjects().map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                              ))}
+                              <option value="__custom__">+ Tulis Mata Pelajaran Lainnya...</option>
+                            </select>
+                          ) : (
+                            <div>
+                              <input
+                                type="text"
+                                name="mata_pelajaran_custom"
+                                className="input"
+                                value={customMapelText}
+                                onChange={(e) => {
+                                  setCustomMapelText(e.target.value)
+                                  setEditPegawaiMapel(e.target.value)
+                                }}
+                                placeholder="Ketik nama mapel (contoh: Pendidikan Agama Islam, dll)..."
+                                style={{ fontWeight: 700, background: 'white' }}
+                                autoFocus
+                                required
+                              />
+                              <small style={{ fontSize: '0.72rem', color: '#4338CA', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+                                *Mapel ini otomatis disimpan ke daftar kurikulum sekolah.
+                              </small>
+                            </div>
+                          )}
+
+                          {/* Quick Select Buttons */}
+                          <div style={{ marginTop: '0.65rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#4338CA', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                              Pilihan Cepat:
+                            </span>
+                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                              {[
+                                { label: 'PJOK', full: 'Pendidikan Jasmani (PJOK)' },
+                                { label: 'PABP', full: 'Pendidikan Agama & Budi Pekerti' },
+                                { label: 'B. Inggris', full: 'Bahasa Inggris' },
+                                { label: 'Seni Rupa', full: 'Seni Rupa' },
+                                { label: 'Matematika', full: 'Matematika' },
+                                { label: 'Informatika', full: 'Informatika / TIK' },
+                                { label: 'Muatan Lokal', full: 'Muatan Lokal / Bahasa Daerah' }
+                              ].map(item => (
+                                <button
+                                  key={item.full}
+                                  type="button"
+                                  onClick={() => {
+                                    setIsCustomMapelMode(false)
+                                    setEditPegawaiMapel(item.full)
+                                    setCustomMapelText('')
+                                  }}
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    padding: '3px 8px',
+                                    borderRadius: '8px',
+                                    border: `1.5px solid ${editPegawaiMapel === item.full ? '#4F46E5' : '#C7D2FE'}`,
+                                    background: editPegawaiMapel === item.full ? '#4F46E5' : 'white',
+                                    color: editPegawaiMapel === item.full ? 'white' : '#3730A3',
+                                    fontWeight: editPegawaiMapel === item.full ? 800 : 600,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Box Tendik */}
+                      {editPegawaiRole === 'tendik' && (
+                        <div 
+                          className="input-group" 
+                          style={{ 
+                            marginBottom: '1rem', 
+                            background: '#F0F9FF',
+                            padding: '0.85rem',
+                            borderRadius: '14px',
+                            border: '1.5px solid #BAE6FD'
+                          }}
                         >
-                          <option value="">-- Pilih Mata Pelajaran --</option>
-                          {getCustomSubjects().map(sub => (
-                            <option key={sub} value={sub}>{sub}</option>
-                          ))}
-                        </select>
-                      </div>
+                          <label className="input-label" style={{ color: '#0369A1', fontWeight: 800 }}>Tugas & Jabatan Tendik</label>
+                          <select 
+                            name="tendik_jabatan" 
+                            className="input" 
+                            defaultValue={editingPegawai.jabatan || 'Operator Dapodik'}
+                            style={{ fontWeight: 700 }}
+                          >
+                            <optgroup label="Akun Operator (Presensi & Master KBM)">
+                              <option value="Operator Dapodik">💻 Operator Dapodik</option>
+                              <option value="Operator Sekolah">🖥️ Operator Sekolah</option>
+                            </optgroup>
+                            <optgroup label="Akun Non-Operator (Presensi & Tambah/Hapus Siswa)">
+                              <option value="Pustakawan">📚 Pustakawan</option>
+                              <option value="Bujang">🧹 Bujang (Kebersihan / Pelaksana)</option>
+                              <option value="Satpam">🛡️ Satpam (Keamanan)</option>
+                            </optgroup>
+                          </select>
+                          <small style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '4px', display: 'block' }}>
+                            *Tendik tidak perlu memilih kelas binaan rombel.
+                          </small>
+                        </div>
+                      )}
 
                       {/* Penugasan Kelas / Rombel */}
-                      <div 
-                        id="admin-edit-class-box" 
-                        className="input-group" 
-                        style={{ 
-                          marginBottom: '1rem',
-                          display: (editingPegawai.role === 'tendik' || editingPegawai.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(editingPegawai.jabatan)) ? 'none' : 'block'
-                        }}
-                      >
-                        <label className="input-label">Penugasan Kelas / Rombel</label>
-                        {(() => {
-                          const savedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${editingPegawai.id}`) || '[]')
-                          return (
-                            <div>
-                              <div style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '6px' }}>
-                                Centang kelas yang diampu oleh guru ini:
+                      {editPegawaiRole !== 'tendik' && (
+                        <div className="input-group" style={{ marginBottom: '1rem' }}>
+                          <label className="input-label" style={{ fontWeight: 700 }}>
+                            {editPegawaiRole === 'guru_mapel' ? 'Penugasan Kelas Mengajar (Bisa Lebih Dari 1 Kelas)' : 'Penugasan Kelas (Wali Kelas)'}
+                          </label>
+                          {(() => {
+                            const savedAssigned = JSON.parse(localStorage.getItem(`guru_assigned_classes_${editingPegawai.id}`) || '[]')
+                            return (
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '6px' }}>
+                                  Centang kelas yang diampu oleh guru ini:
+                                </div>
+                                <div style={{ maxHeight: '140px', overflowY: 'auto', background: '#F8FAFC', padding: '0.65rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {kbmClasses.length === 0 ? (
+                                    <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada kelas rombel dibuat di Master KBM.</span>
+                                  ) : (
+                                    kbmClasses.map(cls => (
+                                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', cursor: 'pointer' }}>
+                                        <input 
+                                          type="checkbox" 
+                                          name="assigned_classes" 
+                                          value={cls.id} 
+                                          defaultChecked={savedAssigned.includes(cls.id)}
+                                          style={{ width: '16px', height: '16px' }} 
+                                        />
+                                        <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
+                                      </label>
+                                    ))
+                                  )}
+                                </div>
                               </div>
-                              <div style={{ maxHeight: '140px', overflowY: 'auto', background: '#F8FAFC', padding: '0.65rem', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {kbmClasses.length === 0 ? (
-                                  <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Belum ada kelas rombel dibuat di Master KBM.</span>
-                                ) : (
-                                  kbmClasses.map(cls => (
-                                    <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', cursor: 'pointer' }}>
-                                      <input 
-                                        type="checkbox" 
-                                        name="assigned_classes" 
-                                        value={cls.id} 
-                                        defaultChecked={savedAssigned.includes(cls.id)}
-                                        style={{ width: '16px', height: '16px' }} 
-                                      />
-                                      <span style={{ fontWeight: '600', color: '#1E293B' }}>{cls.name}</span>
-                                    </label>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })()}
-                      </div>
+                            )
+                          })()}
+                        </div>
+                      )}
 
                       <div className="input-group" style={{ marginBottom: '1.25rem' }}>
                         <label className="input-label">Jabatan Struktural / Keterangan</label>

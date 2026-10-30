@@ -228,6 +228,20 @@ export async function saveTeacherAssignmentToCloud({ teacherId, tipe, mapel, jab
           // Guru Mapel, Tendik, Admin, Kepsek bukan wali kelas, lepaskan dari kelas manapun
           await supabase.from('classes').update({ teacher_id: null }).eq('teacher_id', teacherId)
         }
+
+        // Sinkronisasi kolom mata_pelajaran & jabatan di tabel profiles jika kolom tersedia
+        try {
+          const profileUpdateObj = {
+            jabatan: jabatan || '',
+            tipe_perangkat: tipe_perangkat || 'android'
+          }
+          if (mapel !== undefined) {
+            profileUpdateObj.mata_pelajaran = mapel
+          }
+          await supabase.from('profiles').update(profileUpdateObj).eq('id', teacherId)
+        } catch (errProf) {
+          console.warn('Update profiles table in saveTeacherAssignmentToCloud notice:', errProf)
+        }
       } catch (e) {
         console.warn('Error updating classes.teacher_id:', e)
       }
