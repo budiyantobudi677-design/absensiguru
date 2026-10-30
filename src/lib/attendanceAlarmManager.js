@@ -40,18 +40,24 @@ export async function requestNotificationPermission() {
 }
 
 /**
- * Membuat date object untuk jam dan menit tertentu hari ini (WITA)
+ * Menghitung tanggal target untuk jam dan menit tertentu.
+ * Jika forceTomorrow = true ATAU waktu target hari ini sudah lewat,
+ * jadwalkan untuk BESOK pada jam:menit yang sama.
  */
-function getScheduleDate(hour, minute) {
+function getNextOccurrenceDate(hour, minute, forceTomorrow = false) {
+  const now = new Date()
   const d = new Date()
   d.setHours(hour, minute, 0, 0)
+  if (forceTomorrow || d.getTime() <= now.getTime()) {
+    d.setDate(d.getDate() + 1)
+  }
   return d
 }
 
 /**
  * Menjadwalkan pengingat presensi cerdas (Smart Attendance Reminder)
- * Jadwal Pagi: 06.45, 07.00, 07.15
- * Jadwal Siang: 14.00, 14.05, 14.15
+ * Jadwal Pagi: 06.45, 07.00, 07.15 (berulang harian every: 'day')
+ * Jadwal Siang: Jam Pulang, +5 menit, +15 menit (berulang harian every: 'day')
  */
 export async function scheduleAttendanceReminders({
   hasCheckedIn = false,
@@ -77,102 +83,106 @@ export async function scheduleAttendanceReminders({
         })
       } catch {}
 
-      const now = new Date()
       const notificationsToSchedule = []
 
-      // 1. JADWAL PAGI (Clock In) - Hanya jika belum presensi masuk
-      if (!hasCheckedIn) {
-        const t1 = getScheduleDate(6, 45)
-        if (t1 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.PAGI_1,
-            title: '🔔 Persiapan Presensi Masuk',
-            body: 'Selamat pagi! Presensi masuk dibuka mulai pukul 07.00 WITA. Siapkan aplikasi Anda.',
-            schedule: { at: t1 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
+      // 1. JADWAL PAGI (Clock In)
+      // Jika sudah clock in hari ini -> jadwalkan mulai besok pagi (forceTomorrow = true)
+      // Jika belum clock in hari ini -> jadwalkan hari ini jika belum lewat, atau besok pagi jika sudah lewat
+      const forceTomorrowMorning = Boolean(hasCheckedIn)
 
-        const t2 = getScheduleDate(7, 0)
-        if (t2 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.PAGI_2,
-            title: '⏰ Waktu Clock In Tiba!',
-            body: 'Pukul 07.00 WITA. Silakan buka aplikasi dan lakukan Clock In presensi sekarang.',
-            schedule: { at: t2 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.PAGI_1,
+        title: '🔔 Persiapan Presensi Masuk',
+        body: 'Selamat pagi! Presensi masuk dibuka mulai pukul 07.00 WITA. Siapkan aplikasi Anda.',
+        schedule: {
+          at: getNextOccurrenceDate(6, 45, forceTomorrowMorning),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
 
-        const t3 = getScheduleDate(7, 15)
-        if (t3 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.PAGI_3,
-            title: '⚠️ Peringatan Batas Presensi!',
-            body: 'Pukul 07.15 WITA. Segera Clock In sebelum batas toleransi 07.30 agar tidak tercatat terlambat!',
-            schedule: { at: t3 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
-      } else {
-        // Batalkan notifikasi pagi jika sudah presensi masuk
-        await cancelMorningReminders()
-      }
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.PAGI_2,
+        title: '⏰ Waktu Clock In Tiba!',
+        body: 'Pukul 07.00 WITA. Silakan buka aplikasi dan lakukan Clock In presensi sekarang.',
+        schedule: {
+          at: getNextOccurrenceDate(7, 0, forceTomorrowMorning),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
 
-      // 2. JADWAL SIANG (Clock Out) - Hanya jika belum presensi pulang
-      if (!hasCheckedOut) {
-        const [pH, pM] = jamPulangShift.split(':').map(Number)
-        const hourPulang = isNaN(pH) ? 14 : pH
-        const minPulang = isNaN(pM) ? 0 : pM
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.PAGI_3,
+        title: '⚠️ Peringatan Batas Presensi!',
+        body: 'Pukul 07.15 WITA. Segera Clock In sebelum batas toleransi 07.30 agar tidak tercatat terlambat!',
+        schedule: {
+          at: getNextOccurrenceDate(7, 15, forceTomorrowMorning),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
 
-        const tPulang1 = getScheduleDate(hourPulang, minPulang)
-        if (tPulang1 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.SIANG_1,
-            title: '🔔 Jam Kepulangan Telah Tiba',
-            body: `Pukul ${jamPulangShift} WITA. Waktu tugas Anda hari ini telah selesai. Silakan lakukan Clock Out sebelum pulang.`,
-            schedule: { at: tPulang1 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
+      // 2. JADWAL SIANG (Clock Out)
+      // Parse jam pulang shift
+      const [pH, pM] = String(jamPulangShift || '14:00').split(':').map(Number)
+      const hourPulang = isNaN(pH) ? 14 : pH
+      const minPulang = isNaN(pM) ? 0 : pM
 
-        const tPulang2 = getScheduleDate(hourPulang, minPulang + 5)
-        if (tPulang2 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.SIANG_2,
-            title: '⏰ Pengingat Presensi Pulang',
-            body: 'Jangan lupa Clock Out! Catat kepulangan Anda di aplikasi Gammara sekarang.',
-            schedule: { at: tPulang2 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
+      // Jika sudah clock out hari ini -> jadwalkan mulai besok siang (forceTomorrow = true)
+      // Jika belum clock out hari ini -> jadwalkan hari ini jika belum lewat, atau besok siang jika sudah lewat
+      const forceTomorrowAfternoon = Boolean(hasCheckedOut)
 
-        const tPulang3 = getScheduleDate(hourPulang, minPulang + 15)
-        if (tPulang3 > now) {
-          notificationsToSchedule.push({
-            id: NOTIF_IDS.SIANG_3,
-            title: '⚠️ Peringatan Belum Clock Out!',
-            body: 'Anda belum mencatat presensi pulang. Mohon segera Clock Out agar rekap presensi lengkap.',
-            schedule: { at: tPulang3 },
-            channelId: 'absensi_alarm_channel',
-            sound: 'res_custom_notification',
-            smallIcon: 'ic_launcher'
-          })
-        }
-      } else {
-        // Batalkan notifikasi siang jika sudah presensi pulang
-        await cancelAfternoonReminders()
-      }
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.SIANG_1,
+        title: '🔔 Jam Kepulangan Telah Tiba',
+        body: `Pukul ${jamPulangShift || '14:00'} WITA. Waktu tugas Anda hari ini telah selesai. Silakan lakukan Clock Out sebelum pulang.`,
+        schedule: {
+          at: getNextOccurrenceDate(hourPulang, minPulang, forceTomorrowAfternoon),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
+
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.SIANG_2,
+        title: '⏰ Pengingat Presensi Pulang',
+        body: 'Jangan lupa Clock Out! Catat kepulangan Anda di aplikasi Gammara sekarang.',
+        schedule: {
+          at: getNextOccurrenceDate(hourPulang, minPulang + 5, forceTomorrowAfternoon),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
+
+      notificationsToSchedule.push({
+        id: NOTIF_IDS.SIANG_3,
+        title: '⚠️ Peringatan Belum Clock Out!',
+        body: 'Anda belum mencatat presensi pulang. Mohon segera Clock Out agar rekap presensi lengkap.',
+        schedule: {
+          at: getNextOccurrenceDate(hourPulang, minPulang + 15, forceTomorrowAfternoon),
+          every: 'day',
+          allowWhileIdle: true
+        },
+        channelId: 'absensi_alarm_channel',
+        sound: 'res_custom_notification',
+        smallIcon: 'ic_launcher'
+      })
 
       if (notificationsToSchedule.length > 0) {
         await LocalNotifications.schedule({ notifications: notificationsToSchedule })
