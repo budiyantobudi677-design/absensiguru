@@ -865,7 +865,8 @@ export default function DashboardAdmin() {
           supabase,
           userProfile: admin
         })
-        setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_pulang: now, lokasi_pulang: loc }))
+        const morningMasuk = kepsekTodayAbsensi?.waktu_masuk || res?.data?.waktu_masuk || now
+        setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_masuk: morningMasuk, waktu_pulang: now, lokasi_pulang: loc }))
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'sakit' || jenis === 'izin') {
         const note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
@@ -2999,25 +3000,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       setSavingPegawai(true)
                       const formData = new FormData(e.target)
                       const newRole = editPegawaiRole
-                      let newMapel = ''
-                      if (newRole === 'guru_mapel') {
-                        newMapel = isCustomMapelMode ? customMapelText.trim() : (formData.get('mata_pelajaran') || editPegawaiMapel || '')
-                        if (newMapel) {
-                          const currentSubs = getCustomSubjects()
-                          if (!currentSubs.includes(newMapel)) {
-                            const updatedSubs = [...currentSubs, newMapel]
-                            await saveCustomSubjects(updatedSubs, supabase)
-                          }
-                        }
-                      }
+                      const newMapel = newRole === 'guru_mapel' ? (formData.get('mata_pelajaran') || editPegawaiMapel || '') : ''
                       const tendikJabatan = formData.get('tendik_jabatan')
                       let newJabatan = formData.get('jabatan') || editingPegawai.jabatan
 
                       let formattedJabatan = newJabatan;
                       if (newRole === 'tendik') {
                         formattedJabatan = tendikJabatan || 'Operator Dapodik';
-                      } else if (newRole === 'guru_mapel' && newMapel) {
-                        formattedJabatan = `Guru ${newMapel} • Guru Mapel`;
+                      } else {
+                        // Jangan ubah jabatan guru, pertahankan jabatan aslinya
+                        formattedJabatan = newJabatan || editingPegawai.jabatan || 'Guru';
                       }
 
                       // Ambil assigned_classes dari formData
@@ -3094,121 +3086,33 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           className="input-group" 
                           style={{ 
                             marginBottom: '1.15rem', 
-                            background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                            background: '#EEF2FF',
                             padding: '1rem',
                             borderRadius: '16px',
                             border: '1.5px solid #C7D2FE'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <label className="input-label" style={{ color: '#3730A3', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>📖</span>
-                              <span>Mata Pelajaran yang Diampu</span>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextMode = !isCustomMapelMode
-                                setIsCustomMapelMode(nextMode)
-                                if (nextMode) setCustomMapelText(editPegawaiMapel || '')
-                              }}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#4F46E5',
-                                fontSize: '0.74rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                textDecoration: 'underline'
-                              }}
-                            >
-                              {isCustomMapelMode ? '← Pilih dari Daftar' : '+ Tulis Mapel Lain'}
-                            </button>
-                          </div>
+                          <label className="input-label" style={{ color: '#3730A3', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📖</span>
+                            <span>Mata Pelajaran yang Diampu</span>
+                          </label>
 
-                          {!isCustomMapelMode ? (
-                            <select 
-                              name="mata_pelajaran" 
-                              className="input" 
-                              value={editPegawaiMapel}
-                              onChange={(e) => {
-                                if (e.target.value === '__custom__') {
-                                  setIsCustomMapelMode(true)
-                                  setCustomMapelText('')
-                                } else {
-                                  setEditPegawaiMapel(e.target.value)
-                                }
-                              }}
-                              style={{ fontWeight: 700, background: 'white' }}
-                              required
-                            >
-                              <option value="">-- Pilih Mata Pelajaran --</option>
-                              {getCustomSubjects().map(sub => (
-                                <option key={sub} value={sub}>{sub}</option>
-                              ))}
-                              <option value="__custom__">+ Tulis Mata Pelajaran Lainnya...</option>
-                            </select>
-                          ) : (
-                            <div>
-                              <input
-                                type="text"
-                                name="mata_pelajaran_custom"
-                                className="input"
-                                value={customMapelText}
-                                onChange={(e) => {
-                                  setCustomMapelText(e.target.value)
-                                  setEditPegawaiMapel(e.target.value)
-                                }}
-                                placeholder="Ketik nama mapel (contoh: Pendidikan Agama Islam, dll)..."
-                                style={{ fontWeight: 700, background: 'white' }}
-                                autoFocus
-                                required
-                              />
-                              <small style={{ fontSize: '0.72rem', color: '#4338CA', marginTop: '4px', display: 'block', fontWeight: 600 }}>
-                                *Mapel ini otomatis disimpan ke daftar kurikulum sekolah.
-                              </small>
-                            </div>
-                          )}
-
-                          {/* Quick Select Buttons */}
-                          <div style={{ marginTop: '0.65rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#4338CA', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-                              Pilihan Cepat:
-                            </span>
-                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                              {[
-                                { label: 'PJOK', full: 'Pendidikan Jasmani (PJOK)' },
-                                { label: 'PABP', full: 'Pendidikan Agama & Budi Pekerti' },
-                                { label: 'B. Inggris', full: 'Bahasa Inggris' },
-                                { label: 'Seni Rupa', full: 'Seni Rupa' },
-                                { label: 'Matematika', full: 'Matematika' },
-                                { label: 'Informatika', full: 'Informatika / TIK' },
-                                { label: 'Muatan Lokal', full: 'Muatan Lokal / Bahasa Daerah' }
-                              ].map(item => (
-                                <button
-                                  key={item.full}
-                                  type="button"
-                                  onClick={() => {
-                                    setIsCustomMapelMode(false)
-                                    setEditPegawaiMapel(item.full)
-                                    setCustomMapelText('')
-                                  }}
-                                  style={{
-                                    fontSize: '0.7rem',
-                                    padding: '3px 8px',
-                                    borderRadius: '8px',
-                                    border: `1.5px solid ${editPegawaiMapel === item.full ? '#4F46E5' : '#C7D2FE'}`,
-                                    background: editPegawaiMapel === item.full ? '#4F46E5' : 'white',
-                                    color: editPegawaiMapel === item.full ? 'white' : '#3730A3',
-                                    fontWeight: editPegawaiMapel === item.full ? 800 : 600,
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  {item.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          <select 
+                            name="mata_pelajaran" 
+                            className="input" 
+                            value={editPegawaiMapel}
+                            onChange={(e) => setEditPegawaiMapel(e.target.value)}
+                            style={{ fontWeight: 700, background: 'white' }}
+                            required
+                          >
+                            <option value="">-- Pilih Mata Pelajaran dari Kurikulum --</option>
+                            {getCustomSubjects().map(sub => (
+                              <option key={sub} value={sub}>{sub}</option>
+                            ))}
+                          </select>
+                          <small style={{ fontSize: '0.72rem', color: '#4338CA', marginTop: '6px', display: 'block', fontWeight: 600 }}>
+                            *Pilih mata pelajaran resmi yang diampu guru ini dari daftar kurikulum sekolah.
+                          </small>
                         </div>
                       )}
 

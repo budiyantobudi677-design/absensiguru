@@ -64,6 +64,20 @@ export async function saveAttendanceRecord({
   const effectiveWaktuMasuk = waktuMasuk || now
   const effectiveWaktuPulang = waktuPulang || (jenis === 'pulang' ? now : null)
 
+  // Cari jam masuk pagi yang sudah tersimpan sebelumnya (dari DB, Cloud Mirror, atau localStorage)
+  let knownMorningMasuk = waktuMasuk || null
+  if (!knownMorningMasuk && typeof window !== 'undefined') {
+    try {
+      const localRaw = localStorage.getItem(`today_absensi_${today}_${userId}`)
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw)
+        if (parsed?.waktu_masuk) {
+          knownMorningMasuk = parsed.waktu_masuk
+        }
+      }
+    } catch {}
+  }
+
   let dbResult = null
   let dbError = null
 
@@ -125,6 +139,10 @@ export async function saveAttendanceRecord({
           .limit(1)
 
         if (existRows && existRows.length > 0) {
+          if (existRows[0].waktu_masuk) {
+            knownMorningMasuk = existRows[0].waktu_masuk
+          }
+
           const { data, error } = await supabase
             .from('absensi')
             .update({
@@ -138,11 +156,12 @@ export async function saveAttendanceRecord({
           if (error) dbError = error
           else dbResult = data
         } else {
+          const finalMasuk = knownMorningMasuk || now
           const { data, error } = await supabase
             .from('absensi')
             .insert({
               user_id: userId,
-              waktu_masuk: now,
+              waktu_masuk: finalMasuk,
               waktu_pulang: now,
               tanggal: today,
               lokasi_masuk: loc,
@@ -254,13 +273,20 @@ export async function saveAttendanceRecord({
   const recordId = dbResult?.id ? String(dbResult.id) : `cloud-att-${userId}-${today}`
   const cachedProf = userProfile || getCachedProfilesMap()[userId] || null
 
+  // Hitung jam masuk definitif:
+  // Jika presensi pulang, MUTLAK gunakan jam masuk pagi yang sudah tercatat
+  let finalCalculatedMasuk = dbResult?.waktu_masuk || effectiveWaktuMasuk
+  if (jenis === 'pulang') {
+    finalCalculatedMasuk = knownMorningMasuk || dbResult?.waktu_masuk || waktuMasuk || now
+  }
+
   const attendanceRecord = {
     id: recordId,
     user_id: userId,
     tanggal: today,
-    waktu_masuk: dbResult?.waktu_masuk || effectiveWaktuMasuk,
+    waktu_masuk: finalCalculatedMasuk,
     waktu_pulang: dbResult?.waktu_pulang || effectiveWaktuPulang,
-    lokasi_masuk: dbResult?.lokasi_masuk || loc,
+    lokasi_masuk: (jenis === 'pulang' && dbResult?.lokasi_masuk) ? dbResult.lokasi_masuk : (dbResult?.lokasi_masuk || loc),
     lokasi_pulang: dbResult?.lokasi_pulang || (jenis === 'pulang' ? loc : null),
     status: dbResult?.status || effectiveStatus,
     keterangan: dbResult?.keterangan || keterangan || '',
@@ -303,16 +329,29 @@ export async function saveAttendanceRecord({
       // Gabungkan rekaman guru ini dengan rekaman yang sudah ada
       const isTL = jenis === 'tugas_luar' || keterangan?.includes('Tugas Luar')
       const existingUserRec = dateMap[userId] || {}
+
+      // AUTO-RECOVERY & PERTAHANKAN JAM MASUK:
+      // Jam masuk sah adalah jam masuk pagi asli
+      let resolvedWaktuMasuk = attendanceRecord.waktu_masuk
+      if (isTL) {
+        resolvedWaktuMasuk = attendanceRecord.waktu_masuk
+      } else if (jenis === 'pulang') {
+        resolvedWaktuMasuk = existingUserRec.waktu_masuk || knownMorningMasuk || attendanceRecord.waktu_masuk || now
+      } else {
+        resolvedWaktuMasuk = existingUserRec.waktu_masuk || attendanceRecord.waktu_masuk
+      }
+
       dateMap[userId] = {
         ...existingUserRec,
         ...attendanceRecord,
-        waktu_masuk: isTL ? attendanceRecord.waktu_masuk : (attendanceRecord.waktu_masuk || existingUserRec.waktu_masuk || now),
+        waktu_masuk: resolvedWaktuMasuk,
         waktu_pulang: isTL ? attendanceRecord.waktu_pulang : (attendanceRecord.waktu_pulang || existingUserRec.waktu_pulang || null),
-        lokasi_masuk: attendanceRecord.lokasi_masuk || existingUserRec.lokasi_masuk || loc,
+        lokasi_masuk: existingUserRec.lokasi_masuk || attendanceRecord.lokasi_masuk || loc,
         lokasi_pulang: attendanceRecord.lokasi_pulang || existingUserRec.lokasi_pulang || (jenis === 'pulang' ? loc : null),
-        status: isTL ? 'hadir' : (attendanceRecord.status || existingUserRec.status || 'hadir'),
+        status: isTL ? 'hadir' : (existingUserRec.status || attendanceRecord.status || 'hadir'),
         keterangan: attendanceRecord.keterangan || existingUserRec.keterangan || ''
       }
+      attendanceRecord.waktu_masuk = resolvedWaktuMasuk
 
       const payloadStr = JSON.stringify(dateMap)
 
@@ -532,6 +571,17 @@ export async function fetchAttendanceRecords({
       if (!existing.waktu_pulang && item.waktu_pulang) {
         existing.waktu_pulang = item.waktu_pulang
         existing.lokasi_pulang = item.lokasi_pulang
+      }
+      // AUTO-RECOVERY JAM MASUK:
+      // Jika salah satu waktu_masuk adalah waktu siang yang tertimpa waktu pulang,
+      // pulihkan secara otomatis dengan waktu_masuk yang lebih pagi!
+      if (existing.waktu_masuk && item.waktu_masuk) {
+        const tExisting = new Date(existing.waktu_masuk).getTime()
+        const tItem = new Date(item.waktu_masuk).getTime()
+        if (tItem < tExisting) {
+          existing.waktu_masuk = item.waktu_masuk
+          if (item.lokasi_masuk) existing.lokasi_masuk = item.lokasi_masuk
+        }
       }
       if (!existing.keterangan && item.keterangan) {
         existing.keterangan = item.keterangan

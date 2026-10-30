@@ -212,7 +212,7 @@ export async function syncOfflineAttendanceQueue(supabase, currentUser = null) {
         now: record.waktu,
         today: record.tanggal,
         loc: record.loc,
-        waktuMasuk: record.waktu_masuk || record.waktu,
+        waktuMasuk: record.waktu_masuk || (record.jenis === 'pulang' ? null : record.waktu),
         waktuPulang: record.waktu_pulang || (record.jenis === 'pulang' ? record.waktu : null),
         status: record.status || (record.jenis === 'masuk' ? 'hadir' : record.jenis),
         keterangan: record.keterangan || '',

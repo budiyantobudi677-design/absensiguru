@@ -17,11 +17,31 @@ import { getDeveloperSession } from './lib/developerManager'
 import { syncCloudTeacherAssignments } from './lib/assignmentManager'
 import { saveActiveSession, getActiveSession, clearActiveSession } from './lib/offlineManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from './lib/deletedAccountsManager'
+import { checkAppUpdateStatus, CURRENT_APP_VERSION, CURRENT_APP_VERSION_CODE } from './lib/appUpdateManager'
 
 function App() {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [appUpdateInfo, setAppUpdateInfo] = useState({ isOutdated: false, isForced: false, config: null })
+  const [dismissUpdateBanner, setDismissUpdateBanner] = useState(false)
+
+  // Periksa pembaruan aplikasi & kunci versi kedaluwarsa
+  useEffect(() => {
+    let active = true
+    const checkUpdate = async () => {
+      try {
+        const info = await checkAppUpdateStatus(supabase)
+        if (active && info) {
+          setAppUpdateInfo(info)
+        }
+      } catch (err) {
+        console.warn('Update check warning:', err)
+      }
+    }
+    checkUpdate()
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -309,6 +329,126 @@ function App() {
     }
   }, [])
 
+  // Kunci Total Layar Jika Aplikasi Kedaluwarsa (Force Update)
+  if (appUpdateInfo.isOutdated && appUpdateInfo.isForced) {
+    const downloadUrl = appUpdateInfo.config?.download_url || "https://github.com/budiyantobudi677-design/absensiguru/raw/main/GammaraApp.apk"
+    return (
+      <div style={{
+        minHeight: '100vh',
+        width: '100%',
+        background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        color: 'white',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{
+          maxWidth: '400px',
+          width: '100%',
+          background: 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          backdropFilter: 'blur(16px)',
+          borderRadius: '24px',
+          padding: '2rem 1.5rem',
+          textAlign: 'center',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        }}>
+          <div style={{
+            width: '76px',
+            height: '76px',
+            borderRadius: '22px',
+            background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.25rem auto',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.5)'
+          }}>
+            <span style={{ fontSize: '2.4rem' }}>🔒</span>
+          </div>
+
+          <span style={{
+            display: 'inline-block',
+            padding: '3px 10px',
+            borderRadius: '20px',
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '1px solid #EF4444',
+            color: '#FCA5A5',
+            fontSize: '0.74rem',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            marginBottom: '0.75rem'
+          }}>
+            Versi Dinonaktifkan
+          </span>
+
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 0.5rem 0', color: 'white' }}>
+            Aplikasi Perlu Diperbarui
+          </h2>
+
+          <p style={{ fontSize: '0.86rem', color: '#94A3B8', margin: '0 0 1.25rem 0', lineHeight: 1.5 }}>
+            Versi aplikasi Anda (<strong style={{ color: '#F8FAFC' }}>v{CURRENT_APP_VERSION}</strong>) sudah kedaluwarsa. Demi keamanan, akurasi data jam presensi, dan fitur terbaru, versi ini telah dinonaktifkan.
+          </p>
+
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '14px',
+            padding: '0.85rem 1rem',
+            textAlign: 'left',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{ fontSize: '0.72rem', color: '#818CF8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Catatan Pembaruan:
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#E2E8F0', marginTop: '4px', lineHeight: 1.4 }}>
+              {appUpdateInfo.config?.release_notes || 'Pembaruan stabilitas presensi, perbaikan jam kepulangan, dan alarm pengingat otomatis.'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '6px' }}>
+              Versi Tersedia: <strong style={{ color: '#38BDF8' }}>v{appUpdateInfo.config?.latest_version || CURRENT_APP_VERSION}</strong>
+            </div>
+          </div>
+
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={async (e) => {
+              if (Capacitor.isNativePlatform()) {
+                e.preventDefault()
+                try {
+                  await Browser.open({ url: downloadUrl })
+                } catch {
+                  window.open(downloadUrl, '_system')
+                }
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              background: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)',
+              color: 'white',
+              padding: '0.85rem 1.25rem',
+              borderRadius: '14px',
+              fontWeight: 800,
+              fontSize: '0.92rem',
+              textDecoration: 'none',
+              boxShadow: '0 8px 20px rgba(79, 70, 229, 0.4)',
+              cursor: 'pointer'
+            }}
+          >
+            <span>🚀 Unduh Pembaruan Sekarang</span>
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   if (loading || (session && role === null)) {
     return <div className="flex items-center justify-center w-full" style={{ minHeight: '100vh', background: '#F8FAFC' }}>
       <div style={{ padding: '2rem', background: 'white', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center' }}>
@@ -327,6 +467,62 @@ function App() {
 
   return (
     <PullToRefresh>
+      {/* Banner Pemberitahuan Pembaruan Minor (Opsional) */}
+      {appUpdateInfo.isOutdated && !appUpdateInfo.isForced && !dismissUpdateBanner && (
+        <div style={{
+          background: 'linear-gradient(90deg, #4F46E5 0%, #6366F1 100%)',
+          color: 'white',
+          padding: '0.65rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '0.8rem',
+          position: 'sticky',
+          top: 0,
+          zIndex: 99999,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🚀</span>
+            <span><strong>Pembaruan Tersedia (v{appUpdateInfo.config?.latest_version})</strong>: Silakan perbarui aplikasi untuk fitur terbaru.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <a
+              href={appUpdateInfo.config?.download_url || "https://github.com/budiyantobudi677-design/absensiguru/raw/main/GammaraApp.apk"}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={async (e) => {
+                if (Capacitor.isNativePlatform()) {
+                  e.preventDefault()
+                  try {
+                    await Browser.open({ url: appUpdateInfo.config?.download_url || "https://github.com/budiyantobudi677-design/absensiguru/raw/main/GammaraApp.apk" })
+                  } catch {
+                    window.open(appUpdateInfo.config?.download_url || "https://github.com/budiyantobudi677-design/absensiguru/raw/main/GammaraApp.apk", '_system')
+                  }
+                }
+              }}
+              style={{
+                background: 'white',
+                color: '#4338CA',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.74rem',
+                textDecoration: 'none'
+              }}
+            >
+              Unduh
+            </a>
+            <button
+              type="button"
+              onClick={() => setDismissUpdateBanner(true)}
+              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <Router>
         <Routes>
           <Route 

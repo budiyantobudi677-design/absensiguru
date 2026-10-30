@@ -27,6 +27,7 @@ import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, getTodayUserAttendance, fetchAttendanceRecords } from '../../lib/attendanceCloudManager'
+import { scheduleAttendanceReminders, cancelMorningReminders, cancelAfternoonReminders } from '../../lib/attendanceAlarmManager'
 import { fetchSchoolSettings } from '../../lib/schoolSettingsManager'
 import {
   DEFAULT_SHIFTS,
@@ -486,6 +487,15 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
+
+  // Smart Scheduled Notifications untuk jam presensi (Opsi A)
+  useEffect(() => {
+    scheduleAttendanceReminders({
+      hasCheckedIn,
+      hasCheckedOut: Boolean(todayAbsensi?.waktu_pulang),
+      jamPulangShift: todayShift?.jamPulang || '14:00'
+    })
+  }, [hasCheckedIn, todayAbsensi?.waktu_pulang, todayShift?.jamPulang])
 
   // Responsive Layout (Otomatis deteksi layar Laptop/PC vs HP)
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 992 : false)
@@ -1954,6 +1964,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         const insData = res.data
 
         if (jenis === 'masuk') {
+          cancelMorningReminders()
           setHasCheckedIn(true)
           setTodayStatus(masukStatus)
           setTodayAbsensi(insData)
@@ -1966,7 +1977,15 @@ export default function DashboardGuru({ roleOverride = null }) {
             showPopup("Absen Berhasil!", "Data jam masuk Anda telah tersimpan ke sistem tepat waktu.", "success")
           }
         } else if (jenis === 'pulang') {
-          const updated = { ...(todayAbsensi || {}), ...(insData || {}), waktu_pulang: now, lokasi_pulang: loc }
+          cancelAfternoonReminders()
+          const morningMasuk = todayAbsensi?.waktu_masuk || insData?.waktu_masuk || now
+          const updated = { 
+            ...(todayAbsensi || {}), 
+            ...(insData || {}), 
+            waktu_masuk: morningMasuk,
+            waktu_pulang: now, 
+            lokasi_pulang: loc 
+          }
           setTodayAbsensi(updated)
           try {
             localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(updated))
