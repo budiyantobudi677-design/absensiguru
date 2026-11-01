@@ -148,7 +148,20 @@ export default function RekapPresensiPegawai({
     return () => { isMounted = false }
   }, [])
 
-  // Resolusi data Kepala Sekolah otomatis dari daftar pegawai, profil akun pimpinan, cloud, atau local
+  // Helper pembersih string NIP & Nama
+  const getValidNip = (val) => {
+    if (!val) return ''
+    const s = String(val).trim()
+    return (s && s !== '-' && s !== '.') ? s : ''
+  }
+
+  const getValidName = (val) => {
+    if (!val) return ''
+    const s = String(val).trim()
+    return (s && s.toLowerCase() !== 'kepala sekolah') ? s : ''
+  }
+
+  // Resolusi data Kepala Sekolah otomatis dari cloud, local panrita_kop_surat, profil akun, atau default
   const kepsekSignInfo = useMemo(() => {
     // 1. Cari pegawai dengan role kepsek / penugasan kepsek / jabatan Kepala Sekolah
     const kepsekPegawai = (pegawaiList || []).find(p => {
@@ -158,33 +171,53 @@ export default function RekapPresensiPegawai({
       return r === 'kepsek' || pen === 'kepsek' || j.includes('kepala sekolah')
     })
 
-    let nama = (kepsekPegawai?.full_name || cloudKepsek.nama || '').trim()
-    let nip = (kepsekPegawai?.nip || cloudKepsek.nip || '').trim()
+    let activeKop = null
+    try {
+      activeKop = getActiveKopData()
+    } catch {}
 
-    // 2. Jika currentUser adalah kepsek
-    if ((!nama || nama === 'Kepala Sekolah') && currentUser?.role === 'kepsek') {
-      nama = (currentUser.full_name || '').trim()
-      nip = (currentUser.nip || '').trim()
-    }
+    const nama = (
+      getValidName(cloudKepsek?.nama) ||
+      getValidName(activeKop?.kepsekNama) ||
+      getValidName(kepsekPegawai?.full_name) ||
+      (currentUser?.role === 'kepsek' ? getValidName(currentUser?.full_name) : '') ||
+      'KURNIATI, S.Pd., M.Pd.'
+    )
 
-    // 3. Fallback jika masih kosong
-    if (!nama || nama === 'Kepala Sekolah') {
-      try {
-        const active = getActiveKopData()
-        nama = active?.kepsekNama || 'KURNIATI, S.Pd., M.Pd.'
-        if (!nip || nip === '-' || nip === '.') nip = active?.kepsekNip || '19811208 200801 2 007'
-      } catch {
-        nama = 'KURNIATI, S.Pd., M.Pd.'
-        nip = '19811208 200801 2 007'
-      }
-    }
-
-    if (!nip || nip === '-' || nip === '.') {
-      nip = '19811208 200801 2 007'
-    }
+    const nip = (
+      getValidNip(cloudKepsek?.nip) ||
+      getValidNip(activeKop?.kepsekNip) ||
+      getValidNip(kepsekPegawai?.nip) ||
+      (currentUser?.role === 'kepsek' ? getValidNip(currentUser?.nip) : '') ||
+      '19811208 200801 2 007'
+    )
 
     return { nama, nip }
   }, [pegawaiList, cloudKepsek, currentUser])
+
+  // Helper resolusi NIP yang presisi & tidak pernah kosong untuk Kepala Sekolah
+  const getStaffCleanNip = (p) => {
+    if (!p) return '-'
+    const directNip = getValidNip(p.nip)
+    const isKepsek = (p.role || '').toLowerCase() === 'kepsek' || 
+                     (p.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                     (p.jabatan || '').toLowerCase().includes('kepala sekolah')
+    
+    if (isKepsek) {
+      if (directNip) return directNip
+      const fromSign = getValidNip(kepsekSignInfo?.nip)
+      if (fromSign) return fromSign
+      const fromCloud = getValidNip(cloudKepsek?.nip)
+      if (fromCloud) return fromCloud
+      try {
+        const fromKop = getValidNip(getActiveKopData()?.kepsekNip)
+        if (fromKop) return fromKop
+      } catch {}
+      return '19811208 200801 2 007'
+    }
+
+    return directNip || '-'
+  }
 
   // Parse Bulan & Tahun
   const currentMonthStr = selectedMonth || new Date().toISOString().slice(0, 7)
@@ -367,8 +400,25 @@ export default function RekapPresensiPegawai({
       const q = searchTerm.toLowerCase()
       list = pegawaiList.filter(p => (p.full_name || p.email || '').toLowerCase().includes(q))
     }
-    return sortPegawaiHierarchical(list)
-  }, [mode, currentUser, selectedTeacherId, pegawaiList, searchTerm])
+    const sorted = sortPegawaiHierarchical(list)
+    return sorted.map(p => {
+      const isKepsek = (p.role || '').toLowerCase() === 'kepsek' || 
+                       (p.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                       (p.jabatan || '').toLowerCase().includes('kepala sekolah')
+      if (isKepsek) {
+        const cleanNip = getStaffCleanNip(p)
+        const cleanNama = (p.full_name && p.full_name.trim() && p.full_name.trim().toLowerCase() !== 'kepala sekolah')
+          ? p.full_name.trim()
+          : (kepsekSignInfo.nama || 'Kepala Sekolah')
+        return {
+          ...p,
+          full_name: cleanNama,
+          nip: cleanNip !== '-' ? cleanNip : p.nip
+        }
+      }
+      return p
+    })
+  }, [mode, currentUser, selectedTeacherId, pegawaiList, searchTerm, kepsekSignInfo])
 
   // Ringkasan Kehadiran per Pegawai untuk "Rekap Daftar" & Ekspor Terkait
   const staffSummaryList = useMemo(() => {
@@ -401,9 +451,7 @@ export default function RekapPresensiPegawai({
       }
 
       const pct = hariEfektif > 0 ? `${Math.round((countH / hariEfektif) * 100)}%` : '0%'
-      const cleanNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
-        ? String(p.nip).trim() 
-        : '-'
+      const cleanNip = getStaffCleanNip(p)
 
       return {
         no: idx + 1,
@@ -447,9 +495,7 @@ export default function RekapPresensiPegawai({
 
       const tableRows = []
       activePegawaiList.forEach((p, idx) => {
-        const cleanNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
-          ? String(p.nip).trim() 
-          : '-'
+        const cleanNip = getStaffCleanNip(p)
         const row = [String(idx + 1), p.full_name || p.email?.split('@')[0], cleanNip]
         let countH = 0, countS = 0, countI = 0, countA = 0
 
@@ -703,9 +749,7 @@ export default function RekapPresensiPegawai({
 
       // 3. Data Baris Pegawai
       activePegawaiList.forEach((p, idx) => {
-        const cleanNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
-          ? String(p.nip).trim() 
-          : '-'
+        const cleanNip = getStaffCleanNip(p)
         const rowData = [idx + 1, p.full_name || p.email?.split('@')[0], cleanNip]
         let countH = 0, countS = 0, countI = 0, countA = 0
 
@@ -1182,8 +1226,9 @@ export default function RekapPresensiPegawai({
               >
                 <option value="">Semua Pegawai ({sortedPegawaiOptions.length})</option>
                 {sortedPegawaiOptions.map(p => {
-                  const nipLabel = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
-                    ? ` • NIP: ${p.nip}` 
+                  const cleanNip = getStaffCleanNip(p)
+                  const nipLabel = cleanNip !== '-' 
+                    ? ` • NIP: ${cleanNip}` 
                     : ''
                   return (
                     <option key={p.id} value={p.id}>
@@ -2232,9 +2277,7 @@ export default function RekapPresensiPegawai({
               <tbody>
                 {activePegawaiList.map((p, idx) => {
                   let countH = 0, countS = 0, countI = 0, countA = 0
-                  const cleanNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
-                    ? String(p.nip).trim() 
-                    : '-'
+                  const cleanNip = getStaffCleanNip(p)
 
                   return (
                     <tr
@@ -2432,7 +2475,7 @@ export default function RekapPresensiPegawai({
                             {idx + 1}. {p.full_name || p.email?.split('@')[0]}
                           </div>
                           <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                            {p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' ? `NIP: ${p.nip}` : 'Non-NIP'} • {p.jabatan || p.role || 'Guru'}
+                            {getStaffCleanNip(p) !== '-' ? `NIP: ${getStaffCleanNip(p)}` : 'Non-NIP'} • {p.jabatan || p.role || 'Guru'}
                           </div>
                         </div>
 

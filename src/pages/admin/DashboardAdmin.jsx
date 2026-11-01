@@ -28,7 +28,7 @@ import RekapPresensiPegawai, { sortPegawaiHierarchical } from '../../components/
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
-import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud } from '../../lib/persuratanGenerator'
+import { loadKepsekConfigFromCloud, saveKepsekConfigToCloud, getActiveKopData } from '../../lib/persuratanGenerator'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
 import { isValidUUID, generateUUID, updateLeaderAccountCredentials, deleteUserAccountSafely, getKepsekOverrideCredentials } from '../../lib/developerManager'
@@ -60,9 +60,30 @@ export default function DashboardAdmin() {
   const [isOverrideEnabled, setIsOverrideEnabled] = useState(true)
 
   // State Pengaturan Kepala Sekolah (Pengesahan, Persuratan & Modul Ajar)
-  const [kepsekNama, setKepsekNama] = useState('')
-  const [kepsekNip, setKepsekNip] = useState('')
-  const [kepsekJabatan, setKepsekJabatan] = useState('')
+  const [kepsekNama, setKepsekNama] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return active?.kepsekNama || ''
+    } catch {
+      return ''
+    }
+  })
+  const [kepsekNip, setKepsekNip] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return active?.kepsekNip || ''
+    } catch {
+      return ''
+    }
+  })
+  const [kepsekJabatan, setKepsekJabatan] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return active?.kepsekJabatan || ''
+    } catch {
+      return ''
+    }
+  })
   const [savingKepsek, setSavingKepsek] = useState(false)
 
   useEffect(() => {
@@ -170,9 +191,15 @@ export default function DashboardAdmin() {
 
   // Resolusi otomatis nama & NIP Kepala Sekolah untuk pengesahan & tanda tangan laporan
   const actualKepsekNama = useMemo(() => {
-    if (kepsekNama && kepsekNama.trim() && kepsekNama !== 'Kepala Sekolah') return kepsekNama.trim()
+    if (kepsekNama && kepsekNama.trim() && kepsekNama.trim().toLowerCase() !== 'kepala sekolah') return kepsekNama.trim()
     const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
-    if (p?.full_name && p.full_name.trim() && p.full_name !== 'Kepala Sekolah') return p.full_name.trim()
+    if (p?.full_name && p.full_name.trim() && p.full_name.trim().toLowerCase() !== 'kepala sekolah') return p.full_name.trim()
+    try {
+      const active = getActiveKopData()
+      if (active?.kepsekNama && active.kepsekNama.trim() && active.kepsekNama.trim().toLowerCase() !== 'kepala sekolah') {
+        return active.kepsekNama.trim()
+      }
+    } catch {}
     return 'KURNIATI, S.Pd., M.Pd.'
   }, [kepsekNama, pegawaiData])
 
@@ -180,6 +207,12 @@ export default function DashboardAdmin() {
     if (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') return kepsekNip.trim()
     const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
     if (p?.nip && p.nip.trim() && p.nip.trim() !== '-' && p.nip.trim() !== '.') return p.nip.trim()
+    try {
+      const active = getActiveKopData()
+      if (active?.kepsekNip && active.kepsekNip.trim() && active.kepsekNip.trim() !== '-' && active.kepsekNip.trim() !== '.') {
+        return active.kepsekNip.trim()
+      }
+    } catch {}
     return '19811208 200801 2 007'
   }, [kepsekNip, pegawaiData])
   const [deviceBindings, setDeviceBindings] = useState({})
@@ -983,24 +1016,39 @@ export default function DashboardAdmin() {
       }
 
       // 2. Akun Kepala Sekolah: Muncul HANYA jika akun kepala sekolah sudah ditentukan
-      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek')
+      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah'))
       const hasKepsekAccount = existingKepsekIdx >= 0 || (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg))
 
       if (hasKepsekAccount) {
+        let activeKop = null
+        try { activeKop = getActiveKopData() } catch {}
+        const bestNip = (
+          (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') ? kepsekNip.trim() :
+          (activeKop?.kepsekNip && activeKop.kepsekNip.trim() && activeKop.kepsekNip.trim() !== '-' && activeKop.kepsekNip.trim() !== '.') ? activeKop.kepsekNip.trim() :
+          (existingKepsekIdx >= 0 && merged[existingKepsekIdx]?.nip && merged[existingKepsekIdx].nip.trim() && merged[existingKepsekIdx].nip.trim() !== '-' && merged[existingKepsekIdx].nip.trim() !== '.') ? merged[existingKepsekIdx].nip.trim() :
+          '19811208 200801 2 007'
+        )
+        const bestNama = (
+          (kepsekNama && kepsekNama.trim() && kepsekNama.trim().toLowerCase() !== 'kepala sekolah') ? kepsekNama.trim() :
+          (activeKop?.kepsekNama && activeKop.kepsekNama.trim() && activeKop.kepsekNama.trim().toLowerCase() !== 'kepala sekolah') ? activeKop.kepsekNama.trim() :
+          (overrideKepsek?.fullName && overrideKepsek.fullName.trim() && overrideKepsek.fullName.trim().toLowerCase() !== 'kepala sekolah') ? overrideKepsek.fullName.trim() :
+          (existingKepsekIdx >= 0 && merged[existingKepsekIdx]?.full_name && merged[existingKepsekIdx].full_name.trim().toLowerCase() !== 'kepala sekolah') ? merged[existingKepsekIdx].full_name.trim() :
+          'KURNIATI, S.Pd., M.Pd.'
+        )
+
         if (existingKepsekIdx >= 0) {
-          if (overrideKepsek?.fullName) merged[existingKepsekIdx].full_name = overrideKepsek.fullName
           if (overrideKepsek?.email) merged[existingKepsekIdx].email = overrideKepsek.email
-          if (kepsekNama && kepsekNama.trim()) merged[existingKepsekIdx].full_name = kepsekNama
-          if (kepsekNip && kepsekNip.trim()) merged[existingKepsekIdx].nip = kepsekNip
+          merged[existingKepsekIdx].full_name = bestNama
+          merged[existingKepsekIdx].nip = bestNip
           if (kepsekJabatan && kepsekJabatan.trim()) merged[existingKepsekIdx].jabatan = kepsekJabatan
         } else if (overrideKepsek && overrideKepsek.email) {
           const adminIdx = merged.findIndex(p => p.role === 'admin' || p.penugasan_tipe === 'admin')
           const insertIdx = adminIdx >= 0 ? adminIdx + 1 : 0
           merged.splice(insertIdx, 0, {
             id: overrideKepsek.userId || 'kepsek-active-id',
-            full_name: kepsekNama || overrideKepsek.fullName || 'Kepala Sekolah',
+            full_name: bestNama,
             email: overrideKepsek.email,
-            nip: kepsekNip || '-',
+            nip: bestNip,
             role: 'kepsek',
             penugasan_tipe: 'kepsek',
             jabatan: kepsekJabatan || 'Kepala Sekolah',
@@ -1512,7 +1560,16 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        const userMap = {}
        const sortedPegawai = sortPegawaiHierarchical(pegawaiData)
        sortedPegawai.forEach(p => {
-          userMap[p.id] = { nama: p.full_name || p.email, nip: p.nip || '-', absensi: {} }
+          const isKepsek = (p.role || '').toLowerCase() === 'kepsek' || 
+                           (p.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                           (p.jabatan || '').toLowerCase().includes('kepala sekolah');
+          let userNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
+            ? String(p.nip).trim() 
+            : (isKepsek ? actualKepsekNip : '-');
+          let userNama = isKepsek && (!p.full_name || p.full_name.trim().toLowerCase() === 'kepala sekolah')
+            ? actualKepsekNama
+            : (p.full_name || p.email);
+          userMap[p.id] = { nama: userNama, nip: userNip, absensi: {} };
        })
        absensiData.forEach(a => {
           if(!userMap[a.user_id]) return;
@@ -1572,9 +1629,18 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
              return mins > (7 * 60 + 30) || a.status === 'terlambat';
            } catch { return a.status === 'terlambat'; }
          })();
+         const isKepsek = (a.profiles?.role || '').toLowerCase() === 'kepsek' || 
+                          (a.profiles?.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                          (a.profiles?.jabatan || '').toLowerCase().includes('kepala sekolah');
+         let userNip = a.profiles?.nip && String(a.profiles.nip).trim() && String(a.profiles.nip).trim() !== '.' && String(a.profiles.nip).trim() !== '-'
+           ? String(a.profiles.nip).trim()
+           : (isKepsek ? actualKepsekNip : '-');
+         let userNama = isKepsek && (!a.profiles?.full_name || a.profiles.full_name.trim().toLowerCase() === 'kepala sekolah')
+           ? actualKepsekNama
+           : (a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown');
          return {
            No: index + 1,
-           Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
+           Nama: `${userNama}\nNIP: ${userNip}`,
            Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
            'Jam Masuk': tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
            'Jam Pulang': tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
@@ -4740,6 +4806,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                      kepsekNip,
                      kepsekJabatan
                    });
+                   await loadPegawai();
                    alert("Data Kepala Sekolah berhasil disimpan dan diperbarui di seluruh persuratan, rekap, dan modul ajar!");
                  } catch (err) {
                    alert("Gagal menyimpan data Kepala Sekolah: " + err.message);

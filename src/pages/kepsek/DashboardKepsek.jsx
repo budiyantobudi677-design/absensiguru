@@ -25,7 +25,7 @@ import RekapPresensiPegawai, { sortPegawaiHierarchical } from '../../components/
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
-import { loadKepsekConfigFromCloud } from '../../lib/persuratanGenerator'
+import { loadKepsekConfigFromCloud, getActiveKopData } from '../../lib/persuratanGenerator'
 import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
 import { getAdminOverrideCredentials, getKepsekOverrideCredentials } from '../../lib/developerManager'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
@@ -44,8 +44,22 @@ export default function DashboardKepsek() {
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
 
   // Data Kepala Sekolah
-  const [kepsekNama, setKepsekNama] = useState('')
-  const [kepsekNip, setKepsekNip] = useState('')
+  const [kepsekNama, setKepsekNama] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return active?.kepsekNama || ''
+    } catch {
+      return ''
+    }
+  })
+  const [kepsekNip, setKepsekNip] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return active?.kepsekNip || ''
+    } catch {
+      return ''
+    }
+  })
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -152,10 +166,16 @@ export default function DashboardKepsek() {
 
   // Resolusi otomatis nama & NIP Kepala Sekolah untuk pengesahan & tanda tangan laporan
   const actualKepsekNama = useMemo(() => {
-    if (admin?.full_name && admin.full_name.trim() && admin.full_name !== 'Kepala Sekolah') return admin.full_name.trim()
-    if (kepsekNama && kepsekNama.trim() && kepsekNama !== 'Kepala Sekolah') return kepsekNama.trim()
+    if (admin?.full_name && admin.full_name.trim() && admin.full_name.trim().toLowerCase() !== 'kepala sekolah') return admin.full_name.trim()
+    if (kepsekNama && kepsekNama.trim() && kepsekNama.trim().toLowerCase() !== 'kepala sekolah') return kepsekNama.trim()
     const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
-    if (p?.full_name && p.full_name.trim() && p.full_name !== 'Kepala Sekolah') return p.full_name.trim()
+    if (p?.full_name && p.full_name.trim() && p.full_name.trim().toLowerCase() !== 'kepala sekolah') return p.full_name.trim()
+    try {
+      const active = getActiveKopData()
+      if (active?.kepsekNama && active.kepsekNama.trim() && active.kepsekNama.trim().toLowerCase() !== 'kepala sekolah') {
+        return active.kepsekNama.trim()
+      }
+    } catch {}
     return 'KURNIATI, S.Pd., M.Pd.'
   }, [admin, kepsekNama, pegawaiData])
 
@@ -164,6 +184,12 @@ export default function DashboardKepsek() {
     if (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') return kepsekNip.trim()
     const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
     if (p?.nip && p.nip.trim() && p.nip.trim() !== '-' && p.nip.trim() !== '.') return p.nip.trim()
+    try {
+      const active = getActiveKopData()
+      if (active?.kepsekNip && active.kepsekNip.trim() && active.kepsekNip.trim() !== '-' && active.kepsekNip.trim() !== '.') {
+        return active.kepsekNip.trim()
+      }
+    } catch {}
     return '19811208 200801 2 007'
   }, [admin, kepsekNip, pegawaiData])
   const [deviceBindings, setDeviceBindings] = useState({})
@@ -872,22 +898,39 @@ export default function DashboardKepsek() {
       }
 
       // 2. Akun Kepala Sekolah: Muncul HANYA jika akun kepala sekolah sudah ditentukan
-      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek')
+      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah'))
       const hasKepsekAccount = existingKepsekIdx >= 0 || (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg)) || (admin && (admin.role === 'kepsek' || admin.penugasan_tipe === 'kepsek'))
 
       if (hasKepsekAccount) {
+        let activeKop = null
+        try { activeKop = getActiveKopData() } catch {}
+        const bestNip = (
+          (admin?.nip && admin.nip.trim() && admin.nip.trim() !== '-' && admin.nip.trim() !== '.') ? admin.nip.trim() :
+          (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') ? kepsekNip.trim() :
+          (activeKop?.kepsekNip && activeKop.kepsekNip.trim() && activeKop.kepsekNip.trim() !== '-' && activeKop.kepsekNip.trim() !== '.') ? activeKop.kepsekNip.trim() :
+          (existingKepsekIdx >= 0 && merged[existingKepsekIdx]?.nip && merged[existingKepsekIdx].nip.trim() && merged[existingKepsekIdx].nip.trim() !== '-' && merged[existingKepsekIdx].nip.trim() !== '.') ? merged[existingKepsekIdx].nip.trim() :
+          '19811208 200801 2 007'
+        )
+        const bestNama = (
+          (admin?.full_name && admin.full_name.trim() && admin.full_name.trim().toLowerCase() !== 'kepala sekolah') ? admin.full_name.trim() :
+          (kepsekNama && kepsekNama.trim() && kepsekNama.trim().toLowerCase() !== 'kepala sekolah') ? kepsekNama.trim() :
+          (activeKop?.kepsekNama && activeKop.kepsekNama.trim() && activeKop.kepsekNama.trim().toLowerCase() !== 'kepala sekolah') ? activeKop.kepsekNama.trim() :
+          (existingKepsekIdx >= 0 && merged[existingKepsekIdx]?.full_name && merged[existingKepsekIdx].full_name.trim().toLowerCase() !== 'kepala sekolah') ? merged[existingKepsekIdx].full_name.trim() :
+          'KURNIATI, S.Pd., M.Pd.'
+        )
+
         if (existingKepsekIdx >= 0) {
-          if (admin?.full_name) merged[existingKepsekIdx].full_name = admin.full_name
-          if (admin?.nip) merged[existingKepsekIdx].nip = admin.nip
+          merged[existingKepsekIdx].full_name = bestNama
+          merged[existingKepsekIdx].nip = bestNip
           if (admin?.jabatan) merged[existingKepsekIdx].jabatan = admin.jabatan
         } else {
           const adminIdx = merged.findIndex(p => p.role === 'admin' || p.penugasan_tipe === 'admin')
           const insertIdx = adminIdx >= 0 ? adminIdx + 1 : 0
           merged.splice(insertIdx, 0, {
             id: admin?.id || overrideKepsek?.userId || 'kepsek-active-id',
-            full_name: admin?.full_name || overrideKepsek?.fullName || 'Kepala Sekolah',
+            full_name: bestNama,
             email: admin?.email || overrideKepsek?.email || 'kepsek@sekolah.edu',
-            nip: admin?.nip || '-',
+            nip: bestNip,
             role: 'kepsek',
             penugasan_tipe: 'kepsek',
             jabatan: admin?.jabatan || 'Kepala Sekolah',
@@ -1330,7 +1373,16 @@ export default function DashboardKepsek() {
        const userMap = {}
        const sortedPegawai = sortPegawaiHierarchical(pegawaiData)
        sortedPegawai.forEach(p => {
-          userMap[p.id] = { nama: p.full_name || p.email, nip: p.nip || '-', absensi: {} }
+          const isKepsek = (p.role || '').toLowerCase() === 'kepsek' || 
+                           (p.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                           (p.jabatan || '').toLowerCase().includes('kepala sekolah');
+          let userNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
+            ? String(p.nip).trim() 
+            : (isKepsek ? actualKepsekNip : '-');
+          let userNama = isKepsek && (!p.full_name || p.full_name.trim().toLowerCase() === 'kepala sekolah')
+            ? actualKepsekNama
+            : (p.full_name || p.email);
+          userMap[p.id] = { nama: userNama, nip: userNip, absensi: {} };
        })
        absensiData.forEach(a => {
           if(!userMap[a.user_id]) return;
@@ -1389,9 +1441,18 @@ export default function DashboardKepsek() {
              return mins > (7 * 60 + 30) || a.status === 'terlambat';
            } catch { return a.status === 'terlambat'; }
          })();
+         const isKepsek = (a.profiles?.role || '').toLowerCase() === 'kepsek' || 
+                          (a.profiles?.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
+                          (a.profiles?.jabatan || '').toLowerCase().includes('kepala sekolah');
+         let userNip = a.profiles?.nip && String(a.profiles.nip).trim() && String(a.profiles.nip).trim() !== '.' && String(a.profiles.nip).trim() !== '-'
+           ? String(a.profiles.nip).trim()
+           : (isKepsek ? actualKepsekNip : '-');
+         let userNama = isKepsek && (!a.profiles?.full_name || a.profiles.full_name.trim().toLowerCase() === 'kepala sekolah')
+           ? actualKepsekNama
+           : (a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown');
          return {
            No: index + 1,
-           Nama: `${a.profiles?.full_name || a.profiles?.email?.split('@')[0] || 'Unknown'}\nNIP: ${a.profiles?.nip || '-'}`,
+           Nama: `${userNama}\nNIP: ${userNip}`,
            Tanggal: new Date(a.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
            'Jam Masuk': tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
            'Jam Pulang': tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'),
