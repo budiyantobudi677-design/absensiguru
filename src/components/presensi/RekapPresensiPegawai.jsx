@@ -501,17 +501,97 @@ export default function RekapPresensiPegawai({
         },
         headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
         didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index >= 3 && data.column.index < 3 + daysInMonth) {
-            const dayNum = data.column.index - 2
-            const p = activePegawaiList[data.row.index]
-            if (p) {
+          // 1. Pewarnaan Header Kolom (Hari Minggu & Libur Merah, Rekap Warna-Warni)
+          if (data.section === 'head') {
+            const colIdx = data.column.index
+            if (colIdx >= 3 && colIdx < 3 + daysInMonth) {
+              const dayNum = colIdx - 2
+              const dateObj = new Date(yearNum, monthIndex, dayNum)
+              const day = dateObj.getDay()
+              const isRed = hariKerja === 5 ? (day === 0 || day === 6) : (day === 0)
+              if (isRed) {
+                data.cell.styles.fillColor = [239, 68, 68] // Merah #EF4444 persis preview
+                data.cell.styles.textColor = [255, 255, 255]
+              }
+            } else if (colIdx === 3 + daysInMonth) {
+              data.cell.styles.fillColor = [5, 150, 105] // Hijau H
+            } else if (colIdx === 4 + daysInMonth) {
+              data.cell.styles.fillColor = [217, 119, 6] // Kuning/Amber S
+            } else if (colIdx === 5 + daysInMonth) {
+              data.cell.styles.fillColor = [37, 99, 235] // Biru I
+            } else if (colIdx === 6 + daysInMonth) {
+              data.cell.styles.fillColor = [220, 38, 38] // Merah A
+            } else if (colIdx === 7 + daysInMonth) {
+              data.cell.styles.fillColor = [15, 23, 42] // Gelap %
+              data.cell.styles.textColor = [56, 189, 248]
+            }
+          }
+
+          // 2. Pewarnaan Isi Tabel (Hari Minggu Merah Pink, Terlambat Merah, dsb.)
+          if (data.section === 'body') {
+            const colIdx = data.column.index
+            if (colIdx >= 3 && colIdx < 3 + daysInMonth) {
+              const dayNum = colIdx - 2
+              const dateObj = new Date(yearNum, monthIndex, dayNum)
+              const day = dateObj.getDay()
+              const isWeekend = hariKerja === 5 ? (day === 0 || day === 6) : (day === 0)
+              const p = activePegawaiList[data.row.index]
               const dateStr = `${currentMonthStr}-${String(dayNum).padStart(2, '0')}`
-              const att = attendanceMap[p.id]?.[dateStr]
-              if (att && isLateRecord(att)) {
-                data.cell.styles.textColor = [220, 38, 38]
+              const att = p ? attendanceMap[p.id]?.[dateStr] : null
+
+              if (att) {
+                if (isTugasLuar(att)) {
+                  data.cell.styles.textColor = [5, 150, 105]
+                  data.cell.styles.fillColor = [236, 253, 245]
+                } else if (att.status === 'sakit') {
+                  data.cell.styles.textColor = [217, 119, 6]
+                  data.cell.styles.fillColor = [254, 243, 199]
+                  data.cell.styles.fontStyle = 'bold'
+                } else if (att.status === 'izin') {
+                  data.cell.styles.textColor = [37, 99, 235]
+                  data.cell.styles.fillColor = [239, 246, 255]
+                  data.cell.styles.fontStyle = 'bold'
+                } else if (att.status === 'alpa') {
+                  data.cell.styles.textColor = [220, 38, 38]
+                  data.cell.styles.fillColor = [254, 226, 226]
+                  data.cell.styles.fontStyle = 'bold'
+                } else {
+                  const isLate = isLateRecord(att)
+                  if (isLate) {
+                    data.cell.styles.textColor = [220, 38, 38]
+                    data.cell.styles.fillColor = [254, 226, 226]
+                    data.cell.styles.fontStyle = 'bold'
+                  } else {
+                    data.cell.styles.textColor = [5, 150, 105]
+                    data.cell.styles.fillColor = [236, 253, 245]
+                  }
+                }
+              } else if (isWeekend) {
+                // Kolom Hari Minggu / Libur: latar pink muda & strip merah persis preview
                 data.cell.styles.fillColor = [254, 226, 226]
+                data.cell.styles.textColor = [220, 38, 38]
                 data.cell.styles.fontStyle = 'bold'
               }
+            } else if (colIdx === 3 + daysInMonth) {
+              data.cell.styles.textColor = [5, 150, 105]
+              data.cell.styles.fillColor = [236, 253, 245]
+              data.cell.styles.fontStyle = 'bold'
+            } else if (colIdx === 4 + daysInMonth && parseInt(data.cell.raw, 10) > 0) {
+              data.cell.styles.textColor = [217, 119, 6]
+              data.cell.styles.fillColor = [254, 243, 199]
+              data.cell.styles.fontStyle = 'bold'
+            } else if (colIdx === 5 + daysInMonth && parseInt(data.cell.raw, 10) > 0) {
+              data.cell.styles.textColor = [37, 99, 235]
+              data.cell.styles.fillColor = [239, 246, 255]
+              data.cell.styles.fontStyle = 'bold'
+            } else if (colIdx === 6 + daysInMonth && parseInt(data.cell.raw, 10) > 0) {
+              data.cell.styles.textColor = [220, 38, 38]
+              data.cell.styles.fillColor = [254, 226, 226]
+              data.cell.styles.fontStyle = 'bold'
+            } else if (colIdx === 7 + daysInMonth) {
+              data.cell.styles.textColor = [2, 132, 199]
+              data.cell.styles.fillColor = [240, 249, 255]
+              data.cell.styles.fontStyle = 'bold'
             }
           }
         }
@@ -715,8 +795,8 @@ export default function RekapPresensiPegawai({
                 }
               }
             } else if (isWeekend) {
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }
-              cell.font = { color: { argb: 'FF94A3B8' }, size: 8 }
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+              cell.font = { color: { argb: 'FFDC2626' }, size: 8, bold: true }
             }
           } else if (colNum === 4 + daysInMonth) {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } }
@@ -2185,8 +2265,8 @@ export default function RekapPresensiPegawai({
 
                         const att = attendanceMap[p.id]?.[dateStr]
                         let symbol = ''
-                        let cellBg = isWeekend ? '#F1F5F9' : 'transparent'
-                        let cellColor = '#64748B'
+                        let cellBg = isWeekend ? '#FEE2E2' : 'transparent'
+                        let cellColor = isWeekend ? '#DC2626' : '#64748B'
 
                         if (att) {
                           if (isTugasLuar(att)) {
@@ -2223,7 +2303,8 @@ export default function RekapPresensiPegawai({
                           }
                         } else if (isWeekend) {
                           symbol = '-'
-                          cellColor = '#94A3B8'
+                          cellBg = '#FEE2E2'
+                          cellColor = '#DC2626'
                         }
 
                         return (
