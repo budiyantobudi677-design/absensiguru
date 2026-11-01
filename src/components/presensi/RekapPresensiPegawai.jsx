@@ -7,33 +7,22 @@ import {
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 import { supabase } from '../../lib/supabase'
 import { recordDeletedAttendance, fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 
 /**
  * Pengurutan Hierarkis Pegawai Sesuai Standar Dinas & Aturan Sekolah:
- * 1. Kepala Sekolah (Selalu di urutan teratas)
- * 2. Kelompok Ber-NIP (PNS/PPPK):
- *    - Guru Kelas (Urutan Kelas I s/d VI, lalu abjad rombel A, B, C)
- *    - Guru Mata Pelajaran
- *    - Administrator
- *    - Tenaga Kependidikan (Tendik, Operator, Pustakawan, dll.)
- * 3. Kelompok Tanpa NIP (Non-ASN / Honorer / Sukarela di posisi bawah):
- *    - Guru Kelas (Urutan Kelas I s/d VI)
- *    - Guru Mata Pelajaran
- *    - Administrator
- *    - Tenaga Kependidikan
+ * Prioritas Utama Murni Berdasarkan Jabatan:
+ * 1. Kepala Sekolah (Selalu di urutan teratas #1)
+ * 2. Guru Kelas (Urutan Kelas I s/d VI, lalu rombel A, B, C; Guru Kelas tanpa NIP TETAP di posisi kelasnya)
+ * 3. Guru Mata Pelajaran (Mapel)
+ * 4. Operator / Administrator
+ * 5. Tenaga Kependidikan (Tendik / Pustakawan / Satpam / Bujang / Kebersihan)
  */
 export function sortPegawaiHierarchical(list) {
   if (!Array.isArray(list)) return []
-
-  const hasNip = (p) => Boolean(
-    p && p.nip && 
-    String(p.nip).trim() && 
-    String(p.nip).trim() !== '-' && 
-    String(p.nip).trim() !== '.'
-  )
 
   const getTier = (p) => {
     const role = (p.role || '').toLowerCase()
@@ -44,7 +33,7 @@ export function sortPegawaiHierarchical(list) {
     if (role === 'kepsek' || penugasan === 'kepsek' || jabatan.includes('kepala sekolah')) {
       return 1
     }
-    // 2. Guru Kelas
+    // 2. Guru Kelas (Wali Kelas)
     if (penugasan === 'guru_kelas' || jabatan.includes('guru kelas') || jabatan.includes('wali kelas') || jabatan.includes('wali ')) {
       return 2
     }
@@ -52,11 +41,11 @@ export function sortPegawaiHierarchical(list) {
     if (role === 'guru_mapel' || penugasan === 'guru_mapel' || jabatan.includes('guru mapel') || jabatan.includes('mapel') || (p.mata_pelajaran && p.mata_pelajaran.trim())) {
       return 3
     }
-    // 4. Admin
-    if (role === 'admin' || penugasan === 'admin' || jabatan.includes('administrator')) {
+    // 4. Operator / Administrator
+    if (role === 'admin' || role === 'operator' || penugasan === 'admin' || jabatan.includes('administrator') || jabatan.includes('operator')) {
       return 4
     }
-    // 5. Tendik / Operator / Pustakawan / Staf
+    // 5. Tendik (Pustakawan, Bujang, Satpam, Penjaga, Kebersihan, Staf)
     return 5
   }
 
@@ -75,27 +64,19 @@ export function sortPegawaiHierarchical(list) {
     const tierA = getTier(a)
     const tierB = getTier(b)
 
-    // 1. Kepala Sekolah selalu mutlak di paling atas
-    if (tierA === 1 && tierB !== 1) return -1
-    if (tierB === 1 && tierA !== 1) return 1
-
-    // 2. Yang ber-NIP di atas, yang tidak ber-NIP diposisikan di bawah
-    const nipA = hasNip(a) ? 0 : 1
-    const nipB = hasNip(b) ? 0 : 1
-    if (nipA !== nipB) return nipA - nipB
-
-    // 3. Hierarki jabatan: Guru Kelas -> Guru Mapel -> Admin -> Tendik
+    // 1. Prioritas Utama: Hierarki Jabatan
     if (tierA !== tierB) return tierA - tierB
 
-    // 4. Jika sesama Guru Kelas, urutkan kelas I s/d VI, lalu rombel
+    // 2. Jika sama-sama Guru Kelas: urutkan Kelas I s/d VI, lalu rombel
+    // Guru kelas yang NIP-nya kosong TETAP berada sesuai urutan kelasnya!
     if (tierA === 2) {
       const clsA = getClassGrade(a.jabatan)
       const clsB = getClassGrade(b.jabatan)
       if (clsA.grade !== clsB.grade) return clsA.grade - clsB.grade
-      return clsA.key.localeCompare(clsB.key)
+      if (clsA.key !== clsB.key) return clsA.key.localeCompare(clsB.key)
     }
 
-    // 5. Nama alfabetis
+    // 3. Nama pegawai alfabetis
     const nameA = a.full_name || a.email || ''
     const nameB = b.full_name || b.email || ''
     return nameA.localeCompare(nameB, 'id-ID', { sensitivity: 'base' })
@@ -303,7 +284,7 @@ export default function RekapPresensiPegawai({
     return map
   }, [activeAbsensiList, currentMonthStr])
 
-  // Opsi Pegawai Dropdown (Disusun Sesuai Hierarki Resmi)
+  // Opsi Pegawai Dropdown (Disusun Sesuai Hierarki Murni)
   const sortedPegawaiOptions = useMemo(() => {
     return sortPegawaiHierarchical(pegawaiList)
   }, [pegawaiList])
@@ -455,7 +436,6 @@ export default function RekapPresensiPegawai({
         },
         headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
         didParseCell: (data) => {
-          // Kolom tanggal dimulai dari indeks 3 sampai (3 + daysInMonth - 1)
           if (data.section === 'body' && data.column.index >= 3 && data.column.index < 3 + daysInMonth) {
             const dayNum = data.column.index - 2
             const p = activePegawaiList[data.row.index]
@@ -463,7 +443,6 @@ export default function RekapPresensiPegawai({
               const dateStr = `${currentMonthStr}-${String(dayNum).padStart(2, '0')}`
               const att = attendanceMap[p.id]?.[dateStr]
               if (att && isLateRecord(att)) {
-                // H terlambat diwarnai merah tegas
                 data.cell.styles.textColor = [220, 38, 38]
                 data.cell.styles.fillColor = [254, 226, 226]
                 data.cell.styles.fontStyle = 'bold'
@@ -489,26 +468,93 @@ export default function RekapPresensiPegawai({
     }
   }
 
-  // Helper Ekspor Excel Matriks Dinas Resmi
-  const handleExportExcelMatriks = () => {
+  // Helper Ekspor Excel Matriks Dinas Resmi dengan ExcelJS (Kompak & Berwarna Persis Preview)
+  const handleExportExcelMatriks = async () => {
     try {
-      const data = []
-      data.push([(schoolName || 'SEKOLAH').toUpperCase()])
-      data.push([`REKAP DAFTAR HADIR PEGAWAI - ${periodLabel.toUpperCase()}`])
-      data.push([])
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Matriks Dinas')
+      const totalCols = 3 + daysInMonth + 5
 
-      const headers = ['No', 'Nama Pegawai', 'NIP', 'Jabatan']
+      // 1. Kop Dokumen
+      worksheet.mergeCells(1, 1, 1, totalCols)
+      const titleCell1 = worksheet.getCell(1, 1)
+      titleCell1.value = (schoolName || 'SEKOLAH').toUpperCase()
+      titleCell1.font = { bold: true, size: 13, color: { argb: 'FF1E293B' } }
+      titleCell1.alignment = { horizontal: 'center', vertical: 'middle' }
+
+      worksheet.mergeCells(2, 1, 2, totalCols)
+      const titleCell2 = worksheet.getCell(2, 1)
+      titleCell2.value = `REKAPITULASI DAFTAR HADIR BULANAN PEGAWAI - BULAN ${periodLabel.toUpperCase()}`
+      titleCell2.font = { bold: true, size: 10, color: { argb: 'FF475569' } }
+      titleCell2.alignment = { horizontal: 'center', vertical: 'middle' }
+
+      worksheet.addRow([])
+
+      // 2. Baris Header Tabel
+      const headers = ['No', 'Nama Pegawai', 'NIP']
       for (let i = 1; i <= daysInMonth; i++) {
         headers.push(String(i))
       }
-      headers.push('Total H', 'Total S', 'Total I', 'Total A', '% Kehadiran')
-      data.push(headers)
+      headers.push('H', 'S', 'I', 'A', '%')
 
+      const headerRow = worksheet.addRow(headers)
+      headerRow.height = 24
+
+      headerRow.eachCell((cell, colNum) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        }
+
+        // Cek hari libur
+        if (colNum >= 4 && colNum < 4 + daysInMonth) {
+          const dayNum = colNum - 3
+          const dateObj = new Date(yearNum, monthIndex, dayNum)
+          const dayOfWeek = dateObj.getDay()
+          const isWeekend = hariKerja === 5 ? (dayOfWeek === 0 || dayOfWeek === 6) : (dayOfWeek === 0)
+
+          if (isWeekend) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEF4444' } }
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 8 }
+            return
+          }
+        }
+
+        // Header rekap H, S, I, A, %
+        if (colNum >= 4 + daysInMonth) {
+          const rekapIndex = colNum - (4 + daysInMonth)
+          const bgColors = ['FF059669', 'FFD97706', 'FF2563EB', 'FFDC2626', 'FF0F172A']
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColors[rekapIndex] || 'FF1E293B' } }
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 8 }
+          return
+        }
+
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 8.5 }
+      })
+
+      // Atur lebar kolom (ramping & pas)
+      worksheet.getColumn(1).width = 5   // No
+      worksheet.getColumn(2).width = 28  // Nama
+      worksheet.getColumn(3).width = 20  // NIP
+      for (let i = 4; i < 4 + daysInMonth; i++) {
+        worksheet.getColumn(i).width = 3.8 // Kolom tanggal kecil ramping persis preview!
+      }
+      worksheet.getColumn(4 + daysInMonth).width = 5.5 // H
+      worksheet.getColumn(5 + daysInMonth).width = 5.5 // S
+      worksheet.getColumn(6 + daysInMonth).width = 5.5 // I
+      worksheet.getColumn(7 + daysInMonth).width = 5.5 // A
+      worksheet.getColumn(8 + daysInMonth).width = 7.5 // %
+
+      // 3. Data Baris Pegawai
       activePegawaiList.forEach((p, idx) => {
         const cleanNip = p.nip && String(p.nip).trim() && String(p.nip).trim() !== '.' && String(p.nip).trim() !== '-' 
           ? String(p.nip).trim() 
           : '-'
-        const row = [idx + 1, p.full_name || p.email?.split('@')[0], cleanNip, p.jabatan || p.role || 'Guru']
+        const rowData = [idx + 1, p.full_name || p.email?.split('@')[0], cleanNip]
         let countH = 0, countS = 0, countI = 0, countA = 0
 
         for (let i = 1; i <= daysInMonth; i++) {
@@ -520,38 +566,245 @@ export default function RekapPresensiPegawai({
           const att = attendanceMap[p.id]?.[dateStr]
           if (att) {
             if (isTugasLuar(att)) {
-              row.push('H')
+              rowData.push('H')
               countH++
             } else if (att.status === 'sakit') {
-              row.push('S')
+              rowData.push('S')
               countS++
             } else if (att.status === 'izin') {
-              row.push('I')
+              rowData.push('I')
               countI++
             } else if (att.status === 'alpa') {
-              row.push('A')
+              rowData.push('A')
               countA++
             } else {
-              row.push('H')
+              rowData.push('H')
               countH++
             }
           } else {
-            row.push(isWeekend ? '-' : '')
+            rowData.push(isWeekend ? '-' : '')
           }
         }
 
-        const totalHadir = countH
-        const pct = hariEfektif > 0 ? `${Math.round((totalHadir / hariEfektif) * 100)}%` : '0%'
-        row.push(countH, countS, countI, countA, pct)
-        data.push(row)
+        const pct = hariEfektif > 0 ? `${Math.round((countH / hariEfektif) * 100)}%` : '0%'
+        rowData.push(countH, countS, countI, countA, pct)
+
+        const addedRow = worksheet.addRow(rowData)
+        addedRow.height = 20
+
+        addedRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' }
+          cell.font = { size: 8 }
+
+          if (colNum === 1) {
+            cell.font = { size: 8, color: { argb: 'FF64748B' }, bold: true }
+          } else if (colNum === 2) {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' }
+            cell.font = { size: 8.5, bold: true, color: { argb: 'FF1E293B' } }
+          } else if (colNum === 3) {
+            cell.font = { size: 8, color: { argb: 'FF475569' } }
+          } else if (colNum >= 4 && colNum < 4 + daysInMonth) {
+            const dayNum = colNum - 3
+            const dateStr = `${currentMonthStr}-${String(dayNum).padStart(2, '0')}`
+            const dateObj = new Date(yearNum, monthIndex, dayNum)
+            const dayOfWeek = dateObj.getDay()
+            const isWeekend = hariKerja === 5 ? (dayOfWeek === 0 || dayOfWeek === 6) : (dayOfWeek === 0)
+
+            const att = attendanceMap[p.id]?.[dateStr]
+            if (att) {
+              if (isTugasLuar(att)) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } }
+                cell.font = { bold: true, color: { argb: 'FF059669' }, size: 8 }
+              } else if (att.status === 'sakit') {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }
+                cell.font = { bold: true, color: { argb: 'FFD97706' }, size: 8 }
+              } else if (att.status === 'izin') {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } }
+                cell.font = { bold: true, color: { argb: 'FF2563EB' }, size: 8 }
+              } else if (att.status === 'alpa') {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+                cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 8 }
+              } else {
+                const isLate = isLateRecord(att)
+                if (isLate) {
+                  // H TERLAMBAT: TEKS MERAH TEBAL + BACKGROUND PINK
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+                  cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 8 }
+                } else {
+                  // H TEPAT WAKTU: TEKS HIJAU + BACKGROUND HIJAU MUDA
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } }
+                  cell.font = { bold: true, color: { argb: 'FF059669' }, size: 8 }
+                }
+              }
+            } else if (isWeekend) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }
+              cell.font = { color: { argb: 'FF94A3B8' }, size: 8 }
+            }
+          } else if (colNum === 4 + daysInMonth) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } }
+            cell.font = { bold: true, color: { argb: 'FF059669' }, size: 8 }
+          } else if (colNum === 5 + daysInMonth) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }
+            cell.font = { bold: true, color: { argb: 'FFD97706' }, size: 8 }
+          } else if (colNum === 6 + daysInMonth) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } }
+            cell.font = { bold: true, color: { argb: 'FF2563EB' }, size: 8 }
+          } else if (colNum === 7 + daysInMonth) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+            cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 8 }
+          } else if (colNum === 8 + daysInMonth) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F9FF' } }
+            cell.font = { bold: true, color: { argb: 'FF0284C7' }, size: 8 }
+          }
+        })
       })
 
-      const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.aoa_to_sheet(data)
-      XLSX.utils.book_append_sheet(wb, ws, 'Rekap Dinas')
-      XLSX.writeFile(wb, `Rekap_Presensi_Dinas_${currentMonthStr}.xlsx`)
+      // Lembar tanda tangan di Excel
+      const signStartRow = worksheet.rowCount + 2
+      const signCol = Math.max(1, totalCols - 5)
+      worksheet.getCell(signStartRow, signCol).value = 'Mengetahui,'
+      worksheet.getCell(signStartRow, signCol).font = { size: 9 }
+      worksheet.getCell(signStartRow + 1, signCol).value = 'Kepala Sekolah'
+      worksheet.getCell(signStartRow + 1, signCol).font = { bold: true, size: 9 }
+      worksheet.getCell(signStartRow + 4, signCol).value = '( ____________________________ )'
+      worksheet.getCell(signStartRow + 4, signCol).font = { bold: true, size: 9 }
+      worksheet.getCell(signStartRow + 5, signCol).value = 'NIP. ........................................'
+      worksheet.getCell(signStartRow + 5, signCol).font = { size: 9 }
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      saveAs(new Blob([buffer]), `Rekap_Presensi_Dinas_${currentMonthStr}.xlsx`)
     } catch (e) {
-      alert('Gagal mengekspor Excel: ' + e.message)
+      alert('Gagal mengekspor Excel Dinas: ' + e.message)
+    }
+  }
+
+  // Helper Ekspor Excel Rekap Daftar Kehadiran Pegawai dengan ExcelJS (Kompak & Berwarna)
+  const handleExportExcelDaftar = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Rekap Daftar')
+      const totalCols = 10
+
+      // Kop Dokumen
+      worksheet.mergeCells(1, 1, 1, totalCols)
+      const titleCell1 = worksheet.getCell(1, 1)
+      titleCell1.value = (schoolName || 'SEKOLAH').toUpperCase()
+      titleCell1.font = { bold: true, size: 13, color: { argb: 'FF1E293B' } }
+      titleCell1.alignment = { horizontal: 'center', vertical: 'middle' }
+
+      worksheet.mergeCells(2, 1, 2, totalCols)
+      const titleCell2 = worksheet.getCell(2, 1)
+      titleCell2.value = `REKAPITULASI DAFTAR KEHADIRAN PEGAWAI - BULAN ${periodLabel.toUpperCase()}`
+      titleCell2.font = { bold: true, size: 10, color: { argb: 'FF475569' } }
+      titleCell2.alignment = { horizontal: 'center', vertical: 'middle' }
+
+      worksheet.addRow([])
+
+      const headers = ['No', 'Nama Pegawai', 'NIP', 'Jabatan', 'Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat', 'Persentase Kehadiran']
+      const headerRow = worksheet.addRow(headers)
+      headerRow.height = 24
+
+      headerRow.eachCell((cell) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 }
+      })
+
+      worksheet.getColumn(1).width = 5  // No
+      worksheet.getColumn(2).width = 28 // Nama
+      worksheet.getColumn(3).width = 20 // NIP
+      worksheet.getColumn(4).width = 24 // Jabatan
+      worksheet.getColumn(5).width = 9  // Hadir
+      worksheet.getColumn(6).width = 9  // Sakit
+      worksheet.getColumn(7).width = 9  // Izin
+      worksheet.getColumn(8).width = 9  // Alfa
+      worksheet.getColumn(9).width = 11 // Terlambat
+      worksheet.getColumn(10).width = 14 // % Kehadiran
+
+      staffSummaryList.forEach((item) => {
+        const rowData = [
+          item.no,
+          item.name,
+          item.nip,
+          item.jabatan,
+          item.hadir,
+          item.sakit,
+          item.izin,
+          item.alpa,
+          item.terlambat,
+          item.persentase
+        ]
+        const addedRow = worksheet.addRow(rowData)
+        addedRow.height = 20
+
+        addedRow.eachCell((cell, colNum) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' }
+          cell.font = { size: 8.5 }
+
+          if (colNum === 2) {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' }
+            cell.font = { size: 9, bold: true, color: { argb: 'FF1E293B' } }
+          } else if (colNum === 4) {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' }
+            cell.font = { size: 8, color: { argb: 'FF64748B' } }
+          } else if (colNum === 5) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } }
+            cell.font = { bold: true, color: { argb: 'FF059669' }, size: 8.5 }
+          } else if (colNum === 6 && item.sakit > 0) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }
+            cell.font = { bold: true, color: { argb: 'FFD97706' }, size: 8.5 }
+          } else if (colNum === 7 && item.izin > 0) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } }
+            cell.font = { bold: true, color: { argb: 'FF2563EB' }, size: 8.5 }
+          } else if (colNum === 8 && item.alpa > 0) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+            cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 8.5 }
+          } else if (colNum === 9) {
+            if (item.terlambat > 0) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }
+              cell.font = { bold: true, color: { argb: 'FFDC2626' }, size: 8.5 }
+            } else {
+              cell.font = { color: { argb: 'FF94A3B8' }, size: 8.5 }
+            }
+          } else if (colNum === 10) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F9FF' } }
+            cell.font = { bold: true, color: { argb: 'FF0284C7' }, size: 8.5 }
+          }
+        })
+      })
+
+      const signStartRow = worksheet.rowCount + 2
+      worksheet.getCell(signStartRow, 7).value = 'Mengetahui,'
+      worksheet.getCell(signStartRow, 7).font = { size: 9 }
+      worksheet.getCell(signStartRow + 1, 7).value = 'Kepala Sekolah'
+      worksheet.getCell(signStartRow + 1, 7).font = { bold: true, size: 9 }
+      worksheet.getCell(signStartRow + 4, 7).value = '( ____________________________ )'
+      worksheet.getCell(signStartRow + 4, 7).font = { bold: true, size: 9 }
+      worksheet.getCell(signStartRow + 5, 7).value = 'NIP. ........................................'
+      worksheet.getCell(signStartRow + 5, 7).font = { size: 9 }
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      saveAs(new Blob([buffer]), `Rekap_Daftar_Presensi_${currentMonthStr}.xlsx`)
+    } catch (e) {
+      alert('Gagal mengekspor Excel Rekap Daftar: ' + e.message)
     }
   }
 
@@ -625,39 +878,6 @@ export default function RekapPresensiPegawai({
       doc.save(`Rekap_Daftar_Presensi_${currentMonthStr}.pdf`)
     } catch (e) {
       alert('Gagal mengekspor PDF Rekap Daftar: ' + e.message)
-    }
-  }
-
-  // Helper Ekspor Excel Rekap Daftar Kehadiran Pegawai
-  const handleExportExcelDaftar = () => {
-    try {
-      const data = []
-      data.push([(schoolName || 'SEKOLAH').toUpperCase()])
-      data.push([`REKAPITULASI DAFTAR KEHADIRAN PEGAWAI - BULAN ${periodLabel.toUpperCase()}`])
-      data.push([])
-
-      data.push(['No', 'Nama Pegawai', 'NIP', 'Jabatan', 'Hadir', 'Sakit', 'Izin', 'Alfa', 'Terlambat', 'Persentase Kehadiran'])
-      staffSummaryList.forEach(item => {
-        data.push([
-          item.no,
-          item.name,
-          item.nip,
-          item.jabatan,
-          item.hadir,
-          item.sakit,
-          item.izin,
-          item.alpa,
-          item.terlambat,
-          item.persentase
-        ])
-      })
-
-      const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.aoa_to_sheet(data)
-      XLSX.utils.book_append_sheet(wb, ws, 'Rekap Daftar')
-      XLSX.writeFile(wb, `Rekap_Daftar_Presensi_${currentMonthStr}.xlsx`)
-    } catch (e) {
-      alert('Gagal mengekspor Excel Rekap Daftar: ' + e.message)
     }
   }
 
@@ -1274,7 +1494,6 @@ export default function RekapPresensiPegawai({
                     const isLate = isLateRecord(item)
                     const isHadir = !item.status || item.status === 'hadir' || isLate || tl
 
-                    // Warna badge status: Tugas Luar statusnya tetap HADIR
                     let statusLabel = 'HADIR'
                     let badgeBg = '#ECFDF5'
                     let badgeColor = '#059669'
@@ -1604,15 +1823,12 @@ export default function RekapPresensiPegawai({
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
                   {(() => {
                     const cells = []
-                    // Hari pertama bulan (0 = Minggu, konversi ke 0 = Senin)
                     const firstDayIndex = (new Date(yearNum, monthIndex, 1).getDay() + 6) % 7
 
-                    // Kotak kosong awal bulan
                     for (let i = 0; i < firstDayIndex; i++) {
                       cells.push(<div key={`empty-${i}`} style={{ minHeight: '85px', background: 'transparent' }} />)
                     }
 
-                    // Kotak Tanggal 1 s.d. daysInMonth
                     for (let d = 1; d <= daysInMonth; d++) {
                       const dateStr = `${currentMonthStr}-${String(d).padStart(2, '0')}`
                       const dateObj = new Date(yearNum, monthIndex, d)
@@ -1620,7 +1836,6 @@ export default function RekapPresensiPegawai({
                       const isWeekend = hariKerja === 5 ? (dayOfWeek === 0 || dayOfWeek === 6) : (dayOfWeek === 0)
 
                       if (isAllStaffCalendar) {
-                        // TAMPILAN KALENDER AGREGAT SELURUH PEGAWAI
                         let hadirCount = 0
                         let lateCount = 0
                         let izinCount = 0
@@ -1726,7 +1941,6 @@ export default function RekapPresensiPegawai({
                           </div>
                         )
                       } else {
-                        // TAMPILAN KALENDER INDIVIDUAL GURU
                         const att = attendanceMap[activeUserId]?.[dateStr]
                         const tl = isTugasLuar(att)
                         const hasPhoto = Boolean(extractPhoto(att))
@@ -1917,7 +2131,6 @@ export default function RekapPresensiPegawai({
                             cellColor = '#DC2626'
                             countA++
                           } else {
-                            // Cek apakah Terlambat: H berwarna Merah
                             const isLate = isLateRecord(att)
                             symbol = 'H'
                             if (isLate) {
