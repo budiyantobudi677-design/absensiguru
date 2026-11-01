@@ -11,6 +11,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import { supabase } from '../../lib/supabase'
 import { recordDeletedAttendance, fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
+import { loadKepsekConfigFromCloud, getActiveKopData } from '../../lib/persuratanGenerator'
 
 /**
  * Pengurutan Hierarkis Pegawai Sesuai Standar Dinas & Aturan Sekolah:
@@ -120,6 +121,70 @@ export default function RekapPresensiPegawai({
       if (reg?.deletedIds) setDeletedAttendanceReg(reg)
     })
   }, [])
+
+  // State sinkronisasi data Kepala Sekolah untuk tanda tangan otomatis
+  const [cloudKepsek, setCloudKepsek] = useState(() => {
+    try {
+      const active = getActiveKopData()
+      return {
+        nama: active?.kepsekNama || '',
+        nip: active?.kepsekNip || ''
+      }
+    } catch {
+      return { nama: '', nip: '' }
+    }
+  })
+
+  useEffect(() => {
+    let isMounted = true
+    loadKepsekConfigFromCloud({ supabase }).then(cfg => {
+      if (isMounted && cfg) {
+        setCloudKepsek({
+          nama: cfg.kepsekNama || '',
+          nip: cfg.kepsekNip || ''
+        })
+      }
+    }).catch(() => {})
+    return () => { isMounted = false }
+  }, [])
+
+  // Resolusi data Kepala Sekolah otomatis dari daftar pegawai, profil akun pimpinan, cloud, atau local
+  const kepsekSignInfo = useMemo(() => {
+    // 1. Cari pegawai dengan role kepsek / penugasan kepsek / jabatan Kepala Sekolah
+    const kepsekPegawai = (pegawaiList || []).find(p => {
+      const r = (p.role || '').toLowerCase()
+      const pen = (p.penugasan_tipe || '').toLowerCase()
+      const j = (p.jabatan || '').toLowerCase()
+      return r === 'kepsek' || pen === 'kepsek' || j.includes('kepala sekolah')
+    })
+
+    let nama = (kepsekPegawai?.full_name || cloudKepsek.nama || '').trim()
+    let nip = (kepsekPegawai?.nip || cloudKepsek.nip || '').trim()
+
+    // 2. Jika currentUser adalah kepsek
+    if ((!nama || nama === 'Kepala Sekolah') && currentUser?.role === 'kepsek') {
+      nama = (currentUser.full_name || '').trim()
+      nip = (currentUser.nip || '').trim()
+    }
+
+    // 3. Fallback jika masih kosong
+    if (!nama || nama === 'Kepala Sekolah') {
+      try {
+        const active = getActiveKopData()
+        nama = active?.kepsekNama || 'KURNIATI, S.Pd., M.Pd.'
+        if (!nip || nip === '-' || nip === '.') nip = active?.kepsekNip || '19811208 200801 2 007'
+      } catch {
+        nama = 'KURNIATI, S.Pd., M.Pd.'
+        nip = '19811208 200801 2 007'
+      }
+    }
+
+    if (!nip || nip === '-' || nip === '.') {
+      nip = '19811208 200801 2 007'
+    }
+
+    return { nama, nip }
+  }, [pegawaiList, cloudKepsek, currentUser])
 
   // Parse Bulan & Tahun
   const currentMonthStr = selectedMonth || new Date().toISOString().slice(0, 7)
@@ -452,15 +517,22 @@ export default function RekapPresensiPegawai({
         }
       })
 
-      // Lembar Tanda Tangan Resmi
+      // Lembar Tanda Tangan Resmi Otomatis (Mengikuti Akun Kepala Sekolah / Pimpinan)
       const finalY = doc.lastAutoTable?.finalY || 160
-      if (finalY < 175) {
-        doc.setFontSize(8)
-        doc.text(`Mengetahui,`, 220, finalY + 10)
-        doc.text(`Kepala Sekolah`, 220, finalY + 15)
-        doc.text(`( ____________________________ )`, 220, finalY + 32)
-        doc.text(`NIP. ........................................`, 220, finalY + 36)
+      const pageHeight = doc.internal.pageSize.getHeight()
+      let signY = finalY + 8
+      if (signY + 28 > pageHeight) {
+        doc.addPage()
+        signY = 18
       }
+      doc.setFontSize(8.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Mengetahui,`, 220, signY)
+      doc.text(`Kepala Sekolah`, 220, signY + 4)
+      doc.setFont('helvetica', 'bold')
+      doc.text(kepsekSignInfo.nama, 220, signY + 20)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`NIP. ${kepsekSignInfo.nip}`, 220, signY + 24)
 
       doc.save(`Rekap_Presensi_Dinas_${currentMonthStr}.pdf`)
     } catch (e) {
@@ -665,16 +737,16 @@ export default function RekapPresensiPegawai({
         })
       })
 
-      // Lembar tanda tangan di Excel
+      // Lembar tanda tangan di Excel otomatis (Akun Kepala Sekolah)
       const signStartRow = worksheet.rowCount + 2
       const signCol = Math.max(1, totalCols - 5)
       worksheet.getCell(signStartRow, signCol).value = 'Mengetahui,'
       worksheet.getCell(signStartRow, signCol).font = { size: 9 }
       worksheet.getCell(signStartRow + 1, signCol).value = 'Kepala Sekolah'
       worksheet.getCell(signStartRow + 1, signCol).font = { bold: true, size: 9 }
-      worksheet.getCell(signStartRow + 4, signCol).value = '( ____________________________ )'
-      worksheet.getCell(signStartRow + 4, signCol).font = { bold: true, size: 9 }
-      worksheet.getCell(signStartRow + 5, signCol).value = 'NIP. ........................................'
+      worksheet.getCell(signStartRow + 4, signCol).value = kepsekSignInfo.nama
+      worksheet.getCell(signStartRow + 4, signCol).font = { bold: true, underline: true, size: 9 }
+      worksheet.getCell(signStartRow + 5, signCol).value = `NIP. ${kepsekSignInfo.nip}`
       worksheet.getCell(signStartRow + 5, signCol).font = { size: 9 }
 
       const buffer = await workbook.xlsx.writeBuffer()
@@ -796,9 +868,9 @@ export default function RekapPresensiPegawai({
       worksheet.getCell(signStartRow, 7).font = { size: 9 }
       worksheet.getCell(signStartRow + 1, 7).value = 'Kepala Sekolah'
       worksheet.getCell(signStartRow + 1, 7).font = { bold: true, size: 9 }
-      worksheet.getCell(signStartRow + 4, 7).value = '( ____________________________ )'
-      worksheet.getCell(signStartRow + 4, 7).font = { bold: true, size: 9 }
-      worksheet.getCell(signStartRow + 5, 7).value = 'NIP. ........................................'
+      worksheet.getCell(signStartRow + 4, 7).value = kepsekSignInfo.nama
+      worksheet.getCell(signStartRow + 4, 7).font = { bold: true, underline: true, size: 9 }
+      worksheet.getCell(signStartRow + 5, 7).value = `NIP. ${kepsekSignInfo.nip}`
       worksheet.getCell(signStartRow + 5, 7).font = { size: 9 }
 
       const buffer = await workbook.xlsx.writeBuffer()
@@ -867,13 +939,20 @@ export default function RekapPresensiPegawai({
       })
 
       const finalY = doc.lastAutoTable?.finalY || 160
-      if (finalY < 240) {
-        doc.setFontSize(9)
-        doc.text(`Mengetahui,`, 140, finalY + 12)
-        doc.text(`Kepala Sekolah`, 140, finalY + 17)
-        doc.text(`( ____________________________ )`, 140, finalY + 35)
-        doc.text(`NIP. ........................................`, 140, finalY + 40)
+      const pageHeight = doc.internal.pageSize.getHeight()
+      let signY = finalY + 10
+      if (signY + 28 > pageHeight) {
+        doc.addPage()
+        signY = 20
       }
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Mengetahui,`, 140, signY)
+      doc.text(`Kepala Sekolah`, 140, signY + 5)
+      doc.setFont('helvetica', 'bold')
+      doc.text(kepsekSignInfo.nama, 140, signY + 22)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`NIP. ${kepsekSignInfo.nip}`, 140, signY + 27)
 
       doc.save(`Rekap_Daftar_Presensi_${currentMonthStr}.pdf`)
     } catch (e) {

@@ -24,7 +24,7 @@ import PersuratanSekolah from '../../components/admin/PersuratanSekolah'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import AdminOverrideModal from '../../components/admin/AdminOverrideModal'
 import { getOverrideFeatureStatus, OVERRIDE_FEATURE_FLAG_TARGET } from '../../lib/attendanceOverrideManager'
-import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
+import RekapPresensiPegawai, { sortPegawaiHierarchical } from '../../components/presensi/RekapPresensiPegawai'
 import GoogleDriveBackupCard from '../../components/admin/GoogleDriveBackupCard'
 import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
@@ -64,6 +64,21 @@ export default function DashboardAdmin() {
   const [kepsekNip, setKepsekNip] = useState('')
   const [kepsekJabatan, setKepsekJabatan] = useState('')
   const [savingKepsek, setSavingKepsek] = useState(false)
+
+  // Resolusi otomatis nama & NIP Kepala Sekolah untuk pengesahan & tanda tangan laporan
+  const actualKepsekNama = useMemo(() => {
+    if (kepsekNama && kepsekNama.trim() && kepsekNama !== 'Kepala Sekolah') return kepsekNama.trim()
+    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
+    if (p?.full_name && p.full_name.trim() && p.full_name !== 'Kepala Sekolah') return p.full_name.trim()
+    return 'KURNIATI, S.Pd., M.Pd.'
+  }, [kepsekNama, pegawaiData])
+
+  const actualKepsekNip = useMemo(() => {
+    if (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') return kepsekNip.trim()
+    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
+    if (p?.nip && p.nip.trim() && p.nip.trim() !== '-' && p.nip.trim() !== '.') return p.nip.trim()
+    return '19811208 200801 2 007'
+  }, [kepsekNip, pegawaiData])
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -1495,7 +1510,8 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        }
 
        const userMap = {}
-       pegawaiData.forEach(p => {
+       const sortedPegawai = sortPegawaiHierarchical(pegawaiData)
+       sortedPegawai.forEach(p => {
           userMap[p.id] = { nama: p.full_name || p.email, nip: p.nip || '-', absensi: {} }
        })
        absensiData.forEach(a => {
@@ -1533,7 +1549,18 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
        });
      } else {
        columns = ['No', 'Nama', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Status'];
-       rows = getFilteredAndSortedData().map((a, index) => {
+       const sortedPegawaiList = sortPegawaiHierarchical(pegawaiData);
+       const pegawaiTierMap = new Map();
+       sortedPegawaiList.forEach((p, idx) => pegawaiTierMap.set(p.id, idx));
+
+       const nonBulananRows = [...getFilteredAndSortedData()].sort((a, b) => {
+         const tierA = pegawaiTierMap.has(a.user_id) ? pegawaiTierMap.get(a.user_id) : 999;
+         const tierB = pegawaiTierMap.has(b.user_id) ? pegawaiTierMap.get(b.user_id) : 999;
+         if (tierA !== tierB) return tierA - tierB;
+         return new Date(b.tanggal) - new Date(a.tanggal);
+       });
+
+       rows = nonBulananRows.map((a, index) => {
          const tl = isTugasLuar(a);
          const isLate = !tl && (() => {
            if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
@@ -1662,6 +1689,18 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
       });
     });
 
+    // Lembar Tanda Tangan Resmi Otomatis (Akun Kepala Sekolah)
+    const signStartRow = worksheet.rowCount + 2;
+    const signCol = Math.max(1, exportPreviewData.columns.length - 4);
+    worksheet.getCell(signStartRow, signCol).value = 'Mengetahui,';
+    worksheet.getCell(signStartRow, signCol).font = { size: 9 };
+    worksheet.getCell(signStartRow + 1, signCol).value = 'Kepala Sekolah';
+    worksheet.getCell(signStartRow + 1, signCol).font = { bold: true, size: 9 };
+    worksheet.getCell(signStartRow + 4, signCol).value = actualKepsekNama;
+    worksheet.getCell(signStartRow + 4, signCol).font = { bold: true, underline: true, size: 9 };
+    worksheet.getCell(signStartRow + 5, signCol).value = `NIP. ${actualKepsekNip}`;
+    worksheet.getCell(signStartRow + 5, signCol).font = { size: 9 };
+
     worksheet.pageSetup.orientation = laporanTipe === 'bulanan' ? 'landscape' : 'portrait';
     worksheet.pageSetup.fitToPage = true;
     worksheet.pageSetup.fitToWidth = 1;
@@ -1712,6 +1751,13 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
             valign: 'middle',
             minCellHeight: 8
          },
+         columnStyles: laporanTipe === 'bulanan' ? {
+            0: { cellWidth: 8, halign: 'center' },
+            1: { cellWidth: 42, halign: 'left' }
+         } : {
+            0: { cellWidth: 8, halign: 'center' },
+            1: { cellWidth: 45, halign: 'left' }
+         },
          headStyles: {
             fillColor: [79, 70, 229]
          },
@@ -1750,6 +1796,24 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     };
 
     drawTable(exportPreviewData.columns, exportPreviewData.rows, startY);
+
+    // Lembar Tanda Tangan Resmi Otomatis (Akun Kepala Sekolah)
+    const finalY = doc.lastAutoTable?.finalY || (doc.internal.pageSize.getHeight() - 40);
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let signY = finalY + 10;
+    if (signY + 28 > pageHeight) {
+      doc.addPage();
+      signY = 20;
+    }
+    const signX = docWidth - 75;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Mengetahui,', signX, signY);
+    doc.text('Kepala Sekolah', signX, signY + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(actualKepsekNama, signX, signY + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`NIP. ${actualKepsekNip}`, signX, signY + 27);
 
     doc.save(`Laporan_Kehadiran_${laporanTipe}.pdf`);
   }
@@ -5330,6 +5394,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   ))}
                 </tbody>
               </table>
+              <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', color: 'black' }}>
+                <div style={{ textAlign: 'left', minWidth: '220px' }}>
+                  <div>Mengetahui,</div>
+                  <div style={{ fontWeight: 'bold' }}>Kepala Sekolah</div>
+                  <div style={{ height: '48px' }}></div>
+                  <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{actualKepsekNama}</div>
+                  <div>NIP. {actualKepsekNip}</div>
+                </div>
+              </div>
               </div>
             </div>
 

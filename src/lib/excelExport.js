@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
+import { getActiveKopData } from './persuratanGenerator'
 
 /**
  * Ekspor Rekap Kehadiran Siswa ke Excel dengan format profesional & kompak mirip preview
@@ -159,15 +160,23 @@ export async function exportAttendanceRecapExcel({ title, className, periodText,
     }
 
     // 5. Lembar Tanda Tangan
+    const activeKop = getActiveKopData()
+    const finalKepsekNama = (schoolInfo?.principalName && !schoolInfo.principalName.includes('___')) 
+      ? schoolInfo.principalName 
+      : (activeKop?.kepsekNama || 'KURNIATI, S.Pd., M.Pd.')
+    const finalKepsekNip = (schoolInfo?.principalNIP && schoolInfo.principalNIP !== '-' && !schoolInfo.principalNIP.includes('...')) 
+      ? schoolInfo.principalNIP 
+      : (activeKop?.kepsekNip || '19811208 200801 2 007')
+
     const signRow = worksheet.rowCount + 2
     const targetCol = Math.max(1, totalCols - 5)
     worksheet.getCell(signRow, targetCol).value = schoolInfo?.placeDateText || ('Dicetak pada: ' + new Date().toLocaleDateString('id-ID'))
     worksheet.getCell(signRow, targetCol).font = { size: 9 }
     worksheet.getCell(signRow + 1, targetCol).value = 'Mengetahui, Kepala Sekolah'
     worksheet.getCell(signRow + 1, targetCol).font = { bold: true, size: 9 }
-    worksheet.getCell(signRow + 4, targetCol).value = schoolInfo?.principalName || '( ____________________________ )'
-    worksheet.getCell(signRow + 4, targetCol).font = { bold: true, size: 9 }
-    worksheet.getCell(signRow + 5, targetCol).value = `NIP. ${schoolInfo?.principalNIP || '-'}`
+    worksheet.getCell(signRow + 4, targetCol).value = finalKepsekNama
+    worksheet.getCell(signRow + 4, targetCol).font = { bold: true, underline: true, size: 9 }
+    worksheet.getCell(signRow + 5, targetCol).value = `NIP. ${finalKepsekNip}`
     worksheet.getCell(signRow + 5, targetCol).font = { size: 9 }
 
     const filename = `Rekap_Kehadiran_${className || 'Kelas'}_${new Date().toISOString().slice(0, 10)}.xlsx`
