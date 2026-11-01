@@ -47,23 +47,6 @@ export default function DashboardKepsek() {
   const [kepsekNama, setKepsekNama] = useState('')
   const [kepsekNip, setKepsekNip] = useState('')
 
-  // Resolusi otomatis nama & NIP Kepala Sekolah untuk pengesahan & tanda tangan laporan
-  const actualKepsekNama = useMemo(() => {
-    if (admin?.full_name && admin.full_name.trim() && admin.full_name !== 'Kepala Sekolah') return admin.full_name.trim()
-    if (kepsekNama && kepsekNama.trim() && kepsekNama !== 'Kepala Sekolah') return kepsekNama.trim()
-    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
-    if (p?.full_name && p.full_name.trim() && p.full_name !== 'Kepala Sekolah') return p.full_name.trim()
-    return 'KURNIATI, S.Pd., M.Pd.'
-  }, [admin, kepsekNama, pegawaiData])
-
-  const actualKepsekNip = useMemo(() => {
-    if (admin?.nip && admin.nip.trim() && admin.nip.trim() !== '-' && admin.nip.trim() !== '.') return admin.nip.trim()
-    if (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') return kepsekNip.trim()
-    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
-    if (p?.nip && p.nip.trim() && p.nip.trim() !== '-' && p.nip.trim() !== '.') return p.nip.trim()
-    return '19811208 200801 2 007'
-  }, [admin, kepsekNip, pegawaiData])
-
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
     window.addEventListener('resize', handleResize)
@@ -166,6 +149,23 @@ export default function DashboardKepsek() {
   const [uploadingAdminPhoto, setUploadingAdminPhoto] = useState(false)
   
   const [pegawaiData, setPegawaiData] = useState([])
+
+  // Resolusi otomatis nama & NIP Kepala Sekolah untuk pengesahan & tanda tangan laporan
+  const actualKepsekNama = useMemo(() => {
+    if (admin?.full_name && admin.full_name.trim() && admin.full_name !== 'Kepala Sekolah') return admin.full_name.trim()
+    if (kepsekNama && kepsekNama.trim() && kepsekNama !== 'Kepala Sekolah') return kepsekNama.trim()
+    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
+    if (p?.full_name && p.full_name.trim() && p.full_name !== 'Kepala Sekolah') return p.full_name.trim()
+    return 'KURNIATI, S.Pd., M.Pd.'
+  }, [admin, kepsekNama, pegawaiData])
+
+  const actualKepsekNip = useMemo(() => {
+    if (admin?.nip && admin.nip.trim() && admin.nip.trim() !== '-' && admin.nip.trim() !== '.') return admin.nip.trim()
+    if (kepsekNip && kepsekNip.trim() && kepsekNip.trim() !== '-' && kepsekNip.trim() !== '.') return kepsekNip.trim()
+    const p = (pegawaiData || []).find(u => u.role === 'kepsek' || u.penugasan_tipe === 'kepsek' || (u.jabatan || '').toLowerCase().includes('kepala sekolah'))
+    if (p?.nip && p.nip.trim() && p.nip.trim() !== '-' && p.nip.trim() !== '.') return p.nip.trim()
+    return '19811208 200801 2 007'
+  }, [admin, kepsekNip, pegawaiData])
   const [deviceBindings, setDeviceBindings] = useState({})
   const [absensiData, setAbsensiData] = useState([])
   const [pengumumanData, setPengumumanData] = useState([])
