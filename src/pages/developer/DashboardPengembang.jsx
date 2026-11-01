@@ -20,7 +20,7 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop
+  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop, Fingerprint, AlertCircle
 } from 'lucide-react'
 import { 
   fetchActivityLogs, 
@@ -229,7 +229,12 @@ export default function DashboardPengembang() {
         (item.action || '').toLowerCase().includes(q) || 
         (item.details || '').toLowerCase().includes(q)
       const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
-      const matchAction = logActionFilter === 'all' || (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
+      const matchAction = logActionFilter === 'all' || 
+        (logActionFilter === 'login' && (item.action || '').toLowerCase().includes('login')) ||
+        (logActionFilter === 'masuk' && (item.action || '').toLowerCase().includes('masuk')) ||
+        (logActionFilter === 'pulang' && (item.action || '').toLowerCase().includes('pulang')) ||
+        (logActionFilter === 'khusus' && ['sakit', 'izin', 'tugas'].some(k => (item.action || '').toLowerCase().includes(k))) ||
+        (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
       return matchQuery && matchRole && matchAction
     })
 
@@ -2124,7 +2129,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                       Log Aktivitas & Riwayat Login Pengguna
                     </h3>
                     <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', color: '#94A3B8' }}>
-                      Inspeksi mendalam akun-akun yang masuk ke sistem, waktu akses, tipe perangkat, dan rincian aktivitas pengguna.
+                      Audit lengkap aktivitas login, presensi masuk & presensi pulang semua akun (Retensi otomatis 6 bulan terakhir).
                     </p>
                   </div>
                 </div>
@@ -2307,8 +2312,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                 >
                   <option value="all" style={{ background: '#0B2545' }}>Semua Tipe Aktivitas</option>
                   <option value="login" style={{ background: '#0B2545' }}>🔑 Login Aplikasi</option>
-                  <option value="presensi" style={{ background: '#0B2545' }}>📍 Presensi Kehadiran</option>
-                  <option value="registrasi" style={{ background: '#0B2545' }}>📝 Registrasi Akun</option>
+                  <option value="presensi" style={{ background: '#0B2545' }}>📍 Presensi Kehadiran (Semua)</option>
+                  <option value="masuk" style={{ background: '#0B2545' }}>🟢 Presensi Masuk</option>
+                  <option value="pulang" style={{ background: '#0B2545' }}>🔴 Presensi Pulang</option>
+                  <option value="khusus" style={{ background: '#0B2545' }}>🟡 Sakit / Izin / Tugas Luar</option>
+
                 </select>
               </div>
             </div>
@@ -2335,7 +2343,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                     (item.action || '').toLowerCase().includes(q) || 
                     (item.details || '').toLowerCase().includes(q)
                   const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
-                  const matchAction = logActionFilter === 'all' || (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
+                  const matchAction = logActionFilter === 'all' || 
+        (logActionFilter === 'login' && (item.action || '').toLowerCase().includes('login')) ||
+        (logActionFilter === 'masuk' && (item.action || '').toLowerCase().includes('masuk')) ||
+        (logActionFilter === 'pulang' && (item.action || '').toLowerCase().includes('pulang')) ||
+        (logActionFilter === 'khusus' && ['sakit', 'izin', 'tugas'].some(k => (item.action || '').toLowerCase().includes(k))) ||
+        (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
                   return matchQuery && matchRole && matchAction
                 })
 
@@ -2355,7 +2368,14 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                     {filtered.map((log) => {
                       const isLogin = (log.action || '').toLowerCase().includes('login')
-                      const isAbsen = (log.action || '').toLowerCase().includes('presensi')
+                      const isMasuk = (log.action || '').toLowerCase().includes('masuk')
+                      const isPulang = (log.action || '').toLowerCase().includes('pulang')
+                      const isKhusus = ['sakit', 'izin', 'tugas'].some(k => (log.action || '').toLowerCase().includes(k))
+
+                      let actBg = isLogin ? 'rgba(56, 189, 248, 0.2)' : (isMasuk ? 'rgba(16, 185, 129, 0.2)' : (isPulang ? 'rgba(245, 158, 11, 0.2)' : 'rgba(168, 85, 247, 0.2)'))
+                      let actBorder = isLogin ? '#38BDF8' : (isMasuk ? '#10B981' : (isPulang ? '#F59E0B' : '#A855F7'))
+                      let actColor = isLogin ? '#38BDF8' : (isMasuk ? '#34D399' : (isPulang ? '#FBBF24' : '#C084FC'))
+                      let actIcon = isLogin ? <Key size={20} /> : (isMasuk ? <Fingerprint size={20} /> : (isPulang ? <LogOut size={20} /> : <AlertCircle size={20} />))
                       const roleColor = log.role === 'admin' ? '#38BDF8' : (log.role === 'kepsek' ? '#C4B5FD' : '#34D399')
                       const roleBg = log.role === 'admin' ? 'rgba(0,180,216,0.2)' : (log.role === 'kepsek' ? 'rgba(167,139,250,0.2)' : 'rgba(16,185,129,0.2)')
                       const roleBorder = log.role === 'admin' ? '#00B4D8' : (log.role === 'kepsek' ? '#8B5CF6' : '#10B981')
@@ -2389,15 +2409,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                               width: '42px',
                               height: '42px',
                               borderRadius: '12px',
-                              background: isLogin ? 'rgba(16, 185, 129, 0.2)' : (isAbsen ? 'rgba(0, 180, 216, 0.2)' : 'rgba(245, 158, 11, 0.2)'),
-                              border: `1.5px solid ${isLogin ? '#10B981' : (isAbsen ? '#00B4D8' : '#F59E0B')}`,
+                              background: actBg,
+                              border: `1.5px solid ${actBorder}`,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: isLogin ? '#10B981' : (isAbsen ? '#00B4D8' : '#F59E0B'),
+                              color: actColor,
                               flexShrink: 0
                             }}>
-                              {isLogin ? <Key size={20} /> : (isAbsen ? <MapPin size={20} /> : <FileText size={20} />)}
+                              {actIcon}
                             </div>
 
                             <div>
@@ -2425,7 +2445,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                           </div>
 
                           <div style={{ flex: 1.5, minWidth: '240px' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 9px', borderRadius: '6px', background: isLogin ? 'rgba(16,185,129,0.15)' : 'rgba(0,180,216,0.15)', border: `1px solid ${isLogin ? 'rgba(16,185,129,0.3)' : 'rgba(0,180,216,0.3)'}`, color: isLogin ? '#34D399' : '#38BDF8', fontSize: '0.78rem', fontWeight: 800, marginBottom: '4px' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 9px', borderRadius: '6px', background: actBg, border: `1px solid ${actBorder}`, color: actColor, fontSize: '0.78rem', fontWeight: 800, marginBottom: '4px' }}>
                               <CheckCircle2 size={13} />
                               <span>{log.action}</span>
                             </div>

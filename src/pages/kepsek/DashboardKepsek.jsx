@@ -33,6 +33,7 @@ import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/delete
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
+import { recordActivityLog } from '../../lib/activityLogManager'
 import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
 
 export default function DashboardKepsek() {
@@ -753,6 +754,16 @@ export default function DashboardKepsek() {
       setKepsekTodayAbsensi(data)
       setShowTugasLuarModal(false)
       setTugasLuarCatatan('')
+      recordActivityLog({
+        userId: admin.id,
+        email: admin.email,
+        role: 'kepsek',
+        fullName: admin.full_name || admin.email,
+        action: 'Presensi Tugas Luar',
+        details: `Tugas Luar / Pelatihan: ${tugasLuarCatatan.trim()}`,
+        status: 'hadir',
+        supabase
+      })
       setKepsekPopup({
         show: true,
         title: "Tugas Luar Berhasil!",
@@ -842,6 +853,16 @@ export default function DashboardKepsek() {
         setKepsekHasCheckedIn(true)
         setKepsekTodayStatus('hadir')
         setKepsekTodayAbsensi(data)
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'kepsek',
+          fullName: admin.full_name || admin.email,
+          action: 'Presensi Masuk',
+          details: `Presensi Masuk Kepala Sekolah jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+          status: 'hadir',
+          supabase
+        })
         setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'pulang') {
         const res = await saveAttendanceRecord({
@@ -856,6 +877,16 @@ export default function DashboardKepsek() {
         })
         const morningMasuk = kepsekTodayAbsensi?.waktu_masuk || res?.data?.waktu_masuk || now
         setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_masuk: morningMasuk, waktu_pulang: now, lokasi_pulang: loc }))
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'kepsek',
+          fullName: admin.full_name || admin.email,
+          action: 'Presensi Pulang',
+          details: `Presensi Pulang (Clock Out) Kepala Sekolah jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+          status: 'pulang',
+          supabase
+        })
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'sakit' || jenis === 'izin') {
         let note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
@@ -909,6 +940,16 @@ export default function DashboardKepsek() {
         setKepsekIzinMode(null)
         setKepsekSuratSakitFile(null)
         setKepsekKeterangan('')
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'kepsek',
+          fullName: admin.full_name || admin.email,
+          action: jenis === 'sakit' ? 'Presensi Sakit' : 'Presensi Izin',
+          details: cleanKeterangan(note) || jenis,
+          status: jenis,
+          supabase
+        })
         setKepsekPopup({
           show: true,
           title: "Pengajuan Terkirim",

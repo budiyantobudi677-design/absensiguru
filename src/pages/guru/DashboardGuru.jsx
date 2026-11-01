@@ -28,6 +28,7 @@ import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, getTodayUserAttendance, fetchAttendanceRecords } from '../../lib/attendanceCloudManager'
 import { scheduleAttendanceReminders, cancelMorningReminders, cancelAfternoonReminders } from '../../lib/attendanceAlarmManager'
+import { recordActivityLog } from '../../lib/activityLogManager'
 import { fetchSchoolSettings } from '../../lib/schoolSettingsManager'
 import {
   DEFAULT_SHIFTS,
@@ -2008,6 +2009,16 @@ export default function DashboardGuru({ roleOverride = null }) {
           try {
             localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(insData))
           } catch (e) {}
+          recordActivityLog({
+            userId: user.id,
+            email: user.email,
+            role: profile?.role || 'guru',
+            fullName: profile?.full_name || user.email,
+            action: 'Presensi Masuk',
+            details: `Presensi Masuk (${masukStatus.toUpperCase()}) jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+            status: masukStatus,
+            supabase
+          })
           if (masukStatus === 'terlambat') {
             showPopup("Absen Masuk (Terlambat)", `Data jam masuk Anda tercatat pukul ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} (Terlambat ${lateMinutes} menit).`, "warning")
           } else {
@@ -2027,6 +2038,16 @@ export default function DashboardGuru({ roleOverride = null }) {
           try {
             localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(updated))
           } catch (e) {}
+          recordActivityLog({
+            userId: user.id,
+            email: user.email,
+            role: profile?.role || 'guru',
+            fullName: profile?.full_name || user.email,
+            action: 'Presensi Pulang',
+            details: `Presensi Pulang (Clock Out) jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+            status: 'pulang',
+            supabase
+          })
           showPopup("Pulang Tercatat!", "Terima kasih atas kerja keras Anda hari ini.", "success")
         } else if (jenis === 'sakit' || jenis === 'izin') {
           setHasCheckedIn(true)
@@ -2038,6 +2059,16 @@ export default function DashboardGuru({ roleOverride = null }) {
           try {
             localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(insData))
           } catch (e) {}
+          recordActivityLog({
+            userId: user.id,
+            email: user.email,
+            role: profile?.role || 'guru',
+            fullName: profile?.full_name || user.email,
+            action: jenis === 'sakit' ? 'Presensi Sakit' : 'Presensi Izin',
+            details: cleanKeterangan(finalKeterangan) || jenis,
+            status: jenis,
+            supabase
+          })
           showPopup("Data Terkirim!", `Keterangan ${jenis} Anda telah dilaporkan.`, "success")
         }
       } catch (error) {
@@ -2282,6 +2313,16 @@ export default function DashboardGuru({ roleOverride = null }) {
         localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(inserted))
       } catch (e) {}
       setShowTugasLuarModal(false)
+      recordActivityLog({
+        userId: user.id,
+        email: user.email,
+        role: profile?.role || 'guru',
+        fullName: profile?.full_name || user.email,
+        action: 'Presensi Tugas Luar',
+        details: `Tugas Luar / Pelatihan: ${tugasLuarCatatan.trim()}`,
+        status: 'hadir',
+        supabase
+      })
       showPopup("Presensi Berhasil!", "Presensi Tugas Luar tersimpan. Anda otomatis tercatat HADIR (07:00 - 14:00).", "success")
       loadHistory()
     } catch (err) {

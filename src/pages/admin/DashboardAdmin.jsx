@@ -36,6 +36,7 @@ import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/delete
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
+import { recordActivityLog } from '../../lib/activityLogManager'
 import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
 import {
   DEFAULT_SHIFTS,
@@ -904,6 +905,16 @@ export default function DashboardAdmin() {
         setKepsekHasCheckedIn(true)
         setKepsekTodayStatus('hadir')
         setKepsekTodayAbsensi(data)
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'admin',
+          fullName: admin.full_name || admin.email,
+          action: 'Presensi Masuk',
+          details: `Presensi Masuk Super Admin jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+          status: 'hadir',
+          supabase
+        })
         setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'pulang') {
         const res = await saveAttendanceRecord({
@@ -918,6 +929,16 @@ export default function DashboardAdmin() {
         })
         const morningMasuk = kepsekTodayAbsensi?.waktu_masuk || res?.data?.waktu_masuk || now
         setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_masuk: morningMasuk, waktu_pulang: now, lokasi_pulang: loc }))
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'admin',
+          fullName: admin.full_name || admin.email,
+          action: 'Presensi Pulang',
+          details: `Presensi Pulang (Clock Out) Super Admin jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+          status: 'pulang',
+          supabase
+        })
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'sakit' || jenis === 'izin') {
         const note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
@@ -938,6 +959,16 @@ export default function DashboardAdmin() {
         setKepsekTodayAbsensi(data)
         setKepsekIzinMode(null)
         setKepsekKeterangan('')
+        recordActivityLog({
+          userId: admin.id,
+          email: admin.email,
+          role: 'admin',
+          fullName: admin.full_name || admin.email,
+          action: jenis === 'sakit' ? 'Presensi Sakit' : 'Presensi Izin',
+          details: cleanKeterangan(note) || jenis,
+          status: jenis,
+          supabase
+        })
         setKepsekPopup({
           show: true,
           title: "Pengajuan Terkirim",

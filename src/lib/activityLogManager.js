@@ -1,14 +1,39 @@
 /**
  * Activity Log Manager (Pencatatan & Pengelolaan Log Aktivitas & Login Pengguna)
- * Terhubung secara aman ke Cloud Supabase (tabel pengumuman) dan Local Storage
+ * Terhubung secara aman ke Cloud Supabase (tabel pengumuman & absensi) dan Local Storage
+ * Mengimplementasikan retensi otomatis 6 bulan (180 hari) & format ultra-ringan
  */
 
 const LOGS_TARGET = '__SYSTEM_USER_ACTIVITY_LOGS__'
 const LOCAL_LOGS_KEY = 'panrita_activity_logs_cache'
-const MAX_LOG_ENTRIES = 250
+const RETENTION_DAYS = 180 // 6 Bulan retensi otomatis
+const MAX_LOG_ENTRIES = 2500
 
 /**
- * Mencatat log aktivitas akun baru ke sistem
+ * Menghitung batas waktu 6 bulan yang lalu (cutoff time)
+ */
+export const getRetentionCutoffDate = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - RETENTION_DAYS)
+  return d
+}
+
+/**
+ * Membersihkan rincian log dari payload besar (foto, base64) agar sangat ringan (<200 bytes)
+ */
+const cleanLogDetails = (str) => {
+  if (!str) return ''
+  return String(str)
+    .replace(/data:image\/[a-zA-Z]+;base64,[^\s|]+/gi, '')
+    .replace(/\[FOTO_WEBP:[^\]]+\]/gi, '')
+    .replace(/\[SURAT_SAKIT[^\]]*\]/gi, '')
+    .replace(/\|?\s*(?:Foto|Surat):\s*https?:\/\/[^\s|]+/gi, '')
+    .trim()
+    .substring(0, 300)
+}
+
+/**
+ * Mencatat log aktivitas akun baru ke sistem dengan pembersihan otomatis data > 6 bulan
  */
 export async function recordActivityLog({
   userId,
@@ -47,17 +72,22 @@ export async function recordActivityLog({
       role: cleanRole,
       fullName: cleanName,
       action,
-      details: details || `Aktivitas ${action} oleh ${cleanName}`,
+      details: cleanLogDetails(details) || `Aktivitas ${action} oleh ${cleanName}`,
       deviceType: detectedDevice,
       status
     }
 
-    // 1. Simpan ke local cache terlebih dahulu untuk respon cepat
+    const cutoffTime = getRetentionCutoffDate().getTime()
+
+    // 1. Simpan ke local cache terlebih dahulu untuk respon instan
     let localLogs = []
     try {
       const cached = localStorage.getItem(LOCAL_LOGS_KEY)
       if (cached) localLogs = JSON.parse(cached)
     } catch {}
+
+    // Saring log lokal yang usianya < 6 bulan
+    localLogs = localLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
     localLogs.unshift(newLogItem)
     if (localLogs.length > MAX_LOG_ENTRIES) {
       localLogs = localLogs.slice(0, MAX_LOG_ENTRIES)
@@ -66,7 +96,7 @@ export async function recordActivityLog({
       localStorage.setItem(LOCAL_LOGS_KEY, JSON.stringify(localLogs))
     } catch {}
 
-    // 2. Simpan permanen ke Supabase Cloud (tabel pengumuman)
+    // 2. Simpan ke Supabase Cloud (tabel pengumuman)
     if (supabase) {
       try {
         const { data: existing } = await supabase
@@ -83,6 +113,8 @@ export async function recordActivityLog({
           } catch {}
         }
 
+        // Hapus log cloud yang lebih tua dari 6 bulan (180 hari) secara otomatis
+        cloudLogs = cloudLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
         cloudLogs.unshift(newLogItem)
         if (cloudLogs.length > MAX_LOG_ENTRIES) {
           cloudLogs = cloudLogs.slice(0, MAX_LOG_ENTRIES)
@@ -118,17 +150,20 @@ export async function recordActivityLog({
 
 /**
  * Mengambil daftar seluruh log aktivitas & login pengguna
- * Menggabungkan log audit dan riwayat aktivitas absensi terbaru
+ * Menggabungkan log audit login serta seluruh presensi masuk dan pulang dalam rentang 6 bulan
  */
 export async function fetchActivityLogs(supabase) {
   let combinedLogs = []
+  const cutoff = getRetentionCutoffDate()
+  const cutoffTime = cutoff.getTime()
+  const cutoffDateStr = cutoff.toISOString().split('T')[0]
 
-  // 1. Ambil dari Cloud Supabase
+  // 1. Ambil dari Cloud Supabase (Login & log langsung)
   if (supabase) {
     try {
       const { data: cloudRow } = await supabase
         .from('pengumuman')
-        .select('pesan')
+        .select('id, pesan')
         .eq('target_type', LOGS_TARGET)
         .limit(1)
 
@@ -136,7 +171,19 @@ export async function fetchActivityLogs(supabase) {
         try {
           const parsed = JSON.parse(cloudRow[0].pesan)
           if (Array.isArray(parsed)) {
-            combinedLogs = [...parsed]
+            // Saring data 6 bulan
+            const filteredCloud = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
+            combinedLogs = [...filteredCloud]
+
+            // Jika ada data lama yang tereliminasi (>6 bulan), bersihkan database Supabase di latar belakang
+            if (filteredCloud.length !== parsed.length) {
+              supabase
+                .from('pengumuman')
+                .update({ pesan: JSON.stringify(filteredCloud) })
+                .eq('id', cloudRow[0].id)
+                .then(() => {})
+                .catch(() => {})
+            }
           }
         } catch {}
       }
@@ -151,66 +198,118 @@ export async function fetchActivityLogs(supabase) {
       const local = localStorage.getItem(LOCAL_LOGS_KEY)
       if (local) {
         const parsed = JSON.parse(local)
-        if (Array.isArray(parsed)) combinedLogs = parsed
+        if (Array.isArray(parsed)) {
+          combinedLogs = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
+        }
       }
     } catch {}
   }
 
-  // 3. Tambahkan riwayat absensi terbaru sebagai log aktivitas nyata pengguna jika belum ada
+  // 3. Masukkan seluruh audit Presensi Masuk & Presensi Pulang dari semua akun dalam 6 bulan terakhir
   if (supabase) {
     try {
-      const { data: recentAbsensi } = await supabase
+      const { data: absensiRows, error: absErr } = await supabase
         .from('absensi')
         .select(`
           id,
           user_id,
           tanggal,
-          jam_masuk,
-          jam_pulang,
+          waktu_masuk,
+          waktu_pulang,
+          lokasi_masuk,
+          lokasi_pulang,
           status,
-          tipe_perangkat,
+          keterangan,
           created_at,
           profiles:user_id (id, full_name, email, role)
         `)
-        .order('id', { ascending: false })
-        .limit(40)
+        .gte('tanggal', cutoffDateStr)
+        .order('tanggal', { ascending: false })
+        .limit(MAX_LOG_ENTRIES)
 
-      if (recentAbsensi && recentAbsensi.length > 0) {
-        for (const abs of recentAbsensi) {
+      if (!absErr && absensiRows && absensiRows.length > 0) {
+        for (const abs of absensiRows) {
           const prof = abs.profiles || {}
-          const userEmail = prof.email || 'guru@sekolah.edu'
-          const userName = prof.full_name || userEmail
-          const userRole = prof.role || 'guru'
-          const timeStr = abs.jam_masuk || '07:00'
-          const absDate = abs.tanggal || new Date().toISOString().split('T')[0]
-          const logTimestamp = abs.created_at || `${absDate}T${timeStr}:00.000Z`
+          const userEmail = prof.email || ''
+          const userName = prof.full_name || userEmail || 'Pegawai'
+          const userRole = (prof.role || 'guru').toLowerCase()
+          const cleanKet = cleanLogDetails(abs.keterangan)
 
-          // Masuk log
-          const absLogItem = {
-            id: `abs-log-${abs.id}`,
-            timestamp: logTimestamp,
-            userId: abs.user_id,
-            email: userEmail,
-            role: userRole,
-            fullName: userName,
-            action: 'Presensi Kehadiran',
-            details: `Presensi Masuk (${(abs.status || 'Hadir').toUpperCase()}) jam ${timeStr}`,
-            deviceType: abs.tipe_perangkat || 'android',
-            status: 'success'
+          // A. Audit Presensi Masuk / Izin / Sakit / Tugas Luar
+          if (abs.waktu_masuk || abs.created_at || abs.status) {
+            let action = 'Presensi Masuk'
+            let details = ''
+
+            if (abs.status === 'sakit') {
+              action = 'Presensi Sakit'
+              details = cleanKet ? `Laporan Sakit: ${cleanKet}` : 'Laporan Sakit'
+            } else if (abs.status === 'izin') {
+              action = 'Presensi Izin'
+              details = cleanKet ? `Laporan Izin: ${cleanKet}` : 'Laporan Izin'
+            } else if (abs.status === 'tugas_luar' || (abs.keterangan || '').includes('Tugas Luar')) {
+              action = 'Presensi Tugas Luar'
+              details = cleanKet ? `Tugas Luar: ${cleanKet}` : 'Presensi Tugas Luar / Pelatihan'
+            } else {
+              action = 'Presensi Masuk'
+              const dateObj = new Date(abs.waktu_masuk || abs.created_at || `${abs.tanggal}T07:00:00.000Z`)
+              const timeStr = !isNaN(dateObj.getTime())
+                ? dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                : '07.00'
+              const statusStr = (abs.status || 'hadir').toUpperCase()
+              details = `Presensi Masuk (${statusStr}) pukul ${timeStr} WITA`
+            }
+
+            const inLogItem = {
+              id: `abs-in-${abs.id}`,
+              timestamp: abs.waktu_masuk || abs.created_at || `${abs.tanggal}T07:00:00.000Z`,
+              userId: abs.user_id,
+              email: userEmail,
+              role: userRole,
+              fullName: userName,
+              action,
+              details,
+              deviceType: 'android',
+              status: abs.status || 'hadir'
+            }
+
+            if (!combinedLogs.some((l) => l.id === inLogItem.id)) {
+              combinedLogs.push(inLogItem)
+            }
           }
 
-          // Cek apakah sudah ada log serupa
-          if (!combinedLogs.some(l => l.id === absLogItem.id)) {
-            combinedLogs.push(absLogItem)
+          // B. Audit Presensi Pulang (Clock Out)
+          if (abs.waktu_pulang) {
+            const dateOutObj = new Date(abs.waktu_pulang)
+            const timeOutStr = !isNaN(dateOutObj.getTime())
+              ? dateOutObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+              : '14.00'
+
+            const outLogItem = {
+              id: `abs-out-${abs.id}`,
+              timestamp: abs.waktu_pulang,
+              userId: abs.user_id,
+              email: userEmail,
+              role: userRole,
+              fullName: userName,
+              action: 'Presensi Pulang',
+              details: `Presensi Pulang (Clock Out) pukul ${timeOutStr} WITA`,
+              deviceType: 'android',
+              status: 'pulang'
+            }
+
+            if (!combinedLogs.some((l) => l.id === outLogItem.id)) {
+              combinedLogs.push(outLogItem)
+            }
           }
         }
       }
     } catch (absErr) {
-      console.warn('Could not merge recent absensi logs:', absErr)
+      console.warn('Could not merge absensi audit logs:', absErr)
     }
   }
 
-  // 4. Urutkan berdasarkan timestamp descending (terbaru di atas)
+  // 4. Pastikan semua log berada dalam rentang 6 bulan & urutkan dari yang paling baru
+  combinedLogs = combinedLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
   combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
   // Simpan kembali sinkronisasi ke local cache
