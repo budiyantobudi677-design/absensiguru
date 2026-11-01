@@ -15,14 +15,42 @@ export class ErrorBoundary extends React.Component {
     this.setState({ errorInfo })
   }
 
-  handleReload = () => {
-    window.location.reload()
+  handleReload = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        for (let r of registrations) {
+          await r.unregister()
+        }
+      }
+      if ('caches' in window) {
+        const cacheNames = await caches.keys()
+        for (let name of cacheNames) {
+          await caches.delete(name)
+        }
+      }
+    } catch (e) {}
+    window.location.href = window.location.pathname + '?reload=' + Date.now()
   }
 
-  handleClearCache = () => {
+  handleClearCache = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        for (let r of registrations) {
+          await r.unregister()
+        }
+      }
+      if ('caches' in window) {
+        const cacheNames = await caches.keys()
+        for (let name of cacheNames) {
+          await caches.delete(name)
+        }
+      }
+    } catch (e) {}
     localStorage.clear()
     sessionStorage.clear()
-    window.location.href = '/'
+    window.location.href = '/?reset=' + Date.now()
   }
 
   render() {
