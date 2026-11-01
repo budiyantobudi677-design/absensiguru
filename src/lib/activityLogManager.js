@@ -2,6 +2,11 @@
  * Activity Log Manager (Pencatatan & Pengelolaan Log Aktivitas & Login Pengguna)
  * Terhubung secara aman ke Cloud Supabase (tabel pengumuman & absensi) dan Local Storage
  * Mengimplementasikan retensi otomatis 6 bulan (180 hari) & format ultra-ringan
+ * 
+ * SIFAT LOG: IMMUTABLE AUDIT TRAIL (KEBAL HAPUS & EDIT)
+ * Riwayat log yang tersimpan di cloudLogs (__SYSTEM_USER_ACTIVITY_LOGS__) tersimpan secara mandiri.
+ * Jika data di tabel utama 'absensi' dihapus atau diedit oleh admin/pengguna,
+ * seluruh jejak log audit di sistem Developer tetap aman, utuh, dan tidak terpengaruh.
  */
 
 const LOGS_TARGET = '__SYSTEM_USER_ACTIVITY_LOGS__'
@@ -64,9 +69,14 @@ export async function recordActivityLog({
       }
     }
 
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const nowDateStr = nowIso.split('T')[0]
+
     const newLogItem = {
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso,
+      date: nowDateStr,
       userId: userId || 'user-unknown',
       email: cleanEmail,
       role: cleanRole,
@@ -151,14 +161,16 @@ export async function recordActivityLog({
 /**
  * Mengambil daftar seluruh log aktivitas & login pengguna
  * Menggabungkan log audit login serta seluruh presensi masuk dan pulang dalam rentang 6 bulan
+ * Sifat: Immutable (kebal hapus dan edit di tabel utama absensi)
  */
 export async function fetchActivityLogs(supabase) {
-  let combinedLogs = []
+  let cloudLogs = []
   const cutoff = getRetentionCutoffDate()
   const cutoffTime = cutoff.getTime()
   const cutoffDateStr = cutoff.toISOString().split('T')[0]
+  let cloudRowId = null
 
-  // 1. Ambil dari Cloud Supabase (Login & log langsung)
+  // 1. Ambil dari Cloud Supabase (Login & log yang sudah tersimpan permanen)
   if (supabase) {
     try {
       const { data: cloudRow } = await supabase
@@ -168,22 +180,12 @@ export async function fetchActivityLogs(supabase) {
         .limit(1)
 
       if (cloudRow && cloudRow.length > 0 && cloudRow[0].pesan) {
+        cloudRowId = cloudRow[0].id
         try {
           const parsed = JSON.parse(cloudRow[0].pesan)
           if (Array.isArray(parsed)) {
             // Saring data 6 bulan
-            const filteredCloud = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
-            combinedLogs = [...filteredCloud]
-
-            // Jika ada data lama yang tereliminasi (>6 bulan), bersihkan database Supabase di latar belakang
-            if (filteredCloud.length !== parsed.length) {
-              supabase
-                .from('pengumuman')
-                .update({ pesan: JSON.stringify(filteredCloud) })
-                .eq('id', cloudRow[0].id)
-                .then(() => {})
-                .catch(() => {})
-            }
+            cloudLogs = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
           }
         } catch {}
       }
@@ -193,19 +195,22 @@ export async function fetchActivityLogs(supabase) {
   }
 
   // 2. Fallback jika cloud kosong, ambil dari local cache
-  if (combinedLogs.length === 0) {
+  if (cloudLogs.length === 0) {
     try {
       const local = localStorage.getItem(LOCAL_LOGS_KEY)
       if (local) {
         const parsed = JSON.parse(local)
         if (Array.isArray(parsed)) {
-          combinedLogs = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
+          cloudLogs = parsed.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
         }
       }
     } catch {}
   }
 
   // 3. Masukkan seluruh audit Presensi Masuk & Presensi Pulang dari semua akun dalam 6 bulan terakhir
+  // Log ini disimpan secara PERMANEN & IMMUTABLE ke cloudLogs (pengumuman) sehingga:
+  // JIKA DATA DI TABEL UTAMA ABSENSI DIHAPUS ATAU DIEDIT, LOG AUDIT INI TIDAK AKAN HILANG ATAU TERPENGARUH!
+  let hasNewAbsensiRecords = false
   if (supabase) {
     try {
       const { data: absensiRows, error: absErr } = await supabase
@@ -228,15 +233,19 @@ export async function fetchActivityLogs(supabase) {
         .limit(MAX_LOG_ENTRIES)
 
       if (!absErr && absensiRows && absensiRows.length > 0) {
+        const existingIdSet = new Set(cloudLogs.map(l => l.id))
+
         for (const abs of absensiRows) {
           const prof = abs.profiles || {}
           const userEmail = prof.email || ''
           const userName = prof.full_name || userEmail || 'Pegawai'
           const userRole = (prof.role || 'guru').toLowerCase()
           const cleanKet = cleanLogDetails(abs.keterangan)
+          const absDate = abs.tanggal || (abs.created_at ? abs.created_at.split('T')[0] : '')
 
           // A. Audit Presensi Masuk / Izin / Sakit / Tugas Luar
-          if (abs.waktu_masuk || abs.created_at || abs.status) {
+          const inId = `abs-in-${abs.id}`
+          if ((abs.waktu_masuk || abs.created_at || abs.status) && !existingIdSet.has(inId)) {
             let action = 'Presensi Masuk'
             let details = ''
 
@@ -259,9 +268,11 @@ export async function fetchActivityLogs(supabase) {
               details = `Presensi Masuk (${statusStr}) pukul ${timeStr} WITA`
             }
 
+            const inTimestamp = abs.waktu_masuk || abs.created_at || `${abs.tanggal}T07:00:00.000Z`
             const inLogItem = {
-              id: `abs-in-${abs.id}`,
-              timestamp: abs.waktu_masuk || abs.created_at || `${abs.tanggal}T07:00:00.000Z`,
+              id: inId,
+              timestamp: inTimestamp,
+              date: absDate || (inTimestamp.includes('T') ? inTimestamp.split('T')[0] : ''),
               userId: abs.user_id,
               email: userEmail,
               role: userRole,
@@ -272,21 +283,23 @@ export async function fetchActivityLogs(supabase) {
               status: abs.status || 'hadir'
             }
 
-            if (!combinedLogs.some((l) => l.id === inLogItem.id)) {
-              combinedLogs.push(inLogItem)
-            }
+            cloudLogs.push(inLogItem)
+            existingIdSet.add(inId)
+            hasNewAbsensiRecords = true
           }
 
           // B. Audit Presensi Pulang (Clock Out)
-          if (abs.waktu_pulang) {
+          const outId = `abs-out-${abs.id}`
+          if (abs.waktu_pulang && !existingIdSet.has(outId)) {
             const dateOutObj = new Date(abs.waktu_pulang)
             const timeOutStr = !isNaN(dateOutObj.getTime())
               ? dateOutObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
               : '14.00'
 
             const outLogItem = {
-              id: `abs-out-${abs.id}`,
+              id: outId,
               timestamp: abs.waktu_pulang,
+              date: absDate || (abs.waktu_pulang.includes('T') ? abs.waktu_pulang.split('T')[0] : ''),
               userId: abs.user_id,
               email: userEmail,
               role: userRole,
@@ -297,9 +310,9 @@ export async function fetchActivityLogs(supabase) {
               status: 'pulang'
             }
 
-            if (!combinedLogs.some((l) => l.id === outLogItem.id)) {
-              combinedLogs.push(outLogItem)
-            }
+            cloudLogs.push(outLogItem)
+            existingIdSet.add(outId)
+            hasNewAbsensiRecords = true
           }
         }
       }
@@ -308,16 +321,53 @@ export async function fetchActivityLogs(supabase) {
     }
   }
 
-  // 4. Pastikan semua log berada dalam rentang 6 bulan & urutkan dari yang paling baru
-  combinedLogs = combinedLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
-  combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  // 4. Pastikan setiap log item memiliki field .date untuk filter secepat kilat
+  cloudLogs.forEach(l => {
+    if (!l.date && l.timestamp) {
+      l.date = l.timestamp.split('T')[0]
+    }
+  })
+
+  // 5. Pastikan semua log berada dalam rentang 6 bulan & urutkan dari yang paling baru
+  cloudLogs = cloudLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffTime)
+  cloudLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  if (cloudLogs.length > MAX_LOG_ENTRIES) {
+    cloudLogs = cloudLogs.slice(0, MAX_LOG_ENTRIES)
+  }
+
+  // 6. Simpan permanen kembali ke Supabase Cloud jika ada data baru atau pruning
+  if (supabase && (hasNewAbsensiRecords || cloudRowId)) {
+    try {
+      const payloadStr = JSON.stringify(cloudLogs)
+      if (cloudRowId) {
+        supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', cloudRowId)
+          .then(() => {})
+          .catch(() => {})
+      } else if (hasNewAbsensiRecords) {
+        supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: LOGS_TARGET,
+            target_users: ''
+          }])
+          .then(() => {})
+          .catch(() => {})
+      }
+    } catch (saveErr) {
+      console.warn('Failed saving permanent audit logs to cloud:', saveErr)
+    }
+  }
 
   // Simpan kembali sinkronisasi ke local cache
   try {
-    localStorage.setItem(LOCAL_LOGS_KEY, JSON.stringify(combinedLogs.slice(0, MAX_LOG_ENTRIES)))
+    localStorage.setItem(LOCAL_LOGS_KEY, JSON.stringify(cloudLogs))
   } catch {}
 
-  return combinedLogs
+  return cloudLogs
 }
 
 /**

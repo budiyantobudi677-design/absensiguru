@@ -20,7 +20,7 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop, Fingerprint, AlertCircle
+  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop, Fingerprint, AlertCircle, Calendar
 } from 'lucide-react'
 import { 
   fetchActivityLogs, 
@@ -185,13 +185,98 @@ export default function DashboardPengembang() {
   const [auditLogs, setAuditLogs] = useState([])
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
 
-  // Log Aktivitas & Login Pengguna
+  // Log Aktivitas & Login Pengguna (Immutable Black Box Audit Trail)
   const [activityLogs, setActivityLogs] = useState([])
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [logSearchTerm, setLogSearchTerm] = useState('')
   const [logRoleFilter, setLogRoleFilter] = useState('all')
   const [logActionFilter, setLogActionFilter] = useState('all')
+  const [logPeriodMode, setLogPeriodMode] = useState('daily') // 'daily' (default) | 'monthly' | 'all'
+  const [selectedLogDate, setSelectedLogDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedLogMonth, setSelectedLogMonth] = useState(() => new Date().toISOString().substring(0, 7))
   const [selectedLogDetail, setSelectedLogDetail] = useState(null)
+
+  const getTodayDateStr = () => new Date().toISOString().split('T')[0]
+  const getYesterdayDateStr = () => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }
+  const getCurrentMonthStr = () => new Date().toISOString().substring(0, 7)
+  const getLastMonthStr = () => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    return d.toISOString().substring(0, 7)
+  }
+
+  const formatDisplayDateIndo = (dateStr) => {
+    if (!dateStr) return '-'
+    try {
+      const [y, m, d] = dateStr.split('-')
+      const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
+      return dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const formatDisplayMonthIndo = (monthStr) => {
+    if (!monthStr) return '-'
+    try {
+      const [y, m] = monthStr.split('-')
+      const dt = new Date(parseInt(y), parseInt(m) - 1, 1)
+      return dt.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+    } catch {
+      return monthStr
+    }
+  }
+
+  const periodLogs = activityLogs.filter(item => {
+    const itemDate = item.date || (item.timestamp ? item.timestamp.split('T')[0] : '')
+    if (logPeriodMode === 'daily') {
+      return itemDate === selectedLogDate
+    } else if (logPeriodMode === 'monthly') {
+      return itemDate.startsWith(selectedLogMonth)
+    }
+    return true
+  })
+
+  const getFilteredActivityLogs = () => {
+    return activityLogs.filter(item => {
+      // 1. Filter Waktu / Periode
+      const itemDate = item.date || (item.timestamp ? item.timestamp.split('T')[0] : '')
+      if (logPeriodMode === 'daily') {
+        if (itemDate !== selectedLogDate) return false
+      } else if (logPeriodMode === 'monthly') {
+        if (!itemDate.startsWith(selectedLogMonth)) return false
+      }
+      // Mode 'all' menampilkan seluruh log 6 bulan
+
+      // 2. Filter Pencarian Teks
+      const q = logSearchTerm.toLowerCase().trim()
+      const matchQuery = !q || 
+        (item.fullName || '').toLowerCase().includes(q) || 
+        (item.email || '').toLowerCase().includes(q) || 
+        (item.action || '').toLowerCase().includes(q) || 
+        (item.details || '').toLowerCase().includes(q)
+      if (!matchQuery) return false
+
+      // 3. Filter Peran / Role
+      const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
+      if (!matchRole) return false
+
+      // 4. Filter Tipe Aktivitas
+      const matchAction = logActionFilter === 'all' || 
+        (logActionFilter === 'login' && (item.action || '').toLowerCase().includes('login')) ||
+        (logActionFilter === 'masuk' && (item.action || '').toLowerCase().includes('masuk')) ||
+        (logActionFilter === 'pulang' && (item.action || '').toLowerCase().includes('pulang')) ||
+        (logActionFilter === 'khusus' && ['sakit', 'izin', 'tugas'].some(k => (item.action || '').toLowerCase().includes(k))) ||
+        (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
+      if (!matchAction) return false
+
+      return true
+    })
+  }
 
   const loadActivityLogsData = async () => {
     setLoadingLogs(true)
@@ -217,30 +302,16 @@ export default function DashboardPengembang() {
   }
 
   const handleExportLogsCsv = () => {
-    if (!activityLogs || activityLogs.length === 0) {
-      alert('Tidak ada log untuk diekspor.')
+    const filtered = getFilteredActivityLogs()
+    if (!filtered || filtered.length === 0) {
+      alert('Tidak ada log untuk diekspor pada filter yang dipilih.')
       return
     }
-    const filtered = activityLogs.filter(item => {
-      const q = logSearchTerm.toLowerCase().trim()
-      const matchQuery = !q || 
-        (item.fullName || '').toLowerCase().includes(q) || 
-        (item.email || '').toLowerCase().includes(q) || 
-        (item.action || '').toLowerCase().includes(q) || 
-        (item.details || '').toLowerCase().includes(q)
-      const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
-      const matchAction = logActionFilter === 'all' || 
-        (logActionFilter === 'login' && (item.action || '').toLowerCase().includes('login')) ||
-        (logActionFilter === 'masuk' && (item.action || '').toLowerCase().includes('masuk')) ||
-        (logActionFilter === 'pulang' && (item.action || '').toLowerCase().includes('pulang')) ||
-        (logActionFilter === 'khusus' && ['sakit', 'izin', 'tugas'].some(k => (item.action || '').toLowerCase().includes(k))) ||
-        (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
-      return matchQuery && matchRole && matchAction
-    })
 
-    const headers = ['Waktu', 'Nama Akun', 'Email', 'Role', 'Aktivitas', 'Rincian', 'Perangkat', 'Status']
+    const headers = ['Waktu', 'Tanggal', 'Nama Akun', 'Email', 'Role', 'Aktivitas', 'Rincian', 'Perangkat', 'Status']
     const rows = filtered.map(l => [
       `"${new Date(l.timestamp).toLocaleString('id-ID')}"`,
+      `"${l.date || (l.timestamp ? l.timestamp.split('T')[0] : '-')}"`,
       `"${l.fullName || '-'}"`,
       `"${l.email || '-'}"`,
       `"${l.role || '-'}"`,
@@ -253,7 +324,8 @@ export default function DashboardPengembang() {
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `Log_Aktivitas_GammaraApp_${new Date().toISOString().split('T')[0]}.csv`)
+    const suffix = logPeriodMode === 'daily' ? selectedLogDate : (logPeriodMode === 'monthly' ? selectedLogMonth : 'Semua6Bulan')
+    link.setAttribute('download', `Log_Aktivitas_GammaraApp_${suffix}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -2204,25 +2276,29 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
               {/* 4 Kartu Metrik Ringkasan */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Total Riwayat Log</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#38BDF8', marginTop: '0.2rem' }}>
-                    {activityLogs.length}
+                  <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    {logPeriodMode === 'daily' ? 'Log Hari Terpilih' : (logPeriodMode === 'monthly' ? 'Log Bulan Terpilih' : 'Total Riwayat Log')}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Tersinkronisasi Cloud</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#38BDF8', marginTop: '0.2rem' }}>
+                    {periodLogs.length}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>
+                    {logPeriodMode === 'all' ? 'Tersinkronisasi Cloud' : `Dari total ${activityLogs.length} log 6 bulan`}
+                  </div>
                 </div>
 
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Login Tercatat</div>
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#10B981', marginTop: '0.2rem' }}>
-                    {activityLogs.filter(l => (l.action || '').toLowerCase().includes('login')).length}
+                    {periodLogs.filter(l => (l.action || '').toLowerCase().includes('login')).length}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Sesi masuk pengguna</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Sesi masuk periode ini</div>
                 </div>
 
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Aktivitas Presensi</div>
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#F59E0B', marginTop: '0.2rem' }}>
-                    {activityLogs.filter(l => (l.action || '').toLowerCase().includes('presensi')).length}
+                    {periodLogs.filter(l => (l.action || '').toLowerCase().includes('presensi')).length}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Absensi masuk & pulang</div>
                 </div>
@@ -2230,94 +2306,317 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Akun Pengguna Unik</div>
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#A78BFA', marginTop: '0.2rem' }}>
-                    {new Set(activityLogs.map(l => l.email || l.userId)).size}
+                    {new Set(periodLogs.map(l => l.email || l.userId)).size}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Guru, Tendik, Pimpinan</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>Aktif di periode terpilih</div>
                 </div>
               </div>
             </div>
 
-            {/* Filter & Search Bar */}
+            {/* Filter Waktu & Filter Search Bar */}
             <div style={{
               background: '#0B2545',
               border: '1px solid rgba(0, 180, 216, 0.25)',
               borderRadius: '16px',
-              padding: '1rem 1.25rem',
+              padding: '1.1rem 1.25rem',
               display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              flexDirection: 'column',
               gap: '1rem'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '260px' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="text"
-                    value={logSearchTerm}
-                    onChange={(e) => setLogSearchTerm(e.target.value)}
-                    placeholder="Cari berdasarkan nama akun, email, atau aktivitas..."
+              {/* Baris 1: Mode Periode (Per Hari, Per Bulan, Semua) & Date/Month Picker */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                paddingBottom: '0.85rem',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+              }}>
+                {/* Segmented Toggle Mode */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(0,0,0,0.25)', padding: '4px', borderRadius: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setLogPeriodMode('daily')}
                     style={{
-                      width: '100%',
-                      padding: '0.6rem 1rem 0.6rem 2.4rem',
-                      borderRadius: '10px',
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      color: '#FFFFFF',
-                      fontSize: '0.85rem',
-                      outline: 'none'
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      background: logPeriodMode === 'daily' ? 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)' : 'transparent',
+                      color: logPeriodMode === 'daily' ? '#FFFFFF' : '#94A3B8',
+                      boxShadow: logPeriodMode === 'daily' ? '0 2px 8px rgba(0, 180, 216, 0.35)' : 'none'
                     }}
-                  />
+                  >
+                    <Calendar size={14} />
+                    <span>Per Hari (Default)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogPeriodMode('monthly')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      background: logPeriodMode === 'monthly' ? 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)' : 'transparent',
+                      color: logPeriodMode === 'monthly' ? '#FFFFFF' : '#94A3B8',
+                      boxShadow: logPeriodMode === 'monthly' ? '0 2px 8px rgba(0, 180, 216, 0.35)' : 'none'
+                    }}
+                  >
+                    <Clock size={14} />
+                    <span>Per Bulan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogPeriodMode('all')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      background: logPeriodMode === 'all' ? 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)' : 'transparent',
+                      color: logPeriodMode === 'all' ? '#FFFFFF' : '#94A3B8',
+                      boxShadow: logPeriodMode === 'all' ? '0 2px 8px rgba(0, 180, 216, 0.35)' : 'none'
+                    }}
+                  >
+                    <Layers size={14} />
+                    <span>Semua (6 Bulan)</span>
+                  </button>
+                </div>
+
+                {/* Date / Month Picker & Quick Action Pills */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {logPeriodMode === 'daily' && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="date"
+                          value={selectedLogDate}
+                          onChange={(e) => setSelectedLogDate(e.target.value)}
+                          style={{
+                            padding: '0.45rem 0.8rem',
+                            borderRadius: '9px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(0, 180, 216, 0.4)',
+                            color: '#FFFFFF',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            colorScheme: 'dark'
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLogDate(getTodayDateStr())}
+                        style={{
+                          padding: '0.45rem 0.75rem',
+                          borderRadius: '8px',
+                          border: selectedLogDate === getTodayDateStr() ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.15)',
+                          background: selectedLogDate === getTodayDateStr() ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: selectedLogDate === getTodayDateStr() ? '#38BDF8' : '#CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Hari Ini
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLogDate(getYesterdayDateStr())}
+                        style={{
+                          padding: '0.45rem 0.75rem',
+                          borderRadius: '8px',
+                          border: selectedLogDate === getYesterdayDateStr() ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.15)',
+                          background: selectedLogDate === getYesterdayDateStr() ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: selectedLogDate === getYesterdayDateStr() ? '#38BDF8' : '#CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Kemarin
+                      </button>
+                    </>
+                  )}
+
+                  {logPeriodMode === 'monthly' && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="month"
+                          value={selectedLogMonth}
+                          onChange={(e) => setSelectedLogMonth(e.target.value)}
+                          style={{
+                            padding: '0.45rem 0.8rem',
+                            borderRadius: '9px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(0, 180, 216, 0.4)',
+                            color: '#FFFFFF',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            colorScheme: 'dark'
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLogMonth(getCurrentMonthStr())}
+                        style={{
+                          padding: '0.45rem 0.75rem',
+                          borderRadius: '8px',
+                          border: selectedLogMonth === getCurrentMonthStr() ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.15)',
+                          background: selectedLogMonth === getCurrentMonthStr() ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: selectedLogMonth === getCurrentMonthStr() ? '#38BDF8' : '#CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Bulan Ini
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLogMonth(getLastMonthStr())}
+                        style={{
+                          padding: '0.45rem 0.75rem',
+                          borderRadius: '8px',
+                          border: selectedLogMonth === getLastMonthStr() ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.15)',
+                          background: selectedLogMonth === getLastMonthStr() ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: selectedLogMonth === getLastMonthStr() ? '#38BDF8' : '#CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Bulan Lalu
+                      </button>
+                    </>
+                  )}
+
+                  {logPeriodMode === 'all' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#38BDF8', background: 'rgba(56, 189, 248, 0.1)', padding: '0.45rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+                      <CheckCircle2 size={13} />
+                      <span>Akumulasi 6 Bulan Terakhir (Retensi 180 Hari Otomatis)</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <select
-                  value={logRoleFilter}
-                  onChange={(e) => setLogRoleFilter(e.target.value)}
-                  style={{
-                    padding: '0.6rem 0.9rem',
-                    borderRadius: '10px',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#E2E8F0',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    outline: 'none'
-                  }}
-                >
-                  <option value="all" style={{ background: '#0B2545' }}>Semua Peran / Role</option>
-                  <option value="admin" style={{ background: '#0B2545' }}>🛡️ Administrator</option>
-                  <option value="kepsek" style={{ background: '#0B2545' }}>🎓 Kepala Sekolah</option>
-                  <option value="guru" style={{ background: '#0B2545' }}>👨‍🏫 Guru</option>
-                  <option value="tendik" style={{ background: '#0B2545' }}>💼 Tendik</option>
-                  <option value="operator" style={{ background: '#0B2545' }}>💻 Operator</option>
-                </select>
+              {/* Baris 2: Search Input & Role / Action Select */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '260px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                    <input
+                      type="text"
+                      value={logSearchTerm}
+                      onChange={(e) => setLogSearchTerm(e.target.value)}
+                      placeholder="Cari berdasarkan nama akun, email, atau aktivitas..."
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 1rem 0.6rem 2.4rem',
+                        borderRadius: '10px',
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        color: '#FFFFFF',
+                        fontSize: '0.85rem',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
 
-                <select
-                  value={logActionFilter}
-                  onChange={(e) => setLogActionFilter(e.target.value)}
-                  style={{
-                    padding: '0.6rem 0.9rem',
-                    borderRadius: '10px',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#E2E8F0',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    outline: 'none'
-                  }}
-                >
-                  <option value="all" style={{ background: '#0B2545' }}>Semua Tipe Aktivitas</option>
-                  <option value="login" style={{ background: '#0B2545' }}>🔑 Login Aplikasi</option>
-                  <option value="presensi" style={{ background: '#0B2545' }}>📍 Presensi Kehadiran (Semua)</option>
-                  <option value="masuk" style={{ background: '#0B2545' }}>🟢 Presensi Masuk</option>
-                  <option value="pulang" style={{ background: '#0B2545' }}>🔴 Presensi Pulang</option>
-                  <option value="khusus" style={{ background: '#0B2545' }}>🟡 Sakit / Izin / Tugas Luar</option>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <select
+                    value={logRoleFilter}
+                    onChange={(e) => setLogRoleFilter(e.target.value)}
+                    style={{
+                      padding: '0.6rem 0.9rem',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#E2E8F0',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="all" style={{ background: '#0B2545' }}>Semua Peran / Role</option>
+                    <option value="admin" style={{ background: '#0B2545' }}>🛡️ Administrator</option>
+                    <option value="kepsek" style={{ background: '#0B2545' }}>🎓 Kepala Sekolah</option>
+                    <option value="guru" style={{ background: '#0B2545' }}>👨‍🏫 Guru</option>
+                    <option value="tendik" style={{ background: '#0B2545' }}>💼 Tendik</option>
+                    <option value="operator" style={{ background: '#0B2545' }}>💻 Operator</option>
+                  </select>
 
-                </select>
+                  <select
+                    value={logActionFilter}
+                    onChange={(e) => setLogActionFilter(e.target.value)}
+                    style={{
+                      padding: '0.6rem 0.9rem',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#E2E8F0',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="all" style={{ background: '#0B2545' }}>Semua Tipe Aktivitas</option>
+                    <option value="login" style={{ background: '#0B2545' }}>🔑 Login Aplikasi</option>
+                    <option value="presensi" style={{ background: '#0B2545' }}>📍 Presensi Kehadiran (Semua)</option>
+                    <option value="masuk" style={{ background: '#0B2545' }}>🟢 Presensi Masuk</option>
+                    <option value="pulang" style={{ background: '#0B2545' }}>🔴 Presensi Pulang</option>
+                    <option value="khusus" style={{ background: '#0B2545' }}>🟡 Sakit / Izin / Tugas Luar</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Status Periode Ringkasan */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '0.78rem', color: '#94A3B8' }}>
+                <div>
+                  Filter Aktif:&nbsp;
+                  <span style={{ color: '#38BDF8', fontWeight: 700 }}>
+                    {logPeriodMode === 'daily' ? `📅 Per Hari (${formatDisplayDateIndo(selectedLogDate)})` : (logPeriodMode === 'monthly' ? `🗓️ Per Bulan (${formatDisplayMonthIndo(selectedLogMonth)})` : '🌐 Seluruh 6 Bulan Terakhir')}
+                  </span>
+                </div>
+                <div>
+                  Menampilkan&nbsp;
+                  <span style={{ color: '#10B981', fontWeight: 800 }}>{getFilteredActivityLogs().length}</span> log aktivitas
+                </div>
               </div>
             </div>
 
@@ -2335,31 +2634,49 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                   <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Memuat riwayat log aktivitas pengguna...</p>
                 </div>
               ) : (() => {
-                const filtered = activityLogs.filter(item => {
-                  const q = logSearchTerm.toLowerCase().trim()
-                  const matchQuery = !q || 
-                    (item.fullName || '').toLowerCase().includes(q) || 
-                    (item.email || '').toLowerCase().includes(q) || 
-                    (item.action || '').toLowerCase().includes(q) || 
-                    (item.details || '').toLowerCase().includes(q)
-                  const matchRole = logRoleFilter === 'all' || (item.role || '').toLowerCase() === logRoleFilter.toLowerCase()
-                  const matchAction = logActionFilter === 'all' || 
-        (logActionFilter === 'login' && (item.action || '').toLowerCase().includes('login')) ||
-        (logActionFilter === 'masuk' && (item.action || '').toLowerCase().includes('masuk')) ||
-        (logActionFilter === 'pulang' && (item.action || '').toLowerCase().includes('pulang')) ||
-        (logActionFilter === 'khusus' && ['sakit', 'izin', 'tugas'].some(k => (item.action || '').toLowerCase().includes(k))) ||
-        (item.action || '').toLowerCase().includes(logActionFilter.toLowerCase())
-                  return matchQuery && matchRole && matchAction
-                })
+                const filtered = getFilteredActivityLogs()
 
                 if (filtered.length === 0) {
                   return (
                     <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#94A3B8' }}>
                       <FileText size={40} style={{ margin: '0 auto 0.75rem auto', opacity: 0.4 }} />
                       <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>Belum ada log aktivitas yang cocok</p>
-                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.82rem' }}>
-                        Cobalah ubah filter pencarian atau tunggu akun pengguna melakukan aktivitas login dan presensi.
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.82rem', color: '#94A3B8' }}>
+                        {logPeriodMode === 'daily' 
+                          ? `Tidak ada aktivitas tercatat pada tanggal ${formatDisplayDateIndo(selectedLogDate)}.` 
+                          : (logPeriodMode === 'monthly' 
+                            ? `Tidak ada aktivitas tercatat pada bulan ${formatDisplayMonthIndo(selectedLogMonth)}.` 
+                            : 'Cobalah ubah filter pencarian atau tunggu akun pengguna melakukan aktivitas login dan presensi.')}
                       </p>
+                      {(logPeriodMode !== 'daily' || selectedLogDate !== getTodayDateStr()) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLogPeriodMode('daily')
+                            setSelectedLogDate(getTodayDateStr())
+                            setLogSearchTerm('')
+                            setLogRoleFilter('all')
+                            setLogActionFilter('all')
+                          }}
+                          style={{
+                            marginTop: '1rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: 'rgba(0, 180, 216, 0.15)',
+                            color: '#38BDF8',
+                            border: '1px solid rgba(0, 180, 216, 0.35)',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '10px',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Calendar size={14} />
+                          <span>Tampilkan Hari Ini</span>
+                        </button>
+                      )}
                     </div>
                   )
                 }
