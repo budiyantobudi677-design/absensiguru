@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload, MessageSquare } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload, MessageSquare, Paperclip } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -153,6 +153,7 @@ export default function DashboardKepsek() {
   const [kepsekPopup, setKepsekPopup] = useState({ show: false, title: '', message: '', type: 'success' })
   const [kepsekIzinMode, setKepsekIzinMode] = useState(null) // 'sakit' | 'izin' | null
   const [kepsekKeterangan, setKepsekKeterangan] = useState('')
+  const [kepsekSuratSakitFile, setKepsekSuratSakitFile] = useState(null) // { type: 'pdf' | 'image', name: string, size?: number, dataUrl: string }
   const [showTugasLuarModal, setShowTugasLuarModal] = useState(false)
   const [tugasLuarCatatan, setTugasLuarCatatan] = useState('')
   const [tugasLuarFoto, setTugasLuarFoto] = useState(null)
@@ -265,9 +266,9 @@ export default function DashboardKepsek() {
     if (!item) return null
     if (item.foto || item.foto_masuk) return item.foto || item.foto_masuk
     if (item.keterangan) {
-      const matchUrl = item.keterangan.match(/Foto:\s*(https?:\/\/[^\s|]+)/i)
+      const matchUrl = item.keterangan.match(/(?:Foto|Surat):\s*(https?:\/\/[^\s|]+)/i)
       if (matchUrl && matchUrl[1]) return matchUrl[1]
-      const matchWebp = item.keterangan.match(/\[FOTO_WEBP:([^\]]+)\]/i)
+      const matchWebp = item.keterangan.match(/\[(?:FOTO_WEBP|SURAT_SAKIT_IMG):([^\]]+)\]/i)
       if (matchWebp && matchWebp[1]) return matchWebp[1]
       const matchData = item.keterangan.match(/(data:image\/[a-zA-Z]+;base64,[^\s|]+)/i)
       if (matchData && matchData[1]) return matchData[1]
@@ -283,7 +284,64 @@ export default function DashboardKepsek() {
       .replace(/\|?\s*Foto:\s*https?:\/\/[^\s|]+/gi, '')
       .replace(/\[FOTO_WEBP:[^\]]+\]/gi, '')
       .replace(/data:image\/[a-zA-Z]+;base64,[^\s|]+/gi, '')
+      .replace(/\|?\s*Surat:\s*https?:\/\/[^\s|]+/gi, '')
+      .replace(/\[SURAT_SAKIT_IMG:[^\]]+\]/gi, '')
+      .replace(/\[SURAT_SAKIT_PDF:[^\]]+\]/gi, '')
       .trim()
+  }
+
+  const handleKepsekSuratSakitChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 5 * 1024 * 1024) {
+      setKepsekPopup({ show: true, title: "File Terlalu Besar", message: "Ukuran maksimal surat sakit adalah 5MB.", type: "warning" })
+      return
+    }
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    const reader = new FileReader()
+
+    reader.onload = async (event) => {
+      const dataUrl = event.target.result
+      if (isPdf) {
+        setKepsekSuratSakitFile({
+          type: 'pdf',
+          name: file.name,
+          size: file.size,
+          dataUrl
+        })
+      } else {
+        try {
+          const webp = await convertToWebP(dataUrl, 0.75, 1024)
+          setKepsekSuratSakitFile({
+            type: 'image',
+            name: file.name,
+            size: file.size,
+            dataUrl: webp
+          })
+        } catch {
+          setKepsekSuratSakitFile({
+            type: 'image',
+            name: file.name,
+            size: file.size,
+            dataUrl
+          })
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const getStoredKepsekSuratSakitForToday = () => {
+    if (kepsekSuratSakitFile) return kepsekSuratSakitFile
+    const today = getSecureLocalDateString()
+    try {
+      const saved = localStorage.getItem(`surat_sakit_${today}_${admin?.id}`)
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
   }
 
   const navigate = useNavigate()
@@ -800,7 +858,39 @@ export default function DashboardKepsek() {
         setKepsekTodayAbsensi(prev => ({ ...prev, ...(res.data || {}), waktu_masuk: morningMasuk, waktu_pulang: now, lokasi_pulang: loc }))
         setKepsekPopup({ show: true, title: "Pulang Tercatat!", message: "Presensi kepulangan Anda telah tersimpan.", type: "success" })
       } else if (jenis === 'sakit' || jenis === 'izin') {
-        const note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
+        let note = kepsekKeterangan.trim() || (jenis === 'sakit' ? 'Sakit' : 'Izin')
+        if (jenis === 'sakit' && kepsekSuratSakitFile) {
+          let uploadedSuratUrl = null
+          if (navigator.onLine) {
+            try {
+              const fileExt = kepsekSuratSakitFile.type === 'pdf' ? 'pdf' : 'webp'
+              const fileName = `surat_sakit-${admin.id}-${Date.now()}.${fileExt}`
+              const res = await fetch(kepsekSuratSakitFile.dataUrl)
+              const blob = await res.blob()
+              const contentType = kepsekSuratSakitFile.type === 'pdf' ? 'application/pdf' : 'image/webp'
+              const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType })
+              if (!upErr) {
+                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+                uploadedSuratUrl = publicUrl
+              }
+            } catch (e) {
+              console.warn("Upload kepsek surat sakit error:", e)
+            }
+          }
+
+          if (uploadedSuratUrl) {
+            note = note ? `${note} | Surat: ${uploadedSuratUrl}` : `Sakit | Surat: ${uploadedSuratUrl}`
+          } else if (kepsekSuratSakitFile.type === 'pdf') {
+            note = note ? `${note} [SURAT_SAKIT_PDF:${kepsekSuratSakitFile.name}]` : `[SURAT_SAKIT_PDF:${kepsekSuratSakitFile.name}]`
+          } else {
+            note = note ? `${note} [SURAT_SAKIT_IMG:${kepsekSuratSakitFile.dataUrl}]` : `[SURAT_SAKIT_IMG:${kepsekSuratSakitFile.dataUrl}]`
+          }
+
+          try {
+            localStorage.setItem(`surat_sakit_${today}_${admin.id}`, JSON.stringify(kepsekSuratSakitFile))
+          } catch (e) {}
+        }
+
         const res = await saveAttendanceRecord({
           userId: admin.id,
           jenis,
@@ -817,6 +907,7 @@ export default function DashboardKepsek() {
         setKepsekTodayStatus(jenis)
         setKepsekTodayAbsensi(data)
         setKepsekIzinMode(null)
+        setKepsekSuratSakitFile(null)
         setKepsekKeterangan('')
         setKepsekPopup({
           show: true,
@@ -2109,10 +2200,52 @@ export default function DashboardKepsek() {
                     </>
                   ) : null
                 ) : (kepsekTodayStatus === 'sakit' || kepsekTodayStatus === 'izin') ? (
-                  <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
-                    <CheckCircle2 size={48} style={{ margin: '0 auto 1rem auto' }} />
-                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {kepsekTodayStatus.toUpperCase()}</h3>
-                    <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                  <div className="card" style={{ padding: '1.75rem 1.5rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626', textAlign: 'center' }}>
+                    <CheckCircle2 size={44} style={{ margin: '0 auto 0.75rem auto', color: '#DC2626' }} />
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>Anda Terdaftar {kepsekTodayStatus.toUpperCase()}</h3>
+                    <p style={{ margin: '0 0 1rem 0', fontSize: '0.88rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                    
+                    {kepsekTodayAbsensi?.keterangan && (
+                      <div style={{ textAlign: 'left', background: 'white', padding: '0.65rem 0.9rem', borderRadius: '12px', border: '1px solid #FECACA', fontSize: '0.85rem', color: '#374151', margin: '0 auto 0.75rem auto', maxWidth: '340px' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#6B7280', marginBottom: '0.2rem' }}>Keterangan:</div>
+                        <div>{cleanKeterangan(kepsekTodayAbsensi.keterangan)}</div>
+                      </div>
+                    )}
+
+                    {getStoredKepsekSuratSakitForToday() && (
+                      <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#991B1B', marginBottom: '0.4rem' }}>Lampiran Surat Sakit:</div>
+                        {getStoredKepsekSuratSakitForToday().type === 'image' ? (
+                          <img
+                            src={getStoredKepsekSuratSakitForToday().dataUrl}
+                            alt="Surat Sakit"
+                            style={{ maxHeight: '160px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }}
+                          />
+                        ) : (
+                          <a
+                            href={getStoredKepsekSuratSakitForToday().dataUrl}
+                            download={getStoredKepsekSuratSakitForToday().name || 'Surat_Sakit.pdf'}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                              padding: '0.6rem 1rem',
+                              borderRadius: '10px',
+                              background: 'white',
+                              color: '#DC2626',
+                              border: '1px solid #FCA5A5',
+                              textDecoration: 'none',
+                              fontWeight: 600,
+                              fontSize: '0.82rem'
+                            }}
+                          >
+                            <FileText size={16} /> Unduh Dokumen PDF
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : kepsekTodayAbsensi?.waktu_pulang ? (
                   <div className="card" style={{ padding: '1.5rem', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', textAlign: 'center' }}>
@@ -2162,8 +2295,120 @@ export default function DashboardKepsek() {
                   <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
                     <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>Form {kepsekIzinMode === 'sakit' ? 'Sakit' : 'Izin'}</h4>
                     <textarea className="input" rows="3" placeholder="Masukkan keterangan..." value={kepsekKeterangan} onChange={e => setKepsekKeterangan(e.target.value)} style={{ marginBottom: '1rem' }} />
+
+                    {kepsekIzinMode === 'sakit' && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
+                          Lampiran Surat Sakit <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 400 }}>(Opsional - PDF / Gambar)</span>
+                        </label>
+
+                        {!kepsekSuratSakitFile ? (
+                          <div>
+                            <input
+                              type="file"
+                              id="suratSakitInputKepsek"
+                              accept="image/*,application/pdf"
+                              style={{ display: 'none' }}
+                              onChange={handleKepsekSuratSakitChange}
+                            />
+                            <label
+                              htmlFor="suratSakitInputKepsek"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                padding: '0.75rem 1rem',
+                                border: '1.5px dashed #CBD5E1',
+                                borderRadius: '12px',
+                                background: '#F8FAFC',
+                                color: '#475569',
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <Paperclip size={18} color="#64748B" />
+                              <span>Pilih Dokumen (PDF / Foto)</span>
+                            </label>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.6rem 0.85rem',
+                              background: '#F1F5F9',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '12px',
+                              gap: '0.75rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
+                              {kepsekSuratSakitFile.type === 'image' ? (
+                                <img
+                                  src={kepsekSuratSakitFile.dataUrl}
+                                  alt="Preview Surat Sakit"
+                                  style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #CBD5E1', flexShrink: 0 }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    width: '42px',
+                                    height: '42px',
+                                    borderRadius: '8px',
+                                    background: '#FEE2E2',
+                                    color: '#EF4444',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    fontWeight: 800,
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  PDF
+                                </div>
+                              )}
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {kepsekSuratSakitFile.name}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                  {kepsekSuratSakitFile.type === 'pdf' ? 'Dokumen PDF' : 'Foto Surat'} {kepsekSuratSakitFile.size ? `• ${(kepsekSuratSakitFile.size / 1024).toFixed(0)} KB` : ''}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setKepsekSuratSakitFile(null)}
+                              title="Hapus Lampiran"
+                              style={{
+                                background: '#FEE2E2',
+                                color: '#EF4444',
+                                border: 'none',
+                                borderRadius: '8px',
+                                width: '30px',
+                                height: '30px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                flexShrink: 0
+                              }}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
-                      <button onClick={() => setKepsekIzinMode(null)} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
+                      <button onClick={() => { setKepsekIzinMode(null); setKepsekSuratSakitFile(null); }} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
                       <button onClick={() => handleKepsekAbsen(kepsekIzinMode)} disabled={kepsekAbsenLoading} className="btn btn-primary" style={{ flex: 1 }}>Kirim</button>
                     </div>
                   </div>

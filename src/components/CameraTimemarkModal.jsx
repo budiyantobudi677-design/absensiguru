@@ -2118,9 +2118,9 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
     const newPhoto = { id: Date.now(), dataUrl, timestamp: getSecureServerDate() }
     setCapturedPhotos((prev) => {
       const nextList = [...prev, newPhoto]
-      if (nextList.length >= 10) {
+      if (nextList.length >= 10 || onSelectPhoto) {
         setIsReviewMode(true)
-        setSelectedPhotoIndex(9)
+        setSelectedPhotoIndex(nextList.length - 1)
       } else {
         setSelectedPhotoIndex(nextList.length - 1)
       }
@@ -2933,88 +2933,92 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
               <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img src={activePhoto.dataUrl} alt={`Captured ${selectedPhotoIndex + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
 
-                {/* Badge Urutan Foto Terpilih */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '12px',
-                    left: '14px',
-                    background: 'rgba(15, 23, 42, 0.88)',
-                    border: '1px solid rgba(245, 158, 11, 0.6)',
-                    borderRadius: '20px',
-                    padding: '4px 12px',
-                    color: '#FDE047',
-                    fontSize: '0.8rem',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    backdropFilter: 'blur(8px)',
-                    zIndex: 30
-                  }}
-                >
-                  Foto #{selectedPhotoIndex + 1} dari {capturedPhotos.length}
-                </div>
+                {/* Badge Urutan Foto Terpilih (Sembunyikan jika mode pilih foto tugas luar) */}
+                {!onSelectPhoto && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '14px',
+                      background: 'rgba(15, 23, 42, 0.88)',
+                      border: '1px solid rgba(245, 158, 11, 0.6)',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      color: '#FDE047',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      backdropFilter: 'blur(8px)',
+                      zIndex: 30
+                    }}
+                  >
+                    Foto #{selectedPhotoIndex + 1} dari {capturedPhotos.length}
+                  </div>
+                )}
 
-                {/* Filmstrip Barisan Thumbnail Multi-Shot di Bawah Viewfinder */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: isFullScreen916 ? '150px' : '12px',
-                    left: '10px',
-                    right: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: capturedPhotos.length > 5 ? 'flex-start' : 'center',
-                    gap: '8px',
-                    background: 'rgba(15, 23, 42, 0.88)',
-                    backdropFilter: 'blur(10px)',
-                    padding: '6px 10px',
-                    borderRadius: '16px',
-                    overflowX: 'auto',
-                    zIndex: 35,
-                    border: '1px solid rgba(255,255,255,0.15)'
-                  }}
-                >
-                  {capturedPhotos.map((p, idx) => {
-                    const isSelected = selectedPhotoIndex === idx
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => setSelectedPhotoIndex(idx)}
-                        style={{
-                          position: 'relative',
-                          width: isSelected ? '52px' : '42px',
-                          height: isSelected ? '52px' : '42px',
-                          borderRadius: '8px',
-                          overflow: 'hidden',
-                          border: isSelected ? '2.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.3)',
-                          boxShadow: isSelected ? '0 0 10px rgba(245, 158, 11, 0.7)' : 'none',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <img src={p.dataUrl} alt={`Thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <span
+                {/* Filmstrip Barisan Thumbnail Multi-Shot di Bawah Viewfinder (Hanya di mode multi-shot biasa) */}
+                {!onSelectPhoto && capturedPhotos.length > 1 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: isFullScreen916 ? '150px' : '12px',
+                      left: '10px',
+                      right: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: capturedPhotos.length > 5 ? 'flex-start' : 'center',
+                      gap: '8px',
+                      background: 'rgba(15, 23, 42, 0.88)',
+                      backdropFilter: 'blur(10px)',
+                      padding: '6px 10px',
+                      borderRadius: '16px',
+                      overflowX: 'auto',
+                      zIndex: 35,
+                      border: '1px solid rgba(255,255,255,0.15)'
+                    }}
+                  >
+                    {capturedPhotos.map((p, idx) => {
+                      const isSelected = selectedPhotoIndex === idx
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => setSelectedPhotoIndex(idx)}
                           style={{
-                            position: 'absolute',
-                            bottom: '2px',
-                            right: '2px',
-                            background: isSelected ? '#F59E0B' : 'rgba(0,0,0,0.7)',
-                            color: isSelected ? '#1E1B18' : 'white',
-                            fontSize: '9px',
-                            fontWeight: '800',
-                            padding: '1px 3px',
-                            borderRadius: '3px'
+                            position: 'relative',
+                            width: isSelected ? '52px' : '42px',
+                            height: isSelected ? '52px' : '42px',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            border: isSelected ? '2.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.3)',
+                            boxShadow: isSelected ? '0 0 10px rgba(245, 158, 11, 0.7)' : 'none',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            transition: 'all 0.2s ease'
                           }}
                         >
-                          #{idx + 1}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
+                          <img src={p.dataUrl} alt={`Thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              bottom: '2px',
+                              right: '2px',
+                              background: isSelected ? '#F59E0B' : 'rgba(0,0,0,0.7)',
+                              color: isSelected ? '#1E1B18' : 'white',
+                              fontSize: '9px',
+                              fontWeight: '800',
+                              padding: '1px 3px',
+                              borderRadius: '3px'
+                            }}
+                          >
+                            #{idx + 1}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -3695,93 +3699,123 @@ export default function CameraTimemarkModal({ isOpen, onClose, profile, user, sc
           </>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', width: isLandscape ? '85px' : '100%', maxWidth: isFullScreen916 ? '380px' : '100%' }}>
-            {onSelectPhoto && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (activePhoto) {
-                    onSelectPhoto(activePhoto.dataUrl)
-                    onClose()
-                  }
-                }}
-                className="btn"
-                style={{
-                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                  color: 'white',
-                  fontSize: isLandscape ? '0.72rem' : '0.9rem',
-                  fontWeight: '700',
-                  padding: isLandscape ? '0.5rem 0.3rem' : '0.85rem 1rem',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.3rem',
-                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'center'
-                }}
-              >
-                <CheckSquare size={16} /> {isLandscape ? 'Gunakan' : 'Gunakan Foto Ini'}
-              </button>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.35rem' }}>
-              <button
-                type="button"
-                onClick={downloadPhoto}
-                title="Hanya simpan foto terpilih ini ke memori HP"
-                className="btn"
-                style={{ background: '#10B981', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
-              >
-                <Download size={13} /> Simpan
-              </button>
-              <button
-                type="button"
-                onClick={sharePhoto}
-                title="Bagikan foto terpilih ini"
-                className="btn"
-                style={{ background: '#38BDF8', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
-              >
-                <Share2 size={13} /> Bagikan
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeletePhoto(selectedPhotoIndex)}
-                title="Hapus foto terpilih ini"
-                className="btn"
-                style={{ background: 'rgba(239, 68, 68, 0.25)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
-              >
-                🗑️ Hapus
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr', gap: '0.35rem', marginTop: '0.2rem' }}>
-              {capturedPhotos.length < 10 && (
+            {onSelectPhoto ? (
+              /* Mode Pilih Foto Tugas Luar: Langsung 2 Tombol Bersih: Pakai Foto Ini & Ulangi (Tanpa perlu simpan ke HP) */
+              <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr', gap: '0.6rem', width: '100%' }}>
                 <button
                   type="button"
-                  onClick={returnToCamera}
-                  title="Kembali ke kamera untuk menambah foto"
+                  onClick={() => {
+                    if (activePhoto) {
+                      onSelectPhoto(activePhoto.dataUrl)
+                      onClose()
+                    }
+                  }}
                   className="btn"
-                  style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                  style={{
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    color: 'white',
+                    fontSize: isLandscape ? '0.72rem' : '0.9rem',
+                    fontWeight: '700',
+                    padding: isLandscape ? '0.6rem 0.3rem' : '0.85rem 1rem',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
-                  📸 +Foto
+                  <CheckSquare size={18} /> Pakai Foto Ini
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setCapturedPhotos([])
-                  setSelectedPhotoIndex(0)
-                  returnToCamera()
-                }}
-                title="Hapus semua foto sementara dan ulangi"
-                className="btn"
-                style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
-              >
-                <RefreshCw size={12} /> Ulangi
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapturedPhotos([])
+                    setSelectedPhotoIndex(0)
+                    returnToCamera()
+                  }}
+                  className="btn"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    color: '#FCA5A5',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    fontSize: isLandscape ? '0.72rem' : '0.9rem',
+                    fontWeight: '600',
+                    padding: isLandscape ? '0.6rem 0.3rem' : '0.85rem 1rem',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <RefreshCw size={16} /> Ulangi
+                </button>
+              </div>
+            ) : (
+              /* Mode Kamera Timemark Standar: Opsi Simpan, Bagikan, Hapus, +Foto, Ulangi */
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr 1fr', gap: '0.35rem' }}>
+                  <button
+                    type="button"
+                    onClick={downloadPhoto}
+                    title="Hanya simpan foto terpilih ini ke memori HP"
+                    className="btn"
+                    style={{ background: '#10B981', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                  >
+                    <Download size={13} /> Simpan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sharePhoto}
+                    title="Bagikan foto terpilih ini"
+                    className="btn"
+                    style={{ background: '#38BDF8', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                  >
+                    <Share2 size={13} /> Bagikan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePhoto(selectedPhotoIndex)}
+                    title="Hapus foto terpilih ini"
+                    className="btn"
+                    style={{ background: 'rgba(239, 68, 68, 0.25)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                  >
+                    🗑️ Hapus
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isLandscape ? '1fr' : '1fr 1fr', gap: '0.35rem', marginTop: '0.2rem' }}>
+                  {capturedPhotos.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={returnToCamera}
+                      title="Kembali ke kamera untuk menambah foto"
+                      className="btn"
+                      style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.4)', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                    >
+                      📸 +Foto
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCapturedPhotos([])
+                      setSelectedPhotoIndex(0)
+                      returnToCamera()
+                    }}
+                    title="Hapus semua foto sementara dan ulangi"
+                    className="btn"
+                    style={{ background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: isLandscape ? '0.68rem' : '0.75rem', padding: '0.5rem 0.3rem' }}
+                  >
+                    <RefreshCw size={12} /> Ulangi
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

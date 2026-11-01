@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare, Lock } from 'lucide-react'
+import { LogOut, Clock, CheckCircle, CheckCircle2, Users, UserCircle, Calendar, Fingerprint, Check, WifiOff, RefreshCw, Bell, Trash2, Camera, History, Download, FileSpreadsheet, FileText, Sun, Moon, MapPin, BookOpen, Layers, ArrowLeft, Award, ChevronRight, Briefcase, Upload, Image as ImageIcon, X, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, AlertTriangle, Save, ShieldCheck, ShieldAlert, MessageSquare, Lock, Paperclip } from 'lucide-react'
 import CameraTimemarkModal from '../../components/CameraTimemarkModal'
 import InputPresensiMurid from '../../components/kbm/InputPresensiMurid'
 import InputJurnalMengajar from '../../components/kbm/InputJurnalMengajar'
@@ -393,6 +393,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   })
   const [izinMode, setIzinMode] = useState(null) // 'sakit' or 'izin'
   const [keterangan, setKeterangan] = useState('')
+  const [suratSakitFile, setSuratSakitFile] = useState(null) // { type: 'pdf' | 'image', name: string, size?: number, dataUrl: string }
   const [currentTime, setCurrentTime] = useState(new Date())
 
   // State Tugas Luar / Pelatihan
@@ -1941,8 +1942,44 @@ export default function DashboardGuru({ roleOverride = null }) {
         }
       }
       
+      // Penanganan lampiran surat sakit jika ada
+      let finalKeterangan = keterangan
+      if (jenis === 'sakit' && suratSakitFile) {
+        let uploadedSuratUrl = null
+        if (!isOffline && navigator.onLine) {
+          try {
+            const fileExt = suratSakitFile.type === 'pdf' ? 'pdf' : 'webp'
+            const fileName = `surat_sakit-${user.id}-${Date.now()}.${fileExt}`
+            const res = await fetch(suratSakitFile.dataUrl)
+            const blob = await res.blob()
+            const contentType = suratSakitFile.type === 'pdf' ? 'application/pdf' : 'image/webp'
+            const { error: upErr } = await supabase.storage.from('avatars').upload(fileName, blob, { contentType })
+            if (!upErr) {
+              const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+              uploadedSuratUrl = publicUrl
+            }
+          } catch (e) {
+            console.warn("Upload surat sakit error:", e)
+          }
+        }
+
+        if (uploadedSuratUrl) {
+          finalKeterangan = finalKeterangan ? `${finalKeterangan} | Surat: ${uploadedSuratUrl}` : `Sakit | Surat: ${uploadedSuratUrl}`
+        } else if (suratSakitFile.type === 'pdf') {
+          finalKeterangan = finalKeterangan ? `${finalKeterangan} [SURAT_SAKIT_PDF:${suratSakitFile.name}]` : `[SURAT_SAKIT_PDF:${suratSakitFile.name}]`
+        } else {
+          finalKeterangan = finalKeterangan ? `${finalKeterangan} [SURAT_SAKIT_IMG:${suratSakitFile.dataUrl}]` : `[SURAT_SAKIT_IMG:${suratSakitFile.dataUrl}]`
+        }
+
+        try {
+          localStorage.setItem(`surat_sakit_${today}_${user.id}`, JSON.stringify(suratSakitFile))
+        } catch (e) {}
+      }
+
       if (isOffline || !navigator.onLine) {
-         saveOffline(jenis, loc, now, today, keterangan)
+         saveOffline(jenis, loc, now, today, finalKeterangan)
+         setSuratSakitFile(null)
+         setKeterangan('')
          return
       }
 
@@ -1954,7 +1991,7 @@ export default function DashboardGuru({ roleOverride = null }) {
           today,
           loc,
           status: (jenis === 'sakit' || jenis === 'izin') ? jenis : (jenis === 'masuk' ? masukStatus : (todayAbsensi?.status || 'hadir')),
-          keterangan,
+          keterangan: finalKeterangan,
           supabase,
           userProfile: profile || user,
           shiftNama: todayShift?.shiftName,
@@ -1996,6 +2033,8 @@ export default function DashboardGuru({ roleOverride = null }) {
           setTodayStatus(jenis)
           setTodayAbsensi(insData)
           setIzinMode(null)
+          setSuratSakitFile(null)
+          setKeterangan('')
           try {
             localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(insData))
           } catch (e) {}
@@ -2003,7 +2042,9 @@ export default function DashboardGuru({ roleOverride = null }) {
         }
       } catch (error) {
         // Fallback to offline if supabase fails
-        saveOffline(jenis, loc, now, today, keterangan)
+        saveOffline(jenis, loc, now, today, finalKeterangan)
+        setSuratSakitFile(null)
+        setKeterangan('')
       }
       setLoading(false)
     } catch (err) {
@@ -2034,6 +2075,72 @@ export default function DashboardGuru({ roleOverride = null }) {
       img.onerror = () => resolve(imageSrc)
       img.src = imageSrc
     })
+  }
+
+  const cleanKeterangan = (ket) => {
+    if (!ket) return ''
+    return ket
+      .replace(/\|?\s*Foto:\s*https?:\/\/[^\s|]+/gi, '')
+      .replace(/\[FOTO_WEBP:[^\]]+\]/gi, '')
+      .replace(/data:image\/[a-zA-Z]+;base64,[^\s|]+/gi, '')
+      .replace(/\|?\s*Surat:\s*https?:\/\/[^\s|]+/gi, '')
+      .replace(/\[SURAT_SAKIT_IMG:[^\]]+\]/gi, '')
+      .replace(/\[SURAT_SAKIT_PDF:[^\]]+\]/gi, '')
+      .trim()
+  }
+
+  const handleSuratSakitChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 5 * 1024 * 1024) {
+      showPopup("File Terlalu Besar", "Ukuran maksimal surat sakit adalah 5MB.", "warning")
+      return
+    }
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    const reader = new FileReader()
+
+    reader.onload = async (event) => {
+      const dataUrl = event.target.result
+      if (isPdf) {
+        setSuratSakitFile({
+          type: 'pdf',
+          name: file.name,
+          size: file.size,
+          dataUrl
+        })
+      } else {
+        try {
+          const webp = await convertToWebP(dataUrl, 0.75, 1024)
+          setSuratSakitFile({
+            type: 'image',
+            name: file.name,
+            size: file.size,
+            dataUrl: webp
+          })
+        } catch {
+          setSuratSakitFile({
+            type: 'image',
+            name: file.name,
+            size: file.size,
+            dataUrl
+          })
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const getStoredSuratSakitForToday = () => {
+    if (suratSakitFile) return suratSakitFile
+    const today = getLocalDateString()
+    try {
+      const saved = localStorage.getItem(`surat_sakit_${today}_${user?.id}`)
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
   }
 
   const getStoredPhotoForToday = () => {
@@ -2940,10 +3047,52 @@ export default function DashboardGuru({ roleOverride = null }) {
                   </>
                 ) : null
               ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
-                <div className="card" style={{ padding: '2rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626' }}>
-                  <CheckCircle size={48} style={{ margin: '0 auto 1rem auto' }} />
-                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
-                  <p style={{ margin: 0, fontSize: '0.9rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                <div className="card" style={{ padding: '1.75rem 1.5rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626', textAlign: 'center' }}>
+                  <CheckCircle size={44} style={{ margin: '0 auto 0.75rem auto', color: '#DC2626' }} />
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.35rem', fontWeight: 'bold' }}>Anda Terdaftar {todayStatus.toUpperCase()}</h3>
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.88rem' }}>Semoga lekas membaik dan hari Anda menyenangkan. Anda tidak perlu Clock Out hari ini.</p>
+                  
+                  {todayAbsensi?.keterangan && (
+                    <div style={{ textAlign: 'left', background: 'white', padding: '0.65rem 0.9rem', borderRadius: '12px', border: '1px solid #FECACA', fontSize: '0.85rem', color: '#374151', margin: '0 auto 0.75rem auto', maxWidth: '340px' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#6B7280', marginBottom: '0.2rem' }}>Keterangan:</div>
+                      <div>{cleanKeterangan(todayAbsensi.keterangan)}</div>
+                    </div>
+                  )}
+
+                  {getStoredSuratSakitForToday() && (
+                    <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#991B1B', marginBottom: '0.4rem' }}>Lampiran Surat Sakit:</div>
+                      {getStoredSuratSakitForToday().type === 'image' ? (
+                        <img
+                          src={getStoredSuratSakitForToday().dataUrl}
+                          alt="Surat Sakit"
+                          style={{ maxHeight: '160px', width: 'auto', maxWidth: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto', display: 'block' }}
+                        />
+                      ) : (
+                        <a
+                          href={getStoredSuratSakitForToday().dataUrl}
+                          download={getStoredSuratSakitForToday().name || 'Surat_Sakit.pdf'}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.6rem 1rem',
+                            borderRadius: '10px',
+                            background: 'white',
+                            color: '#DC2626',
+                            border: '1px solid #FCA5A5',
+                            textDecoration: 'none',
+                            fontWeight: 600,
+                            fontSize: '0.82rem'
+                          }}
+                        >
+                          <FileText size={16} /> Unduh Dokumen PDF
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : todayAbsensi?.waktu_pulang ? (
                 <div className="card" style={{ padding: '1.5rem', background: isTodayLate ? '#FFFBEB' : '#F0FDF4', border: isTodayLate ? '1.5px solid #FCD34D' : '1px solid #BBF7D0', color: isTodayLate ? '#92400E' : '#166534', textAlign: 'center' }}>
@@ -3119,8 +3268,120 @@ export default function DashboardGuru({ roleOverride = null }) {
               <div className="card" style={{ marginTop: '2rem', textAlign: 'left' }}>
                 <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>Form {izinMode === 'sakit' ? 'Sakit' : 'Izin'}</h4>
                 <textarea className="input" rows="3" placeholder="Masukkan keterangan..." value={keterangan} onChange={e => setKeterangan(e.target.value)} style={{ marginBottom: '1rem' }} />
+
+                {izinMode === 'sakit' && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
+                      Lampiran Surat Sakit <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 400 }}>(Opsional - PDF / Gambar)</span>
+                    </label>
+
+                    {!suratSakitFile ? (
+                      <div>
+                        <input
+                          type="file"
+                          id="suratSakitInputGuru"
+                          accept="image/*,application/pdf"
+                          style={{ display: 'none' }}
+                          onChange={handleSuratSakitChange}
+                        />
+                        <label
+                          htmlFor="suratSakitInputGuru"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 1rem',
+                            border: '1.5px dashed #CBD5E1',
+                            borderRadius: '12px',
+                            background: '#F8FAFC',
+                            color: '#475569',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <Paperclip size={18} color="#64748B" />
+                          <span>Pilih Dokumen (PDF / Foto)</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.6rem 0.85rem',
+                          background: '#F1F5F9',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '12px',
+                          gap: '0.75rem'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
+                          {suratSakitFile.type === 'image' ? (
+                            <img
+                              src={suratSakitFile.dataUrl}
+                              alt="Preview Surat Sakit"
+                              style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #CBD5E1', flexShrink: 0 }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '42px',
+                                height: '42px',
+                                borderRadius: '8px',
+                                background: '#FEE2E2',
+                                color: '#EF4444',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                fontWeight: 800,
+                                fontSize: '0.7rem'
+                              }}
+                            >
+                              PDF
+                            </div>
+                          )}
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {suratSakitFile.name}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                              {suratSakitFile.type === 'pdf' ? 'Dokumen PDF' : 'Foto Surat'} {suratSakitFile.size ? `• ${(suratSakitFile.size / 1024).toFixed(0)} KB` : ''}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSuratSakitFile(null)}
+                          title="Hapus Lampiran"
+                          style={{
+                            background: '#FEE2E2',
+                            color: '#EF4444',
+                            border: 'none',
+                            borderRadius: '8px',
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
-                  <button onClick={() => setIzinMode(null)} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
+                  <button onClick={() => { setIzinMode(null); setSuratSakitFile(null); }} className="btn" style={{ background: '#E2E8F0', flex: 1 }}>Batal</button>
                   <button onClick={() => handleAbsen(izinMode)} className="btn btn-primary" style={{ flex: 1 }}>Kirim</button>
                 </div>
               </div>

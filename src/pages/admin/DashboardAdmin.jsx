@@ -295,9 +295,9 @@ export default function DashboardAdmin() {
     if (!item) return null
     if (item.foto || item.foto_masuk) return item.foto || item.foto_masuk
     if (item.keterangan) {
-      const matchUrl = item.keterangan.match(/Foto:\s*(https?:\/\/[^\s|]+)/i)
+      const matchUrl = item.keterangan.match(/(?:Foto|Surat):\s*(https?:\/\/[^\s|]+)/i)
       if (matchUrl && matchUrl[1]) return matchUrl[1]
-      const matchWebp = item.keterangan.match(/\[FOTO_WEBP:([^\]]+)\]/i)
+      const matchWebp = item.keterangan.match(/\[(?:FOTO_WEBP|SURAT_SAKIT_IMG):([^\]]+)\]/i)
       if (matchWebp && matchWebp[1]) return matchWebp[1]
       const matchData = item.keterangan.match(/(data:image\/[a-zA-Z]+;base64,[^\s|]+)/i)
       if (matchData && matchData[1]) return matchData[1]
@@ -313,6 +313,9 @@ export default function DashboardAdmin() {
       .replace(/\|?\s*Foto:\s*https?:\/\/[^\s|]+/gi, '')
       .replace(/\[FOTO_WEBP:[^\]]+\]/gi, '')
       .replace(/data:image\/[a-zA-Z]+;base64,[^\s|]+/gi, '')
+      .replace(/\|?\s*Surat:\s*https?:\/\/[^\s|]+/gi, '')
+      .replace(/\[SURAT_SAKIT_IMG:[^\]]+\]/gi, '')
+      .replace(/\[SURAT_SAKIT_PDF:[^\]]+\]/gi, '')
       .trim()
   }
 
