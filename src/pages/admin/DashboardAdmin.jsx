@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload, MessageSquare } from 'lucide-react'
+import { LogOut, Users, FileText, Settings, BookOpen, Layers, ShieldCheck, ArrowLeft, Download, Search, ArrowUpDown, UserCircle, Activity, Clock, XCircle, Bell, Trash2, X, Sun, Moon, MapPin, Menu, Award, ChevronRight, CheckCircle2, FileSpreadsheet, School, Briefcase, Camera, ExternalLink, Image as ImageIcon, Edit3, Save, Sparkles, Key, Eye, EyeOff, Loader2, AlertCircle, Fingerprint, Check, History, AlertTriangle, Calendar, RefreshCw, Upload, MessageSquare, Star } from 'lucide-react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
@@ -232,7 +232,8 @@ export default function DashboardAdmin() {
   const [laporanTahun, setLaporanTahun] = useState(new Date().getFullYear())
   
   const [pegawaiSearch, setPegawaiSearch] = useState('')
-  const [pegawaiSort, setPegawaiSort] = useState('name-asc')
+  const [pegawaiSort, setPegawaiSort] = useState('role-priority')
+  const [pegawaiRoleFilter, setPegawaiRoleFilter] = useState('all') // 'all' | 'kepsek' | 'guru' | 'admin' | 'tendik'
   const [editingPegawai, setEditingPegawai] = useState(null) // Pegawai yang sedang diedit perannya oleh Admin
   const [savingPegawai, setSavingPegawai] = useState(false)
   const [editPegawaiRole, setEditPegawaiRole] = useState('guru_kelas')
@@ -1050,7 +1051,10 @@ export default function DashboardAdmin() {
       }
 
       // 2. Akun Kepala Sekolah: Muncul HANYA jika akun kepala sekolah sudah ditentukan
-      const existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah'))
+      let existingKepsekIdx = merged.findIndex(p => p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah'))
+      if (existingKepsekIdx < 0 && overrideKepsek?.email) {
+        existingKepsekIdx = merged.findIndex(p => p.email && p.email.toLowerCase().trim() === overrideKepsek.email.toLowerCase().trim())
+      }
       const hasKepsekAccount = existingKepsekIdx >= 0 || (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg))
 
       if (hasKepsekAccount) {
@@ -1074,12 +1078,47 @@ export default function DashboardAdmin() {
           if (overrideKepsek?.email) merged[existingKepsekIdx].email = overrideKepsek.email
           merged[existingKepsekIdx].full_name = bestNama
           merged[existingKepsekIdx].nip = bestNip
+          merged[existingKepsekIdx].role = 'kepsek'
+          merged[existingKepsekIdx].penugasan_tipe = 'kepsek'
           if (kepsekJabatan && kepsekJabatan.trim()) merged[existingKepsekIdx].jabatan = kepsekJabatan
+          if (!isValidUUID(merged[existingKepsekIdx].id)) {
+            merged[existingKepsekIdx].id = (overrideKepsek?.userId && isValidUUID(overrideKepsek.userId)) ? overrideKepsek.userId : generateUUID()
+          }
         } else if (overrideKepsek && overrideKepsek.email) {
+          let validKepsekId = (overrideKepsek.userId && isValidUUID(overrideKepsek.userId)) ? overrideKepsek.userId : null
+          if (!validKepsekId) {
+            const matchProf = profRes.data?.find(p => p.email && p.email.toLowerCase().trim() === overrideKepsek.email.toLowerCase().trim())
+            if (matchProf?.id && isValidUUID(matchProf.id)) {
+              validKepsekId = matchProf.id
+            } else {
+              validKepsekId = generateUUID()
+            }
+          }
+
+          // Pastikan data profil tersimpan di Supabase agar tidak error invalid syntax uuid atau fk absensi
+          supabase.from('profiles').upsert([{
+            id: validKepsekId,
+            email: overrideKepsek.email.toLowerCase().trim(),
+            full_name: bestNama,
+            role: 'kepsek',
+            nip: bestNip,
+            jabatan: kepsekJabatan || 'Kepala Sekolah'
+          }], { onConflict: 'id' }).then(() => {}).catch(() => {})
+
+          if (overrideKepsek.userId !== validKepsekId) {
+            updateLeaderAccountCredentials({
+              role: 'kepsek',
+              email: overrideKepsek.email,
+              fullName: bestNama,
+              targetUserId: validKepsekId,
+              supabase
+            }).catch(() => {})
+          }
+
           const adminIdx = merged.findIndex(p => p.role === 'admin' || p.penugasan_tipe === 'admin')
           const insertIdx = adminIdx >= 0 ? adminIdx + 1 : 0
           merged.splice(insertIdx, 0, {
-            id: overrideKepsek.userId || 'kepsek-active-id',
+            id: validKepsekId,
             full_name: bestNama,
             email: overrideKepsek.email,
             nip: bestNip,
@@ -1960,21 +1999,93 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
     return result
   }
 
+  const roleCounts = useMemo(() => {
+    let kepsek = 0, admin = 0, guru = 0, tendik = 0;
+    (pegawaiData || []).forEach(p => {
+      const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah');
+      const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin';
+      const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
+      const isTendik = !isKepsek && !isAdmin && (guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan));
+      if (isKepsek) kepsek++;
+      else if (isAdmin) admin++;
+      else if (isTendik) tendik++;
+      else guru++;
+    });
+    return { all: (pegawaiData || []).length, kepsek, admin, guru, tendik };
+  }, [pegawaiData]);
+
   const getFilteredPegawai = () => {
-    let result = pegawaiData.filter(p => {
-      const name = (p.full_name || p.email || '').toLowerCase()
-      return name.includes(pegawaiSearch.toLowerCase())
-    })
+    let result = (pegawaiData || []).filter(p => {
+      const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah');
+      const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin';
+      const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
+      const isTendik = !isKepsek && !isAdmin && (guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan));
+      const isGuru = !isKepsek && !isAdmin && !isTendik;
+
+      if (pegawaiRoleFilter === 'kepsek' && !isKepsek) return false;
+      if (pegawaiRoleFilter === 'admin' && !isAdmin) return false;
+      if (pegawaiRoleFilter === 'guru' && !isGuru) return false;
+      if (pegawaiRoleFilter === 'tendik' && !isTendik) return false;
+
+      const q = pegawaiSearch.toLowerCase().trim();
+      if (!q) return true;
+      const name = (p.full_name || p.email || '').toLowerCase();
+      const nip = (p.nip || '').toLowerCase();
+      const jabatan = (p.jabatan || '').toLowerCase();
+      const mapel = (p.mata_pelajaran || localStorage.getItem(`guru_mapel_${p.id}`) || '').toLowerCase();
+      return name.includes(q) || nip.includes(q) || jabatan.includes(q) || mapel.includes(q);
+    });
+
     result.sort((a, b) => {
-      const nameA = (a.full_name || a.email || '').toLowerCase()
-      const nameB = (b.full_name || b.email || '').toLowerCase()
-      if (pegawaiSort === 'name-asc') return nameA.localeCompare(nameB)
-      if (pegawaiSort === 'name-desc') return nameB.localeCompare(nameA)
-      if (pegawaiSort === 'newest') return new Date(b.created_at) - new Date(a.created_at)
-      return 0
-    })
-    return result
-  }
+      const isKepsekA = a.role === 'kepsek' || a.penugasan_tipe === 'kepsek' || (a.jabatan || '').toLowerCase().includes('kepala sekolah');
+      const isKepsekB = b.role === 'kepsek' || b.penugasan_tipe === 'kepsek' || (b.jabatan || '').toLowerCase().includes('kepala sekolah');
+      const isAdminA = a.role === 'admin' || a.penugasan_tipe === 'admin';
+      const isAdminB = b.role === 'admin' || b.penugasan_tipe === 'admin';
+      const guruTipeA = localStorage.getItem(`guru_tipe_${a.id}`) || a.penugasan_tipe || a.role;
+      const guruTipeB = localStorage.getItem(`guru_tipe_${b.id}`) || b.penugasan_tipe || b.role;
+      const isTendikA = !isKepsekA && !isAdminA && (guruTipeA === 'tendik' || a.role === 'tendik' || a.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(a.jabatan));
+      const isTendikB = !isKepsekB && !isAdminB && (guruTipeB === 'tendik' || b.role === 'tendik' || b.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(b.jabatan));
+
+      const getRoleWeight = (isK, isA, isT) => {
+        if (isK) return 1;
+        if (isA) return 2;
+        if (!isK && !isA && !isT) return 3;
+        return 4;
+      };
+
+      const nameA = (a.full_name || a.email || '').toLowerCase();
+      const nameB = (b.full_name || b.email || '').toLowerCase();
+
+      if (pegawaiSort === 'role-priority') {
+        const weightA = getRoleWeight(isKepsekA, isAdminA, isTendikA);
+        const weightB = getRoleWeight(isKepsekB, isAdminB, isTendikB);
+        if (weightA !== weightB) return weightA - weightB;
+        return nameA.localeCompare(nameB);
+      }
+
+      if (pegawaiSort === 'name-asc') {
+        return nameA.localeCompare(nameB);
+      }
+      if (pegawaiSort === 'name-desc') {
+        return nameB.localeCompare(nameA);
+      }
+      if (pegawaiSort === 'nip-asc') {
+        const nipA = (a.nip || '').replace(/\D/g, '') || '9999999999';
+        const nipB = (b.nip || '').replace(/\D/g, '') || '9999999999';
+        return nipA.localeCompare(nipB);
+      }
+      if (pegawaiSort === 'newest') {
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      }
+
+      const weightA = getRoleWeight(isKepsekA, isAdminA, isTendikA);
+      const weightB = getRoleWeight(isKepsekB, isAdminB, isTendikB);
+      if (weightA !== weightB) return weightA - weightB;
+      return nameA.localeCompare(nameB);
+    });
+
+    return result;
+  };
 
   const filteredAbsensi = getFilteredAndSortedData()
   const filteredPegawai = getFilteredPegawai()
@@ -2825,47 +2936,354 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 </div>
              </div>
              
-             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ position: 'relative' }}>
                    <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
-                   <input type="text" className="input" placeholder="Cari nama guru..." value={pegawaiSearch} onChange={(e) => setPegawaiSearch(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }} />
+                   <input type="text" className="input" placeholder="Cari nama guru, NIP, mapel, atau jabatan..." value={pegawaiSearch} onChange={(e) => setPegawaiSearch(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', fontSize: '0.9rem' }} />
                 </div>
                 <div style={{ position: 'relative' }}>
                    <ArrowUpDown size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
-                   <select className="input" value={pegawaiSort} onChange={(e) => setPegawaiSort(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', appearance: 'none', fontSize: '0.9rem' }}>
+                   <select className="input" value={pegawaiSort} onChange={(e) => setPegawaiSort(e.target.value)} style={{ paddingLeft: '2.5rem', borderRadius: '12px', appearance: 'none', fontSize: '0.9rem', cursor: 'pointer' }}>
+                      <option value="role-priority">👑 Urutan Jabatan (Kepsek ➔ Admin ➔ Guru ➔ Tendik)</option>
                       <option value="name-asc">Nama (A - Z)</option>
                       <option value="name-desc">Nama (Z - A)</option>
+                      <option value="nip-asc">NIP (Terkecil - Terbesar)</option>
                       <option value="newest">Terbaru Ditambahkan</option>
                    </select>
                 </div>
+             </div>
+
+             {/* Filter Chips / Tabs Kategori Pegawai */}
+             <div style={{
+               display: 'flex',
+               gap: '0.5rem',
+               overflowX: 'auto',
+               paddingBottom: '0.5rem',
+               marginBottom: '1.25rem',
+               scrollbarWidth: 'none'
+             }}>
+               <button
+                 type="button"
+                 onClick={() => setPegawaiRoleFilter('all')}
+                 style={{
+                   padding: '0.55rem 1rem',
+                   borderRadius: '12px',
+                   border: pegawaiRoleFilter === 'all' ? '2px solid #2563EB' : '1px solid var(--border)',
+                   background: pegawaiRoleFilter === 'all' ? '#2563EB' : 'var(--surface)',
+                   color: pegawaiRoleFilter === 'all' ? '#FFFFFF' : 'var(--text)',
+                   fontWeight: '700',
+                   fontSize: '0.82rem',
+                   cursor: 'pointer',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   whiteSpace: 'nowrap',
+                   transition: 'all 0.15s',
+                   boxShadow: pegawaiRoleFilter === 'all' ? '0 4px 12px rgba(37, 99, 235, 0.25)' : 'none'
+                 }}
+               >
+                 <span>👥 Semua</span>
+                 <span style={{
+                   fontSize: '0.72rem',
+                   padding: '1px 6px',
+                   borderRadius: '999px',
+                   background: pegawaiRoleFilter === 'all' ? 'rgba(255,255,255,0.25)' : 'var(--border)',
+                   color: pegawaiRoleFilter === 'all' ? '#FFFFFF' : 'var(--text-muted)'
+                 }}>
+                   {roleCounts.all}
+                 </span>
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => setPegawaiRoleFilter('kepsek')}
+                 style={{
+                   padding: '0.55rem 1rem',
+                   borderRadius: '12px',
+                   border: pegawaiRoleFilter === 'kepsek' ? '2px solid #D97706' : '1px solid #FDE68A',
+                   background: pegawaiRoleFilter === 'kepsek' ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' : (darkMode ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7'),
+                   color: pegawaiRoleFilter === 'kepsek' ? '#FFFFFF' : (darkMode ? '#FDE68A' : '#92400E'),
+                   fontWeight: '700',
+                   fontSize: '0.82rem',
+                   cursor: 'pointer',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   whiteSpace: 'nowrap',
+                   transition: 'all 0.15s',
+                   boxShadow: pegawaiRoleFilter === 'kepsek' ? '0 4px 12px rgba(217, 119, 6, 0.3)' : 'none'
+                 }}
+               >
+                 <Star size={14} fill={pegawaiRoleFilter === 'kepsek' ? '#FFFFFF' : '#D97706'} color={pegawaiRoleFilter === 'kepsek' ? '#FFFFFF' : '#D97706'} />
+                 <span>Kepala Sekolah</span>
+                 <span style={{
+                   fontSize: '0.72rem',
+                   padding: '1px 6px',
+                   borderRadius: '999px',
+                   background: pegawaiRoleFilter === 'kepsek' ? 'rgba(255,255,255,0.25)' : 'rgba(245, 158, 11, 0.25)',
+                   color: pegawaiRoleFilter === 'kepsek' ? '#FFFFFF' : '#B45309'
+                 }}>
+                   {roleCounts.kepsek}
+                 </span>
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => setPegawaiRoleFilter('guru')}
+                 style={{
+                   padding: '0.55rem 1rem',
+                   borderRadius: '12px',
+                   border: pegawaiRoleFilter === 'guru' ? '2px solid #0284C7' : '1px solid #BAE6FD',
+                   background: pegawaiRoleFilter === 'guru' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : (darkMode ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE'),
+                   color: pegawaiRoleFilter === 'guru' ? '#FFFFFF' : (darkMode ? '#BAE6FD' : '#0369A1'),
+                   fontWeight: '700',
+                   fontSize: '0.82rem',
+                   cursor: 'pointer',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   whiteSpace: 'nowrap',
+                   transition: 'all 0.15s',
+                   boxShadow: pegawaiRoleFilter === 'guru' ? '0 4px 12px rgba(2, 132, 199, 0.3)' : 'none'
+                 }}
+               >
+                 <span>👨‍🏫 Guru</span>
+                 <span style={{
+                   fontSize: '0.72rem',
+                   padding: '1px 6px',
+                   borderRadius: '999px',
+                   background: pegawaiRoleFilter === 'guru' ? 'rgba(255,255,255,0.25)' : 'rgba(2, 132, 199, 0.25)',
+                   color: pegawaiRoleFilter === 'guru' ? '#FFFFFF' : '#0369A1'
+                 }}>
+                   {roleCounts.guru}
+                 </span>
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => setPegawaiRoleFilter('admin')}
+                 style={{
+                   padding: '0.55rem 1rem',
+                   borderRadius: '12px',
+                   border: pegawaiRoleFilter === 'admin' ? '2px solid #7C3AED' : '1px solid #DDD6FE',
+                   background: pegawaiRoleFilter === 'admin' ? 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' : (darkMode ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE'),
+                   color: pegawaiRoleFilter === 'admin' ? '#FFFFFF' : (darkMode ? '#DDD6FE' : '#6D28D9'),
+                   fontWeight: '700',
+                   fontSize: '0.82rem',
+                   cursor: 'pointer',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   whiteSpace: 'nowrap',
+                   transition: 'all 0.15s',
+                   boxShadow: pegawaiRoleFilter === 'admin' ? '0 4px 12px rgba(124, 58, 237, 0.3)' : 'none'
+                 }}
+               >
+                 <span>🛡️ Admin</span>
+                 <span style={{
+                   fontSize: '0.72rem',
+                   padding: '1px 6px',
+                   borderRadius: '999px',
+                   background: pegawaiRoleFilter === 'admin' ? 'rgba(255,255,255,0.25)' : 'rgba(124, 58, 237, 0.25)',
+                   color: pegawaiRoleFilter === 'admin' ? '#FFFFFF' : '#6D28D9'
+                 }}>
+                   {roleCounts.admin}
+                 </span>
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => setPegawaiRoleFilter('tendik')}
+                 style={{
+                   padding: '0.55rem 1rem',
+                   borderRadius: '12px',
+                   border: pegawaiRoleFilter === 'tendik' ? '2px solid #059669' : '1px solid #A7F3D0',
+                   background: pegawaiRoleFilter === 'tendik' ? 'linear-gradient(135deg, #059669 0%, #047857 100%)' : (darkMode ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7'),
+                   color: pegawaiRoleFilter === 'tendik' ? '#FFFFFF' : (darkMode ? '#A7F3D0' : '#047857'),
+                   fontWeight: '700',
+                   fontSize: '0.82rem',
+                   cursor: 'pointer',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   whiteSpace: 'nowrap',
+                   transition: 'all 0.15s',
+                   boxShadow: pegawaiRoleFilter === 'tendik' ? '0 4px 12px rgba(5, 150, 105, 0.3)' : 'none'
+                 }}
+               >
+                 <span>💼 Tendik</span>
+                 <span style={{
+                   fontSize: '0.72rem',
+                   padding: '1px 6px',
+                   borderRadius: '999px',
+                   background: pegawaiRoleFilter === 'tendik' ? 'rgba(255,255,255,0.25)' : 'rgba(5, 150, 105, 0.25)',
+                   color: pegawaiRoleFilter === 'tendik' ? '#FFFFFF' : '#059669'
+                 }}>
+                   {roleCounts.tendik}
+                 </span>
+               </button>
              </div>
 
              {loadingData ? <p className="text-center text-muted">Memuat data...</p> : (
                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1.15rem' }}>
                  {filteredPegawai.length === 0 && <p className="text-center text-muted">Tidak ada pegawai.</p>}
                    {filteredPegawai.map(p => {
-                    const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek';
+                    const isKepsek = p.role === 'kepsek' || p.penugasan_tipe === 'kepsek' || (p.jabatan || '').toLowerCase().includes('kepala sekolah');
                     const isAdmin = p.role === 'admin' || p.penugasan_tipe === 'admin';
                     const guruTipe = localStorage.getItem(`guru_tipe_${p.id}`) || p.penugasan_tipe || p.role;
                     const isTendik = !isKepsek && !isAdmin && (guruTipe === 'tendik' || p.role === 'tendik' || p.penugasan_tipe === 'tendik' || ['Operator Dapodik', 'Operator Sekolah', 'Pustakawan', 'Bujang', 'Satpam'].includes(p.jabatan));
                     const isMapel = !isKepsek && !isAdmin && !isTendik && (guruTipe === 'guru_mapel' || p.role === 'guru_mapel');
+
+                    // Kotak berbeda warna untuk setiap peran:
+                    // 1. Kepsek: Gold/Amber Luxury (Pimpinan)
+                    // 2. Admin: Purple/Indigo Royal (Administrator)
+                    // 3. Tendik: Emerald/Teal Profesional (Tenaga Kependidikan)
+                    // 4. Guru: Sky Blue / Cyan Segar (Pendidik)
+                    let cardBg = 'var(--surface)';
+                    let cardBorder = '1.5px solid var(--border)';
+                    let cardShadow = '0 4px 14px rgba(0,0,0,0.03)';
+
+                    if (isKepsek) {
+                      cardBg = darkMode
+                        ? 'linear-gradient(145deg, rgba(245, 158, 11, 0.14) 0%, rgba(180, 83, 9, 0.26) 100%)'
+                        : 'linear-gradient(145deg, #FFFDF5 0%, #FEF3C7 100%)';
+                      cardBorder = '2px solid #F59E0B';
+                      cardShadow = '0 8px 24px rgba(245, 158, 11, 0.18)';
+                    } else if (isAdmin) {
+                      cardBg = darkMode
+                        ? 'linear-gradient(145deg, rgba(139, 92, 246, 0.14) 0%, rgba(109, 40, 217, 0.24) 100%)'
+                        : 'linear-gradient(145deg, #FAF7FF 0%, #EDE9FE 100%)';
+                      cardBorder = '1.5px solid #8B5CF6';
+                      cardShadow = '0 6px 20px rgba(139, 92, 246, 0.12)';
+                    } else if (isTendik) {
+                      cardBg = darkMode
+                        ? 'linear-gradient(145deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.22) 100%)'
+                        : 'linear-gradient(145deg, #F0FDF4 0%, #DCFCE7 100%)';
+                      cardBorder = '1.5px solid #10B981';
+                      cardShadow = '0 6px 18px rgba(16, 185, 129, 0.1)';
+                    } else {
+                      cardBg = darkMode
+                        ? 'linear-gradient(145deg, rgba(56, 189, 248, 0.12) 0%, rgba(14, 165, 233, 0.22) 100%)'
+                        : 'linear-gradient(145deg, #F8FAFC 0%, #E0F2FE 100%)';
+                      cardBorder = '1.5px solid #38BDF8';
+                      cardShadow = '0 6px 18px rgba(14, 165, 233, 0.1)';
+                    }
+
                     return (
                       <div
                         key={p.id}
                         className="card"
                         style={{
                           padding: '1.15rem 1.25rem',
-                          border: '1px solid var(--border)',
+                          border: cardBorder,
                           borderRadius: '20px',
-                          boxShadow: '0 4px 14px rgba(0,0,0,0.03)',
+                          boxShadow: cardShadow,
                           display: 'flex',
                           flexDirection: 'column',
                           justifyContent: 'space-between',
                           gap: '0.85rem',
-                          background: 'var(--surface)',
+                          background: cardBg,
                           transition: 'transform 0.15s, box-shadow 0.15s'
                         }}
                       >
+                        {/* Header Khusus di Bagian Atas Kotak */}
+                        {isKepsek && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                            color: '#FFFFFF',
+                            padding: '0.45rem 0.85rem',
+                            borderRadius: '12px',
+                            fontSize: '0.78rem',
+                            fontWeight: '800',
+                            letterSpacing: '0.3px',
+                            boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
+                            marginBottom: '0.2rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                              <Star size={16} fill="#FDE047" color="#FDE047" />
+                              <span>KEPALA SEKOLAH (PIMPINAN)</span>
+                            </div>
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(255,255,255,0.25)', padding: '2px 8px', borderRadius: '6px', fontWeight: '800' }}>
+                              ⭐ PIMPINAN
+                            </span>
+                          </div>
+                        )}
+
+                        {isAdmin && !isKepsek && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%)',
+                            color: '#FFFFFF',
+                            padding: '0.35rem 0.8rem',
+                            borderRadius: '10px',
+                            fontSize: '0.72rem',
+                            fontWeight: '700',
+                            letterSpacing: '0.3px',
+                            marginBottom: '0.2rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <ShieldCheck size={14} color="#DDD6FE" />
+                              <span>ADMINISTRATOR SISTEM</span>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '5px' }}>
+                              SUPER ADMIN
+                            </span>
+                          </div>
+                        )}
+
+                        {isTendik && !isKepsek && !isAdmin && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                            color: '#FFFFFF',
+                            padding: '0.35rem 0.8rem',
+                            borderRadius: '10px',
+                            fontSize: '0.72rem',
+                            fontWeight: '700',
+                            letterSpacing: '0.3px',
+                            marginBottom: '0.2rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <Briefcase size={14} color="#A7F3D0" />
+                              <span>TENAGA KEPENDIDIKAN</span>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '5px' }}>
+                              TENDIK
+                            </span>
+                          </div>
+                        )}
+
+                        {!isKepsek && !isAdmin && !isTendik && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF',
+                            padding: '0.35rem 0.8rem',
+                            borderRadius: '10px',
+                            fontSize: '0.72rem',
+                            fontWeight: '700',
+                            letterSpacing: '0.3px',
+                            marginBottom: '0.2rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <BookOpen size={14} color="#BAE6FD" />
+                              <span>{isMapel ? 'GURU MATA PELAJARAN' : 'GURU KELAS'}</span>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '5px' }}>
+                              PENDIDIK
+                            </span>
+                          </div>
+                        )}
+
                         {/* Baris Atas: Profil & Data Pegawai */}
                         <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
                           {p.foto_profil ? <img src={p.foto_profil} style={{ width:'42px', height:'42px', borderRadius:'50%', objectFit:'cover', flexShrink: 0 }} /> : <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><UserCircle size={24} color="var(--text-muted)" /></div>}

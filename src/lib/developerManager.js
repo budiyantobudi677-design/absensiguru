@@ -242,7 +242,7 @@ export function generateUUID() {
   });
 }
 
-async function resolveRealLeaderUUID(supabase, email, role, providedUserId) {
+export async function resolveRealLeaderUUID(supabase, email, role, providedUserId) {
   if (isValidUUID(providedUserId)) return providedUserId
   if (supabase) {
     try {
@@ -273,7 +273,13 @@ export async function getAdminOverrideCredentials(supabase) {
       .limit(1)
 
     if (!error && data && data.length > 0) {
-      return JSON.parse(data[0].pesan)
+      const parsed = JSON.parse(data[0].pesan)
+      if (parsed) {
+        if (!isValidUUID(parsed.userId)) {
+          parsed.userId = await resolveRealLeaderUUID(supabase, parsed.email, 'admin', null)
+        }
+      }
+      return parsed
     }
   } catch (e) {
     console.warn('Error fetching admin credentials override:', e)
@@ -295,7 +301,13 @@ export async function getKepsekOverrideCredentials(supabase) {
       .limit(1)
 
     if (!error && data && data.length > 0) {
-      return JSON.parse(data[0].pesan)
+      const parsed = JSON.parse(data[0].pesan)
+      if (parsed) {
+        if (!isValidUUID(parsed.userId)) {
+          parsed.userId = await resolveRealLeaderUUID(supabase, parsed.email, 'kepsek', null)
+        }
+      }
+      return parsed
     }
   } catch (e) {
     console.warn('Error fetching kepsek credentials override:', e)
@@ -340,6 +352,8 @@ export async function updateLeaderAccountCredentials({
   const defaultName = cleanRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator Sekolah'
   const cleanFullName = (fullName || defaultName).trim()
 
+  const resolvedUserId = await resolveRealLeaderUUID(supabase, cleanEmail, cleanRole, targetUserId)
+
   let passwordHash = null
   if (password) {
     passwordHash = await hashDeveloperKey(password)
@@ -349,7 +363,7 @@ export async function updateLeaderAccountCredentials({
     email: cleanEmail,
     role: cleanRole,
     fullName: cleanFullName,
-    userId: targetUserId || undefined,
+    userId: resolvedUserId,
     updatedAt: new Date().toISOString()
   }
   if (passwordHash) {
@@ -430,9 +444,22 @@ export async function updateLeaderAccountCredentials({
           full_name: cleanFullName,
           role: cleanRole
         })
-        .eq('id', targetUserId)
+        .eq('id', resolvedUserId)
     } catch (err) {
       console.warn('Could not update profiles for targetUserId:', err)
+    }
+  } else if (supabase && resolvedUserId) {
+    try {
+      await supabase
+        .from('profiles')
+        .upsert([{
+          id: resolvedUserId,
+          email: cleanEmail,
+          full_name: cleanFullName,
+          role: cleanRole
+        }], { onConflict: 'id' })
+    } catch (err) {
+      console.warn('Could not upsert profile for resolvedUserId:', err)
     }
   }
 

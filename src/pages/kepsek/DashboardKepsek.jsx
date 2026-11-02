@@ -27,7 +27,7 @@ import { checkAutoBackupSchedule } from '../../lib/googleDriveBackupManager'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
 import { loadKepsekConfigFromCloud, getActiveKopData } from '../../lib/persuratanGenerator'
 import { fetchSchoolSettings, saveSchoolSettings } from '../../lib/schoolSettingsManager'
-import { getAdminOverrideCredentials, getKepsekOverrideCredentials } from '../../lib/developerManager'
+import { getAdminOverrideCredentials, getKepsekOverrideCredentials, isValidUUID, generateUUID } from '../../lib/developerManager'
 import { getActiveSession, clearActiveSession } from '../../lib/offlineManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { playNotificationSound } from '../../lib/soundNotification'
@@ -1055,11 +1055,15 @@ export default function DashboardKepsek() {
           merged[existingKepsekIdx].full_name = bestNama
           merged[existingKepsekIdx].nip = bestNip
           if (admin?.jabatan) merged[existingKepsekIdx].jabatan = admin.jabatan
+          if (!isValidUUID(merged[existingKepsekIdx].id)) {
+            merged[existingKepsekIdx].id = (isValidUUID(admin?.id) ? admin.id : (isValidUUID(overrideKepsek?.userId) ? overrideKepsek.userId : generateUUID()))
+          }
         } else {
           const adminIdx = merged.findIndex(p => p.role === 'admin' || p.penugasan_tipe === 'admin')
           const insertIdx = adminIdx >= 0 ? adminIdx + 1 : 0
+          const validKepsekId = isValidUUID(admin?.id) ? admin.id : (isValidUUID(overrideKepsek?.userId) ? overrideKepsek.userId : generateUUID())
           merged.splice(insertIdx, 0, {
-            id: admin?.id || overrideKepsek?.userId || 'kepsek-active-id',
+            id: validKepsekId,
             full_name: bestNama,
             email: admin?.email || overrideKepsek?.email || 'kepsek@sekolah.edu',
             nip: bestNip,

@@ -8,6 +8,8 @@ import {
   updateLeaderAccountCredentials,
   getAdminOverrideCredentials,
   getKepsekOverrideCredentials,
+  isValidUUID,
+  generateUUID,
   deleteUserAccountSafely,
   getCloudUserRoleOverrides,
   assignUserRoleInCloud,
@@ -465,7 +467,7 @@ export default function DashboardPengembang() {
       if (overrideAdmin && overrideAdmin.email && !isAccountDeleted(overrideAdmin.email, deletedReg)) {
         const existingAdminIdx = finalProfs.findIndex(p => p.role === 'admin')
         const adminItem = {
-          id: overrideAdmin.userId || (existingAdminIdx >= 0 ? finalProfs[existingAdminIdx].id : 'admin-master-uid'),
+          id: isValidUUID(overrideAdmin.userId) ? overrideAdmin.userId : (existingAdminIdx >= 0 && isValidUUID(finalProfs[existingAdminIdx].id) ? finalProfs[existingAdminIdx].id : generateUUID()),
           email: overrideAdmin.email,
           full_name: overrideAdmin.fullName || 'Administrator Sekolah',
           role: 'admin',
@@ -482,7 +484,7 @@ export default function DashboardPengembang() {
       if (overrideKepsek && overrideKepsek.email && !isAccountDeleted(overrideKepsek.email, deletedReg)) {
         const existingKepsekIdx = finalProfs.findIndex(p => p.role === 'kepsek')
         const kepsekItem = {
-          id: overrideKepsek.userId || (existingKepsekIdx >= 0 ? finalProfs[existingKepsekIdx].id : 'kepsek-master-uid'),
+          id: isValidUUID(overrideKepsek.userId) ? overrideKepsek.userId : (existingKepsekIdx >= 0 && isValidUUID(finalProfs[existingKepsekIdx].id) ? finalProfs[existingKepsekIdx].id : generateUUID()),
           email: overrideKepsek.email,
           full_name: overrideKepsek.fullName || 'Kepala Sekolah',
           role: 'kepsek',

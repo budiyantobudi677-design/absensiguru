@@ -1,4 +1,5 @@
 // Utility for Admin Attendance Override & Security System
+import { isValidUUID, generateUUID } from './developerManager'
 // Mengimplementasikan 6 Lapisan Keamanan:
 // 1. Pembatasan Tanggal (Hanya Hari Ini & H-1)
 // 2. Auto-Lock Sesi Token
@@ -379,6 +380,19 @@ export async function fetchOverrideAuditLogs(supabase) {
 export async function getTeacherMonthlyOverrideCount(supabase, teacherId, targetDateStr) {
   try {
     if (!supabase || !teacherId) return 0
+    let validTeacherId = teacherId
+    if (!isValidUUID(validTeacherId)) {
+      try {
+        const { data: prof } = await supabase.from('profiles').select('id').or('role.eq.kepsek,jabatan.ilike.%kepala sekolah%').limit(1).maybeSingle()
+        if (prof?.id && isValidUUID(prof.id)) {
+          validTeacherId = prof.id
+        } else {
+          return 0
+        }
+      } catch (e) {
+        return 0
+      }
+    }
     const [year, month] = (targetDateStr || getLocalDateString()).split('-')
     const firstDay = `${year}-${month}-01`
     const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0)
@@ -387,7 +401,7 @@ export async function getTeacherMonthlyOverrideCount(supabase, teacherId, target
     const { data, error } = await supabase
       .from('absensi')
       .select('id, lokasi_masuk, lokasi_pulang')
-      .eq('user_id', teacherId)
+      .eq('user_id', validTeacherId)
       .gte('tanggal', firstDay)
       .lte('tanggal', lastDayStr)
 
@@ -431,6 +445,27 @@ export async function executeAdminAttendanceOverride(supabase, {
     throw new Error('Akun Admin tidak diizinkan mengubah presensi diri sendiri.')
   }
 
+  // Validasi dan resolusi UUID agar tidak menyebabkan error PostgreSQL "invalid input syntax for type uuid"
+  let effectiveUserId = targetUserId
+  if (!isValidUUID(effectiveUserId)) {
+    try {
+      const isKepsekTarget = targetUserRole?.toLowerCase().includes('kepala sekolah') || targetUserId === 'kepsek-active-id'
+      const { data: prof } = await supabase.from('profiles').select('id').or(isKepsekTarget ? 'role.eq.kepsek,jabatan.ilike.%kepala sekolah%' : `full_name.ilike.%${targetUserName}%`).limit(1).maybeSingle()
+      if (prof?.id && isValidUUID(prof.id)) {
+        effectiveUserId = prof.id
+      } else {
+        effectiveUserId = generateUUID()
+        await supabase.from('profiles').upsert([{
+          id: effectiveUserId,
+          full_name: targetUserName,
+          role: isKepsekTarget ? 'kepsek' : 'guru'
+        }], { onConflict: 'id' }).catch(() => {})
+      }
+    } catch (e) {
+      effectiveUserId = generateUUID()
+    }
+  }
+
   const now = new Date()
   const todayStr = getLocalDateString(now)
   const yesterdayObj = new Date(now)
@@ -466,7 +501,7 @@ export async function executeAdminAttendanceOverride(supabase, {
   const { data: existing, error: fetchErr } = await supabase
     .from('absensi')
     .select('*')
-    .eq('user_id', targetUserId)
+    .eq('user_id', effectiveUserId)
     .eq('tanggal', targetDateStr)
     .maybeSingle()
 
@@ -501,7 +536,7 @@ export async function executeAdminAttendanceOverride(supabase, {
       const { data, error } = await supabase
         .from('absensi')
         .insert({
-          user_id: targetUserId,
+          user_id: effectiveUserId,
           tanggal: targetDateStr,
           waktu_masuk: targetIsoTime,
           waktu_pulang: targetIsoTime,
@@ -534,7 +569,7 @@ export async function executeAdminAttendanceOverride(supabase, {
       const { data, error } = await supabase
         .from('absensi')
         .insert({
-          user_id: targetUserId,
+          user_id: effectiveUserId,
           tanggal: targetDateStr,
           waktu_masuk: targetIsoTime,
           lokasi_masuk: 'Dispensasi Admin',
@@ -552,7 +587,7 @@ export async function executeAdminAttendanceOverride(supabase, {
   await saveOverrideAuditLog(supabase, {
     adminId: adminUserId,
     adminName: adminUserName,
-    targetUserId,
+    targetUserId: effectiveUserId,
     targetUserName,
     targetUserRole,
     actionType,
