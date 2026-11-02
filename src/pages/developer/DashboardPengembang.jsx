@@ -27,7 +27,7 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Eye, Server, 
   Clock, Download, Users, Layers, MapPin, Trash2, Cpu,
   UserCheck, Lock, Mail, Check, EyeOff, Copy, ShieldCheck,
-  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop, Fingerprint, AlertCircle, Calendar
+  RotateCcw, X, UserX, Edit3, ChevronRight, FileText, Search, Filter, Laptop, Fingerprint, AlertCircle, Calendar, Plus
 } from 'lucide-react'
 import { 
   fetchActivityLogs, 
@@ -39,7 +39,12 @@ import {
   saveCloudOverrideToken, 
   fetchOverrideAuditLogs,
   getOverrideFeatureStatus,
-  setOverrideFeatureStatus
+  setOverrideFeatureStatus,
+  getCloudOverrideQuotas,
+  topUpUserOverrideQuota,
+  topUpAllUsersOverrideQuota,
+  resetUserOverrideQuota,
+  BASE_ADMIN_OVERRIDE_QUOTA
 } from '../../lib/attendanceOverrideManager'
 import { downloadFullSystemBackup, executeAppFactoryReset, executeExtremeResetAndDeleteAccounts } from '../../lib/appResetManager'
 import { saveSchoolSettings } from '../../lib/schoolSettingsManager'
@@ -338,7 +343,75 @@ export default function DashboardPengembang() {
     document.body.removeChild(link)
   }
 
-  const loadAuditLogs = async () => {
+
+  // Kelola Kuota Presensi Khusus & Top-Up Pengembang
+  const [overrideQuotaMap, setOverrideQuotaMap] = useState({})
+  const [loadingQuotas, setLoadingQuotas] = useState(false)
+  const [quotaSearchTerm, setQuotaSearchTerm] = useState('')
+  const [quotaActionMsg, setQuotaActionMsg] = useState({ type: '', text: '' })
+
+  const loadOverrideQuotas = async () => {
+    setLoadingQuotas(true)
+    try {
+      const q = await getCloudOverrideQuotas(supabase)
+      setOverrideQuotaMap(q || {})
+    } catch (e) {
+      console.warn('Gagal membaca data kuota override:', e)
+    } finally {
+      setLoadingQuotas(false)
+    }
+  }
+
+  const handleTopUpUser = async (targetUser, amount = 1) => {
+    if (!targetUser?.id) return
+    setQuotaActionMsg({ type: '', text: '' })
+    try {
+      await topUpUserOverrideQuota(supabase, { userId: targetUser.id, amount })
+      await loadOverrideQuotas()
+      setQuotaActionMsg({
+        type: 'success',
+        text: `Berhasil menambahkan +${amount} kuota presensi khusus untuk ${targetUser.full_name || targetUser.email}!`
+      })
+      setTimeout(() => setQuotaActionMsg({ type: '', text: '' }), 4000)
+    } catch (e) {
+      setQuotaActionMsg({ type: 'error', text: 'Gagal top-up kuota: ' + e.message })
+    }
+  }
+
+  const handleTopUpAll = async (amount = 1) => {
+    if (!window.confirm(`Top-up +${amount} kuota presensi khusus untuk SEMUA pegawai (${teachersList.length} orang)?`)) return
+    setQuotaActionMsg({ type: '', text: '' })
+    try {
+      const allIds = teachersList.map(t => t.id).filter(Boolean)
+      await topUpAllUsersOverrideQuota(supabase, { userIds: allIds, amount })
+      await loadOverrideQuotas()
+      setQuotaActionMsg({
+        type: 'success',
+        text: `Berhasil menambahkan +${amount} kuota presensi khusus untuk semua (${allIds.length}) pegawai!`
+      })
+      setTimeout(() => setQuotaActionMsg({ type: '', text: '' }), 4000)
+    } catch (e) {
+      setQuotaActionMsg({ type: 'error', text: 'Gagal top-up semua kuota: ' + e.message })
+    }
+  }
+
+  const handleResetQuota = async (targetUser) => {
+    if (!window.confirm(`Reset bonus top-up presensi khusus untuk ${targetUser.full_name || targetUser.email}? (Kuota dasar tetap 2x)`)) return
+    setQuotaActionMsg({ type: '', text: '' })
+    try {
+      await resetUserOverrideQuota(supabase, { userId: targetUser.id })
+      await loadOverrideQuotas()
+      setQuotaActionMsg({
+        type: 'success',
+        text: `Bonus top-up untuk ${targetUser.full_name || targetUser.email} telah di-reset.`
+      })
+      setTimeout(() => setQuotaActionMsg({ type: '', text: '' }), 4000)
+    } catch (e) {
+      setQuotaActionMsg({ type: 'error', text: 'Gagal reset kuota: ' + e.message })
+    }
+  }
+
+    const loadAuditLogs = async () => {
     setLoadingAuditLogs(true)
     try {
       const logs = await fetchOverrideAuditLogs(supabase)
@@ -358,6 +431,7 @@ export default function DashboardPengembang() {
     loadOverrideFeatureStatus()
     loadAuditLogs()
     loadActivityLogsData()
+    loadOverrideQuotas()
   }, [])
 
   useEffect(() => {
@@ -1828,6 +1902,286 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                                   <Trash2 size={11} />
                                   <span>{deletingUserId === u.id ? '...' : 'Hapus'}</span>
                                 </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Bagian 4: Menu Kelola & Top-Up Kuota Presensi Khusus Pegawai */}
+            <div style={{ background: '#0B2545', border: '1.5px solid rgba(0, 180, 216, 0.35)', borderRadius: '20px', padding: '1.75rem', boxShadow: '0 8px 30px rgba(0,0,0,0.2)' }}>
+              <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Clock size={20} color="#00B4D8" />
+                      <span>Menu Top-Up & Kelola Kuota Presensi Khusus Pegawai</span>
+                    </h3>
+                    <span style={{ fontSize: '0.68rem', background: '#00B4D8', color: '#071C35', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>
+                      KONSOL PENGEMBANG
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8' }}>
+                    Atur kuota khusus untuk Guru, Tendik, Admin & Kepsek. Jatah default adalah <strong>2x per bulan</strong> langsung oleh Admin, izin persetujuan Kepala Sekolah maksimal <strong>3x per bulan</strong>, dan Pengembang dapat memberikan kuota tambahan (Top-Up).
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleTopUpAll(1)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'linear-gradient(135deg, #0284C7 0%, #00B4D8 100%)',
+                      color: '#071C35',
+                      border: 'none',
+                      padding: '0.5rem 0.95rem',
+                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(0, 180, 216, 0.3)'
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>Top-Up Semua (+1)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTopUpAll(2)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.5rem 0.95rem',
+                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>Top-Up Semua (+2)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadOverrideQuotas}
+                    disabled={loadingQuotas}
+                    title="Segarkan data kuota"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      color: '#E2E8F0',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <RefreshCw size={14} className={loadingQuotas ? 'spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Notifikasi Sukses / Gagal */}
+              {quotaActionMsg.text && (
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '12px',
+                  marginBottom: '1rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  background: quotaActionMsg.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  border: quotaActionMsg.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444',
+                  color: quotaActionMsg.type === 'success' ? '#10B981' : '#EF4444'
+                }}>
+                  {quotaActionMsg.text}
+                </div>
+              )}
+
+              {/* Search Bar Pegawai */}
+              <div style={{ marginBottom: '1rem', position: 'relative' }}>
+                <Search size={16} color="#64748B" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={quotaSearchTerm}
+                  onChange={(e) => setQuotaSearchTerm(e.target.value)}
+                  placeholder="Cari nama pegawai atau email untuk kelola kuota..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem 0.75rem 2.6rem',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '12px',
+                    color: '#FFFFFF',
+                    fontSize: '0.85rem',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Tabel Kuota Pegawai */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', color: '#94A3B8' }}>
+                      <th style={{ padding: '0.75rem 0.5rem', width: '35px' }}>No</th>
+                      <th style={{ padding: '0.75rem 0.5rem' }}>Nama & NIP Pegawai</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Peran</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Kuota Dasar</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Top-Up Pengembang</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Total Kuota Admin</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Aksi Top-Up Kuota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teachersList
+                      .filter(u => {
+                        const q = quotaSearchTerm.toLowerCase()
+                        return !q || (u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+                      })
+                      .map((u, idx) => {
+                        const quotaInfo = overrideQuotaMap[u.id] || {}
+                        const bonus = quotaInfo.bonus || 0
+                        const totalAdminQuota = BASE_ADMIN_OVERRIDE_QUOTA + bonus
+                        const isKepsek = u.role === 'kepsek'
+                        const isAdmin = u.role === 'admin'
+                        const isTendik = u.role === 'tendik'
+
+                        return (
+                          <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '0.75rem 0.5rem', color: '#64748B' }}>{idx + 1}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', fontWeight: 700, color: '#FFFFFF' }}>
+                              <div>{u.full_name || '-'}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                {u.nip ? `NIP: ${u.nip}` : u.email}
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                              <span style={{
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '6px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                background: isKepsek ? 'rgba(167,139,250,0.2)' : isAdmin ? 'rgba(0,180,216,0.2)' : isTendik ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)',
+                                color: isKepsek ? '#C4B5FD' : isAdmin ? '#38BDF8' : isTendik ? '#FCD34D' : '#CBD5E1',
+                                border: isKepsek ? '1px solid #8B5CF6' : isAdmin ? '1px solid #00B4D8' : isTendik ? '1px solid #F59E0B' : '1px solid rgba(255,255,255,0.1)'
+                              }}>
+                                {isKepsek ? 'Kepsek' : isAdmin ? 'Admin' : isTendik ? 'Tendik' : 'Guru'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#94A3B8' }}>
+                              <span style={{ fontWeight: 700 }}>{BASE_ADMIN_OVERRIDE_QUOTA}x</span> / bln
+                            </td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                background: bonus > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+                                color: bonus > 0 ? '#10B981' : '#64748B',
+                                border: bonus > 0 ? '1px solid #10B981' : '1px solid rgba(255,255,255,0.1)'
+                              }}>
+                                +{bonus}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.82rem',
+                                fontWeight: 800,
+                                background: 'rgba(0, 180, 216, 0.15)',
+                                color: '#38BDF8',
+                                border: '1px solid #00B4D8'
+                              }}>
+                                {totalAdminQuota}x
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTopUpUser(u, 1)}
+                                  title="Tambah +1 Kuota Khusus Pegawai Ini"
+                                  style={{
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, #0284C7 0%, #00B4D8 100%)',
+                                    color: '#071C35',
+                                    border: 'none',
+                                    fontWeight: 800,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                >
+                                  <Plus size={12} />
+                                  <span>+1</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTopUpUser(u, 2)}
+                                  title="Tambah +2 Kuota Khusus Pegawai Ini"
+                                  style={{
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontWeight: 800,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                >
+                                  <Plus size={12} />
+                                  <span>+2</span>
+                                </button>
+                                {bonus > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetQuota(u)}
+                                    title="Reset bonus top-up pegawai ini"
+                                    style={{
+                                      padding: '0.35rem 0.65rem',
+                                      borderRadius: '8px',
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      color: '#F87171',
+                                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                                      fontWeight: 700,
+                                      fontSize: '0.72rem',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px'
+                                    }}
+                                  >
+                                    <RotateCcw size={12} />
+                                    <span>Reset</span>
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

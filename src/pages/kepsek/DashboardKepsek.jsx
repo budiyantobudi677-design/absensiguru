@@ -33,6 +33,7 @@ import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/delete
 import { playNotificationSound } from '../../lib/soundNotification'
 import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
+import { fetchKepsekApprovalRequests, resolveKepsekApprovalRequest } from '../../lib/attendanceOverrideManager'
 import { recordActivityLog } from '../../lib/activityLogManager'
 import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
 import {
@@ -47,7 +48,13 @@ export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
   const [admin, setAdmin] = useState({ role: 'kepsek' })
-  const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview') 
+  const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview')
+
+  // State Permohonan Persetujuan Presensi Khusus (Tingkat 2)
+  const [kepsekApprovalRequests, setKepsekApprovalRequests] = useState([])
+  const [loadingApprovalRequests, setLoadingApprovalRequests] = useState(false)
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [resolvingRequestId, setResolvingRequestId] = useState(null) 
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
 
@@ -379,9 +386,46 @@ export default function DashboardKepsek() {
     fetchSettings()
     fetchOverviewStats()
     checkAutoBackupSchedule(supabase)
+    loadApprovalRequests()
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
+
+  const loadApprovalRequests = async () => {
+    setLoadingApprovalRequests(true)
+    try {
+      const reqs = await fetchKepsekApprovalRequests(supabase)
+      setKepsekApprovalRequests(reqs || [])
+    } catch (e) {
+      console.warn('Error loading kepsek approval requests:', e)
+    } finally {
+      setLoadingApprovalRequests(false)
+    }
+  }
+
+  const handleResolveApprovalRequest = async (item, decision) => {
+    const decisionLabel = decision === 'approved' ? 'MENYETUJUI' : 'MENOLAK'
+    if (!window.confirm(`Konfirmasi ${decisionLabel} permohonan presensi khusus untuk ${item.targetUserName}?`)) return
+    setResolvingRequestId(item.id)
+    try {
+      await resolveKepsekApprovalRequest(supabase, {
+        dbRecordId: item.dbRecordId,
+        requestId: item.id,
+        decision,
+        kepsekUserId: admin?.id,
+        kepsekUserName: admin?.full_name || 'Kepala Sekolah'
+      })
+      alert(`Berhasil! Permohonan presensi khusus untuk ${item.targetUserName} telah di-${decision === 'approved' ? 'SETUJUI dan langsung tercatat di sistem' : 'TOLAK'}.`)
+      await loadApprovalRequests()
+      if (typeof loadAbsensi === 'function') loadAbsensi()
+      if (typeof fetchOverviewStats === 'function') fetchOverviewStats()
+    } catch (err) {
+      console.error('Error resolving approval request:', err)
+      alert('Gagal memproses permohonan: ' + (err.message || err))
+    } finally {
+      setResolvingRequestId(null)
+    }
+  }
 
   // Realtime Audio & Data Listener untuk Pengumuman, Chat, dan Disposisi di Dashboard Kepsek
   useEffect(() => {
@@ -396,6 +440,11 @@ export default function DashboardKepsek() {
           const row = payload.new
           if (!row) return
           const tt = (row.target_type || '').trim()
+          if (tt === '__KEPSEK_OVERRIDE_APPROVAL_REQUEST__') {
+            playNotificationSound('announcement', row.id)
+            loadApprovalRequests()
+            return
+          }
           if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return
 
           playNotificationSound('announcement', row.id)
@@ -2706,6 +2755,67 @@ export default function DashboardKepsek() {
 
           {activeTab === 'overview' && (
             <div className="fade-in">
+              {/* Banner Permohonan Persetujuan Presensi Khusus (Tingkat 2) */}
+              {(() => {
+                const pending = kepsekApprovalRequests.filter(r => r.status === 'pending')
+                if (pending.length === 0) return null
+                return (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                    border: '1.5px solid #F59E0B',
+                    borderRadius: '20px',
+                    padding: '1.25rem 1.5rem',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '1rem',
+                    boxShadow: '0 4px 20px rgba(245, 158, 11, 0.15)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: '#FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309', flexShrink: 0 }}>
+                        <Bell size={26} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#92400E' }}>
+                            Permohonan Presensi Khusus Menunggu Persetujuan ({pending.length})
+                          </h4>
+                          <span style={{ fontSize: '0.7rem', background: '#D97706', color: '#FFFFFF', padding: '2px 8px', borderRadius: '8px', fontWeight: 800 }}>
+                            TINGKAT 2
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: '#B45309' }}>
+                          Admin mengajukan izin presensi khusus untuk pegawai yang telah melampaui kuota 2x langsung.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowApprovalModal(true)}
+                      style={{
+                        background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '12px',
+                        padding: '0.75rem 1.35rem',
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 14px rgba(217, 119, 6, 0.3)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span>Tinjau & Beri Persetujuan</span>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )
+              })()}
               {/* Kartu Presensi Mandiri Khusus Kepala Sekolah / Admin (Muncul di Desktop) */}
               {(admin?.role === 'kepsek' || admin?.role === 'admin') && isDesktop && (
                 <div className="card mb-6" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: 'white', border: 'none', borderRadius: '22px', padding: '1.5rem', boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)' }}>
@@ -4710,6 +4820,216 @@ export default function DashboardKepsek() {
           } : null}
         />
       </div>
-    </div>
+    
+      {/* MODAL PERSETUJUAN PRESENSI KHUSUS OLEH KEPALA SEKOLAH */}
+      {showApprovalModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '1rem',
+          overflowY: 'auto'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '24px',
+            maxWidth: '620px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+            color: '#1E293B',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Header Modal */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '1rem', borderBottom: '1px solid #E2E8F0', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShieldCheck size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#1E293B' }}>
+                    Persetujuan Presensi Khusus (Akun Kepala Sekolah)
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                    Maksimal 3x persetujuan per pegawai per bulan setelah jatah 2x langsung admin habis
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApprovalModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content List */}
+            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {kepsekApprovalRequests.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94A3B8', fontSize: '0.9rem' }}>
+                  Belum ada permohonan persetujuan presensi khusus dari Administrator.
+                </div>
+              ) : (
+                kepsekApprovalRequests.map((req) => {
+                  const isPending = req.status === 'pending'
+                  const isApproved = req.status === 'approved'
+                  const isRejected = req.status === 'rejected'
+                  const isBusy = resolvingRequestId === req.id
+
+                  return (
+                    <div
+                      key={req.id}
+                      style={{
+                        borderRadius: '16px',
+                        border: isPending ? '1.5px solid #F59E0B' : '1px solid #E2E8F0',
+                        background: isPending ? '#FFFBEB' : '#F8FAFC',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '0.72rem', background: '#3B82F6', color: '#FFFFFF', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                              {req.targetUserRole || 'Guru'}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                              Diajukan: {new Date(req.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1E293B' }}>
+                            {req.targetUserName}
+                          </h4>
+                        </div>
+
+                        <span style={{
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: '8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          background: isPending ? '#FEF3C7' : isApproved ? '#DCFCE7' : '#FEE2E2',
+                          color: isPending ? '#B45309' : isApproved ? '#15803D' : '#B91C1C',
+                          border: isPending ? '1px solid #FCD34D' : isApproved ? '1px solid #86EFAC' : '1px solid #FCA5A5'
+                        }}>
+                          {isPending ? '⏳ Menunggu Persetujuan' : isApproved ? '✅ Disetujui' : '❌ Ditolak'}
+                        </span>
+                      </div>
+
+                      {/* Detail Presensi */}
+                      <div style={{ background: '#FFFFFF', borderRadius: '12px', padding: '0.75rem 1rem', border: '1px solid #E2E8F0', fontSize: '0.82rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem' }}>
+                        <div>
+                          <span style={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>TINDAKAN PRESENSI</span>
+                          <strong style={{ color: req.actionType === 'clock_out' ? '#DC2626' : '#059669' }}>
+                            {req.actionType === 'clock_out' ? '🚪 Clock Out (Pulang)' : '⏰ Clock In (Masuk)'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>TANGGAL & WAKTU</span>
+                          <strong>{req.date} | Pukul {req.timeStr} WITA</strong>
+                        </div>
+                      </div>
+
+                      {/* Alasan Presensi Khusus */}
+                      <div style={{ background: isPending ? 'rgba(254, 243, 199, 0.5)' : '#FFFFFF', borderRadius: '12px', padding: '0.75rem 1rem', border: '1px solid #E2E8F0' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#B45309', display: 'block', marginBottom: '2px' }}>
+                          ALASAN PRESENSI KHUSUS (DARI ADMIN):
+                        </span>
+                        <div style={{ fontSize: '0.85rem', color: '#1E293B', fontWeight: 600 }}>
+                          "{req.reason || '-'}"
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginTop: '4px' }}>
+                          Pemohon: {req.adminUserName || 'Administrator'}
+                        </span>
+                      </div>
+
+                      {/* Action Buttons (Hanya jika status pending) */}
+                      {isPending && (
+                        <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleResolveApprovalRequest(req, 'rejected')}
+                            style={{
+                              padding: '0.55rem 1rem',
+                              borderRadius: '10px',
+                              background: '#FEE2E2',
+                              border: '1px solid #FCA5A5',
+                              color: '#DC2626',
+                              fontWeight: 700,
+                              fontSize: '0.8rem',
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <X size={14} />
+                            <span>Tolak</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleResolveApprovalRequest(req, 'approved')}
+                            style={{
+                              padding: '0.55rem 1.25rem',
+                              borderRadius: '10px',
+                              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                              border: 'none',
+                              color: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: '0.8rem',
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                            }}
+                          >
+                            <Check size={14} />
+                            <span>{isBusy ? 'Memproses...' : 'Setujui & Terapkan'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div style={{ paddingTop: '1rem', borderTop: '1px solid #E2E8F0', marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowApprovalModal(false)}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '10px',
+                  background: '#F1F5F9',
+                  border: 'none',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.825rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   )
 }

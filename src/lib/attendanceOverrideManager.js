@@ -11,6 +11,11 @@ import { isValidUUID, generateUUID } from './developerManager'
 export const OVERRIDE_TOKEN_TARGET = '__ADMIN_ATTENDANCE_OVERRIDE_TOKEN__'
 export const AUDIT_LOG_TARGET = '__ADMIN_OVERRIDE_AUDIT_LOG__'
 export const OVERRIDE_FEATURE_FLAG_TARGET = '__ADMIN_ATTENDANCE_OVERRIDE_ENABLED__'
+export const OVERRIDE_QUOTA_TARGET = '__SYSTEM_OVERRIDE_QUOTA__'
+export const KEPSEK_APPROVAL_TARGET = '__KEPSEK_OVERRIDE_APPROVAL_REQUEST__'
+
+export const BASE_ADMIN_OVERRIDE_QUOTA = 2
+export const MAX_KEPSEK_APPROVAL_QUOTA = 3
 
 const LOCAL_STORAGE_TOKEN_KEY = 'panrita_admin_override_token'
 const LOCAL_STORAGE_FEATURE_ENABLED_KEY = 'panrita_admin_override_feature_enabled'
@@ -377,6 +382,250 @@ export async function fetchOverrideAuditLogs(supabase) {
 /**
  * Cek jumlah dispensasi presensi khusus yang sudah diterima seorang guru dalam 1 bulan
  */
+/**
+ * Mengambil data top-up kuota presensi khusus dari Cloud Supabase
+ */
+export async function getCloudOverrideQuotas(supabase) {
+  try {
+    if (!supabase) return {}
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', OVERRIDE_QUOTA_TARGET)
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (!error && data && data.length > 0) {
+      try {
+        const parsed = JSON.parse(data[0].pesan)
+        return parsed || {}
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('Gagal membaca kuota override dari cloud:', err)
+  }
+  return {}
+}
+
+/**
+ * Menyimpan data top-up kuota presensi khusus ke Cloud Supabase
+ */
+export async function saveCloudOverrideQuotas(supabase, quotaMap) {
+  if (!supabase) return false
+  const payload = JSON.stringify(quotaMap || {})
+  try {
+    const { data: existing } = await supabase
+      .from('pengumuman')
+      .select('id')
+      .eq('target_type', OVERRIDE_QUOTA_TARGET)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from('pengumuman')
+        .update({ pesan: payload, target_users: '' })
+        .eq('id', existing[0].id)
+    } else {
+      await supabase
+        .from('pengumuman')
+        .insert([{
+          pesan: payload,
+          target_type: OVERRIDE_QUOTA_TARGET,
+          target_users: ''
+        }])
+    }
+    return true
+  } catch (err) {
+    console.error('Gagal menyimpan kuota override ke cloud:', err)
+    return false
+  }
+}
+
+/**
+ * Top up kuota untuk seorang pengguna oleh Pengembang
+ */
+export async function topUpUserOverrideQuota(supabase, { userId, amount = 1 }) {
+  if (!userId) return false
+  const quotas = await getCloudOverrideQuotas(supabase)
+  const current = quotas[userId] || { bonus: 0 }
+  quotas[userId] = {
+    ...current,
+    bonus: Math.max(0, (current.bonus || 0) + Number(amount)),
+    updatedAt: new Date().toISOString()
+  }
+  return await saveCloudOverrideQuotas(supabase, quotas)
+}
+
+/**
+ * Top up kuota untuk seluruh pengguna oleh Pengembang
+ */
+export async function topUpAllUsersOverrideQuota(supabase, { userIds = [], amount = 1 }) {
+  const quotas = await getCloudOverrideQuotas(supabase)
+  const now = new Date().toISOString()
+  userIds.forEach(uid => {
+    if (!uid) return
+    const cur = quotas[uid] || { bonus: 0 }
+    quotas[uid] = {
+      ...cur,
+      bonus: Math.max(0, (cur.bonus || 0) + Number(amount)),
+      updatedAt: now
+    }
+  })
+  return await saveCloudOverrideQuotas(supabase, quotas)
+}
+
+/**
+ * Reset kuota tambahan pengguna oleh Pengembang
+ */
+export async function resetUserOverrideQuota(supabase, { userId }) {
+  if (!userId) return false
+  const quotas = await getCloudOverrideQuotas(supabase)
+  if (quotas[userId]) {
+    delete quotas[userId]
+    return await saveCloudOverrideQuotas(supabase, quotas)
+  }
+  return true
+}
+
+/**
+ * Menghitung statistik & status kuota presensi khusus (Skema 2 Tingkat)
+ * Tingkat 1: Admin langsung (Default 2x + bonus)
+ * Tingkat 2: Izin Kepala Sekolah (Maksimal 3x)
+ * Tingkat 3: Habis total
+ */
+export async function getUserOverrideStats(supabase, teacherId, targetDateStr) {
+  try {
+    if (!supabase || !teacherId) {
+      return {
+        adminUsed: 0,
+        adminLimit: BASE_ADMIN_OVERRIDE_QUOTA,
+        adminRemaining: BASE_ADMIN_OVERRIDE_QUOTA,
+        kepsekUsed: 0,
+        kepsekLimit: MAX_KEPSEK_APPROVAL_QUOTA,
+        kepsekRemaining: MAX_KEPSEK_APPROVAL_QUOTA,
+        totalRemaining: BASE_ADMIN_OVERRIDE_QUOTA + MAX_KEPSEK_APPROVAL_QUOTA,
+        bonusQuota: 0,
+        level: 1,
+        canExecuteDirectly: true,
+        canRequestKepsek: false,
+        isExhausted: false,
+        message: ''
+      }
+    }
+
+    let validTeacherId = teacherId
+    if (!isValidUUID(validTeacherId)) {
+      try {
+        const { data: prof } = await supabase.from('profiles').select('id').or('role.eq.kepsek,jabatan.ilike.%kepala sekolah%').limit(1).maybeSingle()
+        if (prof?.id && isValidUUID(prof.id)) {
+          validTeacherId = prof.id
+        }
+      } catch (e) {}
+    }
+
+    const [year, month] = (targetDateStr || getLocalDateString()).split('-')
+    const firstDay = `${year}-${month}-01`
+    const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0)
+    const lastDayStr = `${year}-${month}-${String(lastDay.getDate()).padStart(2, '0')}`
+
+    const [attRes, cloudQuotas] = await Promise.all([
+      supabase
+        .from('absensi')
+        .select('id, lokasi_masuk, lokasi_pulang, keterangan')
+        .eq('user_id', validTeacherId)
+        .gte('tanggal', firstDay)
+        .lte('tanggal', lastDayStr),
+      getCloudOverrideQuotas(supabase)
+    ])
+
+    const records = attRes.data || []
+    let adminUsed = 0
+    let kepsekUsed = 0
+
+    records.forEach(r => {
+      const isDisp = r.lokasi_masuk === 'Dispensasi Admin' || 
+                     r.lokasi_pulang === 'Dispensasi Admin' || 
+                     (r.keterangan || '').includes('Presensi Khusus')
+
+      if (isDisp) {
+        const isKepsekApproved = (r.keterangan || '').toLowerCase().includes('disetujui kepala sekolah')
+        if (isKepsekApproved) {
+          kepsekUsed++
+        } else {
+          adminUsed++
+        }
+      }
+    })
+
+    const userBonus = cloudQuotas[validTeacherId]?.bonus || 0
+    const adminLimit = BASE_ADMIN_OVERRIDE_QUOTA + userBonus
+    const adminRemaining = Math.max(0, adminLimit - adminUsed)
+
+    const kepsekLimit = MAX_KEPSEK_APPROVAL_QUOTA
+    const kepsekRemaining = Math.max(0, kepsekLimit - kepsekUsed)
+    const totalRemaining = adminRemaining + kepsekRemaining
+
+    let level = 1
+    let canExecuteDirectly = true
+    let canRequestKepsek = false
+    let isExhausted = false
+    let message = ''
+
+    if (adminRemaining > 0) {
+      level = 1
+      canExecuteDirectly = true
+      canRequestKepsek = false
+      isExhausted = false
+      message = `Sisa kuota langsung: ${adminRemaining}x dari ${adminLimit}x.`
+    } else if (kepsekRemaining > 0) {
+      level = 2
+      canExecuteDirectly = false
+      canRequestKepsek = true
+      isExhausted = false
+      message = 'Kuota Presensi Khusus Habis (Sudah digunakan 2x). Memerlukan persetujuan di akun Kepala Sekolah.'
+    } else {
+      level = 3
+      canExecuteDirectly = false
+      canRequestKepsek = false
+      isExhausted = true
+      message = 'Kuota Presensi Khusus Habis'
+    }
+
+    return {
+      adminUsed,
+      adminLimit,
+      adminRemaining,
+      kepsekUsed,
+      kepsekLimit,
+      kepsekRemaining,
+      totalRemaining,
+      bonusQuota: userBonus,
+      level,
+      canExecuteDirectly,
+      canRequestKepsek,
+      isExhausted,
+      message
+    }
+  } catch (err) {
+    console.warn('Gagal menghitung statistik override:', err)
+    return {
+      adminUsed: 0,
+      adminLimit: BASE_ADMIN_OVERRIDE_QUOTA,
+      adminRemaining: BASE_ADMIN_OVERRIDE_QUOTA,
+      kepsekUsed: 0,
+      kepsekLimit: MAX_KEPSEK_APPROVAL_QUOTA,
+      kepsekRemaining: MAX_KEPSEK_APPROVAL_QUOTA,
+      totalRemaining: BASE_ADMIN_OVERRIDE_QUOTA + MAX_KEPSEK_APPROVAL_QUOTA,
+      bonusQuota: 0,
+      level: 1,
+      canExecuteDirectly: true,
+      canRequestKepsek: false,
+      isExhausted: false,
+      message: ''
+    }
+  }
+}
+
 export async function getTeacherMonthlyOverrideCount(supabase, teacherId, targetDateStr) {
   try {
     if (!supabase || !teacherId) return 0
@@ -434,8 +683,10 @@ export async function executeAdminAttendanceOverride(supabase, {
   actionType, // 'clock_out' | 'clock_in'
   date,       // 'YYYY-MM-DD'
   timeStr,    // 'HH:mm'
+  reason = '',
   adminUserId,
-  adminUserName = 'Administrator'
+  adminUserName = 'Administrator',
+  isApprovedByKepsek = false
 }) {
   if (!supabase) throw new Error('Koneksi Supabase tidak aktif.')
   if (!targetUserId) throw new Error('Silakan pilih pegawai terlebih dahulu.')
@@ -520,11 +771,16 @@ export async function executeAdminAttendanceOverride(supabase, {
 
   if (actionType === 'clock_out') {
     if (existing) {
+      const baseKet = reason.trim() ? `Presensi Khusus: ${reason.trim()}` : 'Presensi Khusus'
+      const fullKet = isApprovedByKepsek ? `${baseKet} | Disetujui Kepala Sekolah` : `${baseKet} | Dispensasi Admin`
+      const updatedKet = existing.keterangan ? `${existing.keterangan} | ${fullKet}` : fullKet
+
       const { data, error } = await supabase
         .from('absensi')
         .update({
           waktu_pulang: targetIsoTime,
-          lokasi_pulang: 'Dispensasi Admin'
+          lokasi_pulang: 'Dispensasi Admin',
+          keterangan: updatedKet
         })
         .eq('id', existing.id)
         .select()
@@ -533,6 +789,9 @@ export async function executeAdminAttendanceOverride(supabase, {
       if (error) handleDbError(error)
       finalResult = { action: 'clock_out', data }
     } else {
+      const baseKet = reason.trim() ? `Presensi Khusus: ${reason.trim()}` : 'Presensi Khusus'
+      const fullKet = isApprovedByKepsek ? `${baseKet} | Disetujui Kepala Sekolah` : `${baseKet} | Dispensasi Admin`
+
       const { data, error } = await supabase
         .from('absensi')
         .insert({
@@ -542,7 +801,8 @@ export async function executeAdminAttendanceOverride(supabase, {
           waktu_pulang: targetIsoTime,
           lokasi_masuk: 'Dispensasi Admin',
           lokasi_pulang: 'Dispensasi Admin',
-          status: 'hadir'
+          status: 'hadir',
+          keterangan: fullKet
         })
         .select()
         .single()
@@ -552,12 +812,17 @@ export async function executeAdminAttendanceOverride(supabase, {
     }
   } else if (actionType === 'clock_in') {
     if (existing) {
+      const baseKet = reason.trim() ? `Presensi Khusus: ${reason.trim()}` : 'Presensi Khusus'
+      const fullKet = isApprovedByKepsek ? `${baseKet} | Disetujui Kepala Sekolah` : `${baseKet} | Dispensasi Admin`
+      const updatedKet = existing.keterangan ? `${existing.keterangan} | ${fullKet}` : fullKet
+
       const { data, error } = await supabase
         .from('absensi')
         .update({
           waktu_masuk: targetIsoTime,
           lokasi_masuk: 'Dispensasi Admin',
-          status: 'hadir'
+          status: 'hadir',
+          keterangan: updatedKet
         })
         .eq('id', existing.id)
         .select()
@@ -566,6 +831,9 @@ export async function executeAdminAttendanceOverride(supabase, {
       if (error) handleDbError(error)
       finalResult = { action: 'clock_in', data }
     } else {
+      const baseKet = reason.trim() ? `Presensi Khusus: ${reason.trim()}` : 'Presensi Khusus'
+      const fullKet = isApprovedByKepsek ? `${baseKet} | Disetujui Kepala Sekolah` : `${baseKet} | Dispensasi Admin`
+
       const { data, error } = await supabase
         .from('absensi')
         .insert({
@@ -573,7 +841,8 @@ export async function executeAdminAttendanceOverride(supabase, {
           tanggal: targetDateStr,
           waktu_masuk: targetIsoTime,
           lokasi_masuk: 'Dispensasi Admin',
-          status: 'hadir'
+          status: 'hadir',
+          keterangan: fullKet
         })
         .select()
         .single()
@@ -593,8 +862,166 @@ export async function executeAdminAttendanceOverride(supabase, {
     actionType,
     targetDate: targetDateStr,
     targetTime: targetTimeStr,
+    reason: reason.trim(),
+    isApprovedByKepsek: Boolean(isApprovedByKepsek),
     isoTimestamp: targetIsoTime
   })
 
   return { success: true, ...finalResult }
+}
+
+
+/**
+ * Mengajukan permohonan persetujuan Presensi Khusus ke akun Kepala Sekolah
+ */
+export async function submitKepsekApprovalRequest(supabase, {
+  targetUserId,
+  targetUserName,
+  targetUserRole = 'Guru',
+  actionType,
+  date,
+  timeStr,
+  reason,
+  adminUserId,
+  adminUserName = 'Administrator'
+}) {
+  if (!supabase) throw new Error('Koneksi Supabase tidak aktif.')
+  if (!targetUserId) throw new Error('Pegawai belum dipilih.')
+  if (!reason || !reason.trim()) throw new Error('Alasan presensi khusus wajib diisi!')
+
+  const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)
+  const payload = {
+    id: requestId,
+    targetUserId,
+    targetUserName,
+    targetUserRole,
+    actionType,
+    date,
+    timeStr,
+    reason: reason.trim(),
+    adminUserId,
+    adminUserName,
+    status: 'pending', // 'pending' | 'approved' | 'rejected'
+    createdAt: new Date().toISOString()
+  }
+
+  const { error } = await supabase.from('pengumuman').insert([{
+    pesan: JSON.stringify(payload),
+    target_type: KEPSEK_APPROVAL_TARGET,
+    target_users: ''
+  }])
+
+  if (error) {
+    console.error('Failed submitting kepsek approval request:', error)
+    throw new Error('Gagal mengirim permohonan ke akun Kepala Sekolah: ' + error.message)
+  }
+
+  return { success: true, requestId, payload }
+}
+
+/**
+ * Mengambil daftar permohonan persetujuan Presensi Khusus untuk Kepala Sekolah
+ */
+export async function fetchKepsekApprovalRequests(supabase) {
+  try {
+    if (!supabase) return []
+    const { data, error } = await supabase
+      .from('pengumuman')
+      .select('id, pesan, created_at')
+      .eq('target_type', KEPSEK_APPROVAL_TARGET)
+      .order('id', { ascending: false })
+      .limit(50)
+
+    if (error || !data) return []
+
+    const requests = []
+    data.forEach(item => {
+      try {
+        const parsed = JSON.parse(item.pesan)
+        requests.push({
+          ...parsed,
+          dbRecordId: item.id,
+          createdAt: parsed.createdAt || item.created_at
+        })
+      } catch (e) {}
+    })
+    return requests
+  } catch (err) {
+    console.warn('Gagal membaca permohonan approval kepsek:', err)
+    return []
+  }
+}
+
+/**
+ * Menyelesaikan permohonan persetujuan oleh Kepala Sekolah ('approved' | 'rejected')
+ */
+export async function resolveKepsekApprovalRequest(supabase, {
+  dbRecordId,
+  requestId,
+  decision, // 'approved' | 'rejected'
+  kepsekUserId,
+  kepsekUserName = 'Kepala Sekolah',
+  rejectionReason = ''
+}) {
+  if (!supabase) throw new Error('Koneksi Supabase tidak aktif.')
+
+  // 1. Ambil data permohonan dari database
+  let targetItem = null
+  let dbId = dbRecordId
+
+  if (dbId) {
+    const { data } = await supabase.from('pengumuman').select('id, pesan').eq('id', dbId).maybeSingle()
+    if (data) {
+      try { targetItem = JSON.parse(data.pesan) } catch (e) {}
+    }
+  }
+
+  if (!targetItem) {
+    const all = await fetchKepsekApprovalRequests(supabase)
+    const match = all.find(r => r.id === requestId || r.dbRecordId === dbRecordId)
+    if (match) {
+      targetItem = match
+      dbId = match.dbRecordId
+    }
+  }
+
+  if (!targetItem) {
+    throw new Error('Permohonan tidak ditemukan di sistem.')
+  }
+
+  const isApproved = decision === 'approved'
+  const resolvedPayload = {
+    ...targetItem,
+    status: isApproved ? 'approved' : 'rejected',
+    resolvedByKepsekId: kepsekUserId,
+    resolvedByKepsekName: kepsekUserName,
+    resolvedAt: new Date().toISOString(),
+    rejectionReason: rejectionReason || ''
+  }
+
+  // Update status permohonan di database
+  if (dbId) {
+    await supabase
+      .from('pengumuman')
+      .update({ pesan: JSON.stringify(resolvedPayload) })
+      .eq('id', dbId)
+  }
+
+  // Jika disetujui, eksekusi pencatatan presensi khusus dengan status Disetujui Kepala Sekolah
+  if (isApproved) {
+    await executeAdminAttendanceOverride(supabase, {
+      targetUserId: targetItem.targetUserId,
+      targetUserName: targetItem.targetUserName,
+      targetUserRole: targetItem.targetUserRole,
+      actionType: targetItem.actionType,
+      date: targetItem.date,
+      timeStr: targetItem.timeStr,
+      reason: targetItem.reason,
+      adminUserId: targetItem.adminUserId,
+      adminUserName: targetItem.adminUserName,
+      isApprovedByKepsek: true
+    })
+  }
+
+  return { success: true, decision, resolvedPayload }
 }

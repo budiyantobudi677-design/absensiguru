@@ -12,6 +12,10 @@ import {
   getLocalTimeString,
   checkOverrideLockout,
   getTeacherMonthlyOverrideCount,
+  getUserOverrideStats,
+  submitKepsekApprovalRequest,
+  BASE_ADMIN_OVERRIDE_QUOTA,
+  MAX_KEPSEK_APPROVAL_QUOTA,
   getOverrideFeatureStatus
 } from '../../lib/attendanceOverrideManager'
 
@@ -54,11 +58,24 @@ export default function AdminOverrideModal({
   const [targetTime, setTargetTime] = useState(() => getLocalTimeString())
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState(null) // { type: 'success' | 'error', text: '' }
+  const [overrideReason, setOverrideReason] = useState('')
 
-  // State Kuota Bulanan Guru
+  // State Kuota 2 Tingkat Presensi Khusus
   const [monthlyCount, setMonthlyCount] = useState(0)
   const [loadingQuota, setLoadingQuota] = useState(false)
   const [quotaConfirmed, setQuotaConfirmed] = useState(false)
+  const [overrideStats, setOverrideStats] = useState({
+    adminUsed: 0,
+    adminRemaining: 2,
+    kepsekUsed: 0,
+    kepsekRemaining: 3,
+    totalRemaining: 5,
+    level: 1,
+    canExecuteDirectly: true,
+    canRequestKepsek: false,
+    isExhausted: false,
+    message: ''
+  })
 
   // Pegawai yang diperbolehkan diubah: Seluruh Guru, Tendik, dan KEPSEK.
   // Akun Admin yang sedang login TIDAK DIPERBOLEHKAN (difilter keluar).
@@ -116,25 +133,35 @@ export default function AdminOverrideModal({
     return () => clearTimeout(idleTimer)
   }, [isTokenVerified])
 
-  // Cek Kuota Bulanan Guru yang dipilih
+  // Cek Kuota 2 Tingkat Guru / Tendik / Kepsek yang dipilih
   useEffect(() => {
     if (!selectedUserId) {
       setMonthlyCount(0)
       setQuotaConfirmed(false)
+      setOverrideStats({
+        adminUsed: 0,
+        adminRemaining: 2,
+        kepsekUsed: 0,
+        kepsekRemaining: 3,
+        totalRemaining: 5,
+        level: 1,
+        canExecuteDirectly: true,
+        canRequestKepsek: false,
+        isExhausted: false,
+        message: ''
+      })
       return
     }
     let isCurrent = true
     setLoadingQuota(true)
-    getTeacherMonthlyOverrideCount(supabase, selectedUserId, targetDate).then(count => {
+    getUserOverrideStats(supabase, selectedUserId, targetDate).then(stats => {
       if (isCurrent) {
-        setMonthlyCount(count)
+        setOverrideStats(stats)
+        setMonthlyCount(stats.adminUsed + stats.kepsekUsed)
         setLoadingQuota(false)
-        if (count < 3) {
-          setQuotaConfirmed(true)
-        } else {
-          setQuotaConfirmed(false)
-        }
       }
+    }).catch(() => {
+      if (isCurrent) setLoadingQuota(false)
     })
     return () => { isCurrent = false }
   }, [selectedUserId, targetDate])
@@ -257,11 +284,17 @@ export default function AdminOverrideModal({
       }
     }
 
-    // Validasi Kuota Bulanan
-    if (monthlyCount >= 3 && !quotaConfirmed) {
+    // Validasi Alasan Presensi Khusus (Wajib Diisi)
+    if (!overrideReason || !overrideReason.trim()) {
+      setFeedback({ type: 'error', text: 'Alasan presensi khusus wajib diisi!' })
+      return
+    }
+
+    // Validasi Tingkat Kuota
+    if (overrideStats.isExhausted) {
       setFeedback({
         type: 'error',
-        text: 'Pegawai ini telah mencapai batas 3x presensi khusus. Harap centang konfirmasi persetujuan Kepala Sekolah.'
+        text: 'Kuota Presensi Khusus Habis'
       })
       return
     }
@@ -271,7 +304,37 @@ export default function AdminOverrideModal({
       const targetEmp = eligiblePegawai.find(p => p.id === selectedUserId)
       const empName = targetEmp?.full_name || 'Pegawai'
       const empRole = targetEmp?.role === 'kepsek' ? 'Kepala Sekolah' : (targetEmp?.jabatan || targetEmp?.role || 'Guru')
+      const actionLabel = actionType === 'clock_out' ? 'Clock Out (Pulang)' : 'Clock In (Masuk)'
 
+      // TINGKAT 2: Kuota Admin Habis -> Ajukan ke Akun Kepala Sekolah
+      if (overrideStats.level === 2 || !overrideStats.canExecuteDirectly) {
+        await submitKepsekApprovalRequest(supabase, {
+          targetUserId: selectedUserId,
+          targetUserName: empName,
+          targetUserRole: empRole,
+          actionType,
+          date: targetDate,
+          timeStr: targetTime,
+          reason: overrideReason.trim(),
+          adminUserId: currentAdmin?.id,
+          adminUserName: currentAdmin?.full_name || currentAdmin?.email || 'Administrator'
+        })
+
+        setFeedback({
+          type: 'success',
+          text: `Permohonan persetujuan ${actionLabel} untuk ${empName} berhasil dikirim ke akun Kepala Sekolah. Menunggu persetujuan.`
+        })
+
+        if (onSuccess) onSuccess()
+
+        setTimeout(() => {
+          setSelectedUserId('')
+          setOverrideReason('')
+        }, 2000)
+        return
+      }
+
+      // TINGKAT 1: Kuota Langsung Masih Ada -> Eksekusi Langsung
       await executeAdminAttendanceOverride(supabase, {
         targetUserId: selectedUserId,
         targetUserName: empName,
@@ -279,11 +342,10 @@ export default function AdminOverrideModal({
         actionType,
         date: targetDate,
         timeStr: targetTime,
+        reason: overrideReason.trim(),
         adminUserId: currentAdmin?.id,
         adminUserName: currentAdmin?.full_name || currentAdmin?.email || 'Administrator'
       })
-
-      const actionLabel = actionType === 'clock_out' ? 'Clock Out (Pulang Cepat)' : 'Clock In (Masuk)'
 
       setFeedback({
         type: 'success',
@@ -295,10 +357,10 @@ export default function AdminOverrideModal({
       // Reset pilihan setelah 1.5 detik
       setTimeout(() => {
         setSelectedUserId('')
-        setMonthlyCount(0)
+        setOverrideReason('')
       }, 1500)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message || 'Gagal menyimpan presensi khusus.' })
+      setFeedback({ type: 'error', text: err.message || 'Gagal memproses presensi khusus.' })
     } finally {
       setSubmitting(false)
     }
@@ -808,62 +870,69 @@ export default function AdminOverrideModal({
                   </p>
                 </div>
 
-                {/* Indikator Kuota Bulanan Guru */}
+                {/* Indikator Kuota 2 Tingkat */}
                 {selectedUserId && (
                   <div style={{ marginBottom: '1.25rem' }}>
                     {loadingQuota ? (
                       <div style={{ fontSize: '0.75rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Loader2 className="animate-spin" size={14} /> Memeriksa kuota dispensasi bulan ini...
+                        <Loader2 className="animate-spin" size={14} /> Memeriksa status kuota presensi khusus...
                       </div>
-                    ) : monthlyCount >= 3 ? (
+                    ) : overrideStats.isExhausted ? (
+                      /* KETIKA TINGKAT 2 HABIS (TOTAL SUDAH 5 KALI) */
                       <div style={{
-                        padding: '0.75rem 1rem',
-                        borderRadius: '12px',
+                        padding: '0.85rem 1rem',
+                        borderRadius: '14px',
+                        background: '#FEF2F2',
+                        border: '1.5px solid #EF4444',
+                        color: '#991B1B'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <AlertCircle size={20} color="#DC2626" />
+                          <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                            Kuota Presensi Khusus Habis
+                          </span>
+                        </div>
+                      </div>
+                    ) : overrideStats.level === 2 ? (
+                      /* KETIKA TINGKAT 1 HABIS (BUTUH PERSETUJUAN KEPSEK) */
+                      <div style={{
+                        padding: '0.85rem 1rem',
+                        borderRadius: '14px',
                         background: '#FFFBEB',
                         border: '1.5px solid #F59E0B',
                         color: '#92400E'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
                           <AlertTriangle size={18} color="#D97706" />
-                          <span style={{ fontSize: '0.825rem', fontWeight: 800 }}>
-                            Peringatan: Kuota Terlampaui ({monthlyCount}x Dispensasi Bulan Ini)
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>
+                            Kuota Presensi Khusus Habis (Sudah digunakan 2x). Memerlukan persetujuan di akun Kepala Sekolah.
                           </span>
                         </div>
-                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: '#78350F', lineHeight: '1.35' }}>
-                          Pegawai ini sudah mencapai/melebihi batas toleransi 3x presensi khusus bulan ini. Pastikan Anda telah mendapat instruksi langsung dari Kepala Sekolah.
+                        <p style={{ margin: 0, fontSize: '0.76rem', color: '#B45309' }}>
+                          Sisa jatah persetujuan di akun Kepala Sekolah: <strong>{overrideStats.kepsekRemaining} / 3x</strong> bulan ini. Tekan tombol di bawah untuk mengajukan izin.
                         </p>
-                        <label style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '0.5rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          color: '#B45309',
-                          cursor: 'pointer'
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={quotaConfirmed}
-                            onChange={(e) => setQuotaConfirmed(e.target.checked)}
-                            style={{ marginTop: '2px' }}
-                          />
-                          <span>Saya mengonfirmasi bahwa tindakan ini telah disetujui Kepala Sekolah.</span>
-                        </label>
                       </div>
                     ) : (
+                      /* TINGKAT 1 (KUOTA LANGSUNG AKTIF) */
                       <div style={{
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '10px',
+                        padding: '0.6rem 0.85rem',
+                        borderRadius: '12px',
                         background: '#F0FDF4',
-                        border: '1px solid #BBF7D0',
-                        fontSize: '0.75rem',
+                        border: '1.5px solid #86EFAC',
+                        fontSize: '0.78rem',
                         color: '#166534',
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'space-between',
                         gap: '6px'
                       }}>
-                        <Check size={14} />
-                        <span>Riwayat bulan ini: <strong>{monthlyCount} / 3x</strong> presensi khusus (Status Aman).</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Check size={15} color="#16A34A" />
+                          <span>Status Kuota Langsung: <strong>Aktif</strong> ({overrideStats.adminUsed}/2x terpakai)</span>
+                        </div>
+                        <span style={{ fontWeight: 800, background: '#DCFCE7', padding: '0.2rem 0.55rem', borderRadius: '8px', color: '#15803D' }}>
+                          Sisa: {overrideStats.adminRemaining}x
+                        </span>
                       </div>
                     )}
                   </div>
@@ -998,6 +1067,57 @@ export default function AdminOverrideModal({
                   </div>
                 </div>
 
+                {/* 4. Alasan Presensi Khusus (Wajib Diisi) */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                    Alasan Presensi Khusus <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="Contoh: Lupa Clock Out saat jam pulang, kendala jaringan di sekolah, baterai HP habis..."
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      border: '1.5px solid #CBD5E1',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                      resize: 'vertical',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {/* Pilihan Cepat Alasan */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                    {[
+                      'Lupa Clock Out saat jam pulang',
+                      'Kendala sinyal/jaringan sekolah',
+                      'Baterai HP habis / kendala HP',
+                      'Izin kedinasan mendadak'
+                    ].map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => setOverrideReason(chip)}
+                        style={{
+                          background: '#F1F5F9',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '8px',
+                          padding: '0.25rem 0.55rem',
+                          fontSize: '0.7rem',
+                          color: '#475569',
+                          cursor: 'pointer',
+                          fontWeight: 500
+                        }}
+                      >
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <button
@@ -1019,28 +1139,36 @@ export default function AdminOverrideModal({
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting || (monthlyCount >= 3 && !quotaConfirmed)}
+                    disabled={submitting || overrideStats.isExhausted || !selectedUserId || !overrideReason.trim()}
                     style={{
                       flex: 2,
                       padding: '0.875rem',
                       borderRadius: '14px',
-                      background: (monthlyCount >= 3 && !quotaConfirmed) ? '#94A3B8' : (actionType === 'clock_out' ? '#DC2626' : '#059669'),
+                      background: overrideStats.isExhausted 
+                        ? '#94A3B8' 
+                        : (overrideStats.level === 2 
+                            ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' 
+                            : (actionType === 'clock_out' ? '#DC2626' : '#059669')),
                       color: '#FFFFFF',
                       border: 'none',
                       fontWeight: 700,
                       fontSize: '0.9rem',
-                      cursor: (submitting || (monthlyCount >= 3 && !quotaConfirmed)) ? 'not-allowed' : 'pointer',
+                      cursor: (submitting || overrideStats.isExhausted || !selectedUserId || !overrideReason.trim()) ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: '0.5rem',
-                      boxShadow: (monthlyCount >= 3 && !quotaConfirmed) ? 'none' : (actionType === 'clock_out' 
-                        ? '0 4px 12px rgba(220, 38, 38, 0.25)' 
-                        : '0 4px 12px rgba(5, 150, 105, 0.25)')
+                      boxShadow: overrideStats.isExhausted ? 'none' : '0 4px 12px rgba(0, 0, 0, 0.15)'
                     }}
                   >
                     {submitting ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
-                    <span>Simpan Presensi</span>
+                    <span>
+                      {overrideStats.isExhausted 
+                        ? 'Kuota Presensi Khusus Habis' 
+                        : (overrideStats.level === 2 
+                            ? 'Ajukan Izin ke Akun Kepala Sekolah' 
+                            : 'Simpan Presensi Khusus')}
+                    </span>
                   </button>
                 </div>
               </form>

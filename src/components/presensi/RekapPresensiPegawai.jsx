@@ -113,6 +113,7 @@ export default function RekapPresensiPegawai({
   const [searchTerm, setSearchTerm] = useState('')
   const [activeDayDetail, setActiveDayDetail] = useState(null) // Modal detail hari
   const [activePhotoModal, setActivePhotoModal] = useState(null) // Modal preview foto surat/bukti
+  const [showPersonalPdfModal, setShowPersonalPdfModal] = useState(false) // Modal pilih pegawai unduh PDF per orang
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletedAttendanceReg, setDeletedAttendanceReg] = useState({ deletedIds: [] })
 
@@ -469,6 +470,215 @@ export default function RekapPresensiPegawai({
   }, [activePegawaiList, attendanceMap, currentMonthStr, daysInMonth, hariEfektif])
 
   // ================= EXPORT HANDLERS =================
+
+
+  // Helper Cetak PDF Rekap Kehadiran Individu / Per Orang Bulanan (Lengkap dengan Alasan & Keterangan)
+  const handlePrintPdfPersonal = (targetStaff) => {
+    if (!targetStaff) {
+      alert('Pilih pegawai terlebih dahulu untuk mengunduh rekap individu.')
+      return
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageHeight = doc.internal.pageSize.getHeight()
+
+      // Header Kop Dokumen
+      doc.setFontSize(13)
+      doc.setFont('helvetica', 'bold')
+      doc.text((schoolName || 'SEKOLAH').toUpperCase(), 105, 14, { align: 'center' })
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('KARTU REKAPITULASI KEHADIRAN BULANAN PEGAWAI', 105, 19, { align: 'center' })
+      doc.setFontSize(8.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Periode: ${periodLabel.toUpperCase()}`, 105, 23.5, { align: 'center' })
+      doc.setLineWidth(0.4)
+      doc.line(14, 25.5, 196, 25.5)
+
+      // Identitas Pegawai
+      const cleanNip = getStaffCleanNip(targetStaff)
+      const staffRole = targetStaff.jabatan || targetStaff.penugasan_tipe || targetStaff.role || 'Guru'
+
+      doc.setFontSize(8.5)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Nama Pegawai', 14, 30.5)
+      doc.text(':', 42, 30.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(targetStaff.full_name || targetStaff.email || '-', 45, 30.5)
+
+      doc.setFont('helvetica', 'bold')
+      doc.text('NIP', 14, 35)
+      doc.text(':', 42, 35)
+      doc.setFont('helvetica', 'normal')
+      doc.text(cleanNip, 45, 35)
+
+      doc.setFont('helvetica', 'bold')
+      doc.text('Jabatan / Tugas', 115, 30.5)
+      doc.text(':', 143, 30.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(staffRole, 146, 30.5)
+
+      doc.setFont('helvetica', 'bold')
+      doc.text('Unit Kerja', 115, 35)
+      doc.text(':', 143, 35)
+      doc.setFont('helvetica', 'normal')
+      doc.text(schoolName || 'Sekolah', 146, 35)
+
+      // Bangun Tabel Harian Pegawai
+      const headers = ['No', 'Hari, Tanggal', 'Masuk', 'Pulang', 'Status', 'Keterangan / Alasan']
+      const tableRows = []
+      let countHadir = 0, countTerlambat = 0, countSakit = 0, countIzin = 0, countAlpa = 0, countPresensiKhusus = 0
+
+      for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${currentMonthStr}-${String(i).padStart(2, '0')}`
+        const dateObj = new Date(yearNum, monthIndex, i)
+        const day = dateObj.getDay()
+        const isWeekend = hariKerja === 5 ? (day === 0 || day === 6) : (day === 0)
+        const dayName = dateObj.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short' })
+
+        const att = attendanceMap[targetStaff.id]?.[dateStr]
+
+        if (att) {
+          const tl = isTugasLuar(att)
+          const isLate = isLateRecord(att)
+          const note = cleanKeterangan(att.keterangan) || ''
+          const isSpecial = (att.keterangan || '').includes('Presensi Khusus') || att.lokasi_masuk === 'Dispensasi Admin' || att.lokasi_pulang === 'Dispensasi Admin'
+          if (isSpecial) countPresensiKhusus++
+
+          let statusText = 'Hadir'
+          if (att.status === 'sakit') {
+            statusText = 'Sakit'
+            countSakit++
+          } else if (att.status === 'izin') {
+            statusText = 'Izin'
+            countIzin++
+          } else if (att.status === 'alpa') {
+            statusText = 'Alpa'
+            countAlpa++
+          } else if (isLate) {
+            statusText = 'Terlambat'
+            countTerlambat++
+            countHadir++
+          } else {
+            statusText = 'Hadir'
+            countHadir++
+          }
+
+          const inTime = tl ? '07.00' : (att.waktu_masuk ? new Date(att.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--')
+          const outTime = tl ? '14.00' : (att.waktu_pulang ? new Date(att.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--')
+
+          let finalNote = note
+          if (tl && !finalNote) finalNote = 'Tugas Luar Kedinasan'
+          if (isSpecial && !finalNote.includes('Presensi Khusus')) {
+            finalNote = finalNote ? `Presensi Khusus: ${finalNote}` : 'Presensi Khusus (Dispensasi)'
+          }
+
+          tableRows.push([
+            String(i),
+            dayName,
+            inTime,
+            outTime,
+            statusText,
+            finalNote || '-'
+          ])
+        } else {
+          if (isWeekend) {
+            tableRows.push([String(i), dayName, '-', '-', 'Libur', 'Libur Akhir Pekan'])
+          } else {
+            tableRows.push([String(i), dayName, '-', '-', '-', '-'])
+          }
+        }
+      }
+
+      autoTable(doc, {
+        head: [headers],
+        body: tableRows,
+        startY: 38.5,
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 32, halign: 'left' },
+          2: { cellWidth: 16, halign: 'center' },
+          3: { cellWidth: 16, halign: 'center' },
+          4: { cellWidth: 20, halign: 'center' },
+          5: { cellWidth: 90, halign: 'left' }
+        },
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
+        didParseCell: (data) => {
+          if (data.section === 'body') {
+            const status = String(data.row.raw[4] || '')
+            if (status === 'Terlambat') {
+              if (data.column.index === 4) {
+                data.cell.styles.textColor = [220, 38, 38]
+                data.cell.styles.fontStyle = 'bold'
+              }
+            } else if (status === 'Sakit' || status === 'Izin') {
+              if (data.column.index === 4) {
+                data.cell.styles.textColor = [37, 99, 235]
+                data.cell.styles.fontStyle = 'bold'
+              }
+            } else if (status === 'Libur') {
+              data.cell.styles.textColor = [148, 163, 184]
+              data.cell.styles.fillColor = [248, 250, 252]
+            }
+            if (data.column.index === 5 && String(data.cell.raw).includes('Presensi Khusus')) {
+              data.cell.styles.textColor = [180, 83, 9]
+              data.cell.styles.fontStyle = 'bold'
+            }
+          }
+        }
+      })
+
+      // Ringkasan Kehadiran & Tanda Tangan
+      const finalY = doc.lastAutoTable?.finalY || 200
+      let curY = finalY + 4
+
+      if (curY + 48 > pageHeight) {
+        doc.addPage()
+        curY = 20
+      }
+
+      // Box Ringkasan
+      const pctHadir = hariEfektif > 0 ? `${Math.round((countHadir / hariEfektif) * 100)}%` : '0%'
+      doc.setFillColor(248, 250, 252)
+      doc.setDrawColor(203, 213, 225)
+      doc.roundedRect(14, curY, 182, 13, 2, 2, 'FD')
+
+      doc.setFontSize(7.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Hadir: ${countHadir} Hari  |  Terlambat: ${countTerlambat}x  |  Sakit: ${countSakit}  |  Izin: ${countIzin}  |  Alpa: ${countAlpa}  |  Presensi Khusus: ${countPresensiKhusus}x  |  Kehadiran: ${pctHadir}`, 105, curY + 8, { align: 'center' })
+
+      // Tanda Tangan
+      let signY = curY + 20
+      if (signY + 28 > pageHeight) {
+        doc.addPage()
+        signY = 20
+      }
+
+      doc.setFontSize(8.5)
+      doc.text('Pegawai Yang Bersangkutan,', 25, signY)
+      doc.text('Mengetahui,', 145, signY)
+      doc.text('Kepala Sekolah', 145, signY + 4.5)
+
+      doc.setFont('helvetica', 'bold')
+      doc.text(targetStaff.full_name || targetStaff.email || '-', 25, signY + 22)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`NIP. ${cleanNip}`, 25, signY + 26.5)
+
+      doc.setFont('helvetica', 'bold')
+      doc.text(kepsekSignInfo.nama, 145, signY + 22)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`NIP. ${kepsekSignInfo.nip}`, 145, signY + 26.5)
+
+      const safeName = (targetStaff.full_name || 'Pegawai').replace(/[^a-zA-Z0-9]/g, '_')
+      doc.save(`Rekap_Kehadiran_${safeName}_${currentMonthStr}.pdf`)
+    } catch (e) {
+      console.error('Error generating personal PDF:', e)
+      alert('Gagal mengekspor PDF Rekap Per Orang: ' + e.message)
+    }
+  }
 
   // Helper Cetak PDF Matriks Dinas Resmi (Ada NIP & H Terlambat Merah)
   const handlePrintPdfMatriks = () => {
@@ -1458,6 +1668,34 @@ export default function RekapPresensiPegawai({
                 <FileSpreadsheet size={15} />
                 <span>Excel Rekap</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedTeacherId) {
+                    const target = activePegawaiList.find(p => p.id === selectedTeacherId)
+                    if (target) handlePrintPdfPersonal(target)
+                  } else {
+                    setShowPersonalPdfModal(true)
+                  }
+                }}
+                title="Unduh Rekap Presensi Per Orang (.pdf)"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: '#4F46E5',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '0.5rem 0.85rem',
+                  borderRadius: '12px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                <FileText size={15} />
+                <span>PDF Per Orang</span>
+              </button>
             </div>
           ) : (
             <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -1484,7 +1722,35 @@ export default function RekapPresensiPegawai({
                   <span>Excel</span>
                 </button>
               )}
-              {onExportPdf && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedTeacherId) {
+                    const target = activePegawaiList.find(p => p.id === selectedTeacherId)
+                    if (target) handlePrintPdfPersonal(target)
+                  } else {
+                    setShowPersonalPdfModal(true)
+                  }
+                }}
+                title="Unduh Kartu Kehadiran Per Orang (.pdf)"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: '#4F46E5',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '0.5rem 0.85rem',
+                  borderRadius: '12px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                <FileText size={15} />
+                <span>PDF Per Orang</span>
+              </button>
+                            {onExportPdf && (
                 <button
                   type="button"
                   onClick={onExportPdf}
@@ -1896,12 +2162,13 @@ export default function RekapPresensiPegawai({
                   <th style={{ padding: '0.85rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, color: '#DC2626', textAlign: 'center' }}>ALFA</th>
                   <th style={{ padding: '0.85rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, color: '#B45309', textAlign: 'center' }}>TERLAMBAT</th>
                   <th style={{ padding: '0.85rem 1rem', fontSize: '0.78rem', fontWeight: 800, color: '#0284C7', textAlign: 'center' }}>% KEHADIRAN</th>
+                  <th style={{ padding: '0.85rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, color: '#4F46E5', textAlign: 'center' }}>AKSI</th>
                 </tr>
               </thead>
               <tbody>
                 {staffSummaryList.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.875rem' }}>
+                    <td colSpan={10} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.875rem' }}>
                       Tidak ada data pegawai yang sesuai pada periode {periodLabel}.
                     </td>
                   </tr>
@@ -1967,6 +2234,29 @@ export default function RekapPresensiPegawai({
                           <span style={{ display: 'inline-block', background: '#F0F9FF', color: '#0284C7', padding: '3px 10px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 800, border: '1px solid #BAE6FD' }}>
                             {item.persentase}
                           </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handlePrintPdfPersonal(item.pegawai)}
+                            title={`Unduh Rekap Bulanan PDF Lengkap untuk ${item.name}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              background: '#4F46E5',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              padding: '0.35rem 0.65rem',
+                              borderRadius: '8px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <FileText size={12} />
+                            <span>PDF</span>
+                          </button>
                         </td>
                       </tr>
                     )
@@ -2639,6 +2929,125 @@ export default function RekapPresensiPegawai({
           </div>
         </div>
       )}
-    </div>
+    
+      {/* MODAL PILIH PEGAWAI UNTUK UNDUH REKAP PDF PER ORANG */}
+      {showPersonalPdfModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '24px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.85rem', borderBottom: '1px solid #E2E8F0', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#1E293B' }}>
+                    Unduh Rekap Presensi Per Orang (.pdf)
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748B' }}>
+                    Periode: {periodLabel} (Memuat daftar harian & keterangan lengkap)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPersonalPdfModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {activePegawaiList.map((p, idx) => (
+                <div
+                  key={p.id || idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.75rem 1rem',
+                    background: '#F8FAFC',
+                    borderRadius: '12px',
+                    border: '1px solid #E2E8F0'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
+                      {p.full_name || p.email}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                      NIP: {getStaffCleanNip(p)} | {p.jabatan || p.penugasan_tipe || p.role || 'Guru'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handlePrintPdfPersonal(p)
+                      setShowPersonalPdfModal(false)
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: '#4F46E5',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Download size={13} />
+                    <span>Unduh PDF</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ paddingTop: '1rem', borderTop: '1px solid #E2E8F0', marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowPersonalPdfModal(false)}
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  borderRadius: '10px',
+                  background: '#F1F5F9',
+                  border: 'none',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.825rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   )
 }
