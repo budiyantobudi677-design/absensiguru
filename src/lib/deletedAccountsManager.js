@@ -1,7 +1,6 @@
 // Utility for Managing Cloud & Local Registry of Deleted Accounts
-// Memastikan akun guru/pegawai/admin yang telah dihapus BENAR-BENAR HILANG
-// dari seluruh dashboard dan DIBLOKIR permanen dari sistem login,
-// terlepas dari batasan Row-Level Security (RLS) PostgreSQL pada tabel profiles.
+// Memastikan akun spesifik yang telah dihapus dieliminasi dari daftar aktif,
+// NAMUN alamat email TETAP BEBAS DIGUNAKAN KEMBALI di kemudian hari (tidak diblokir permanen).
 
 export const DELETED_ACCOUNTS_TARGET = '__SYSTEM_DELETED_ACCOUNTS__'
 const LOCAL_STORAGE_IDS_KEY = 'panrita_deleted_account_ids'
@@ -28,7 +27,8 @@ export async function fetchDeletedAccountsRegistry(supabase) {
         const parsed = JSON.parse(data[0].pesan)
         if (parsed && typeof parsed === 'object') {
           cloudData.deletedIds = Array.isArray(parsed.deletedIds) ? parsed.deletedIds : []
-          cloudData.deletedEmails = Array.isArray(parsed.deletedEmails) ? parsed.deletedEmails.map(e => String(e).toLowerCase().trim()) : []
+          // Email tidak lagi diblokir permanen agar dapat digunakan kembali secara bebas
+          cloudData.deletedEmails = []
           cloudData.details = parsed.details || {}
         }
       }
@@ -37,11 +37,9 @@ export async function fetchDeletedAccountsRegistry(supabase) {
     }
   }
 
-  // Gabungkan dengan cache lokal
+  // Gabungkan dengan cache lokal ID
   try {
     const localIds = JSON.parse(localStorage.getItem(LOCAL_STORAGE_IDS_KEY) || '[]')
-    const localEmails = JSON.parse(localStorage.getItem(LOCAL_STORAGE_EMAILS_KEY) || '[]')
-    
     if (Array.isArray(localIds)) {
       localIds.forEach(id => {
         if (id && !cloudData.deletedIds.includes(id)) {
@@ -49,20 +47,8 @@ export async function fetchDeletedAccountsRegistry(supabase) {
         }
       })
     }
-    if (Array.isArray(localEmails)) {
-      localEmails.forEach(em => {
-        const clean = String(em).toLowerCase().trim()
-        if (clean && !cloudData.deletedEmails.includes(clean)) {
-          cloudData.deletedEmails.push(clean)
-        }
-      })
-    }
-  } catch (e) {}
-
-  // Simpan hasil gabungan kembali ke cache lokal
-  try {
-    localStorage.setItem(LOCAL_STORAGE_IDS_KEY, JSON.stringify(cloudData.deletedIds))
-    localStorage.setItem(LOCAL_STORAGE_EMAILS_KEY, JSON.stringify(cloudData.deletedEmails))
+    // Bersihkan email dari cache lokal
+    localStorage.removeItem(LOCAL_STORAGE_EMAILS_KEY)
   } catch (e) {}
 
   return cloudData
@@ -70,7 +56,9 @@ export async function fetchDeletedAccountsRegistry(supabase) {
 
 /**
  * Memeriksa apakah sebuah akun / pengguna sudah dihapus
- * @param {object|string} user - Objek user/profile atau ID/email string
+ * Akun terhapus hanya dicek berdasarkan ID spesifik akun tersebut (userId),
+ * sehingga alamat email tetap bebas digunakan kembali untuk akun baru atau login ulang.
+ * @param {object|string} user - Objek user/profile atau ID string
  * @param {object} registry - Registry hasil fetchDeletedAccountsRegistry
  * @returns {boolean}
  */
@@ -78,20 +66,14 @@ export function isAccountDeleted(user, registry) {
   if (!user || !registry) return false
 
   const deletedIds = Array.isArray(registry.deletedIds) ? registry.deletedIds : []
-  const deletedEmails = Array.isArray(registry.deletedEmails) ? registry.deletedEmails : []
 
   if (typeof user === 'string') {
-    const val = user.trim().toLowerCase()
-    if (deletedIds.includes(user)) return true
-    if (deletedEmails.includes(val)) return true
-    return false
+    // Jika input adalah UUID atau user ID spesifik
+    return deletedIds.includes(user)
   }
 
   const userId = user.id || user.userId
-  const userEmail = (user.email || '').trim().toLowerCase()
-
   if (userId && deletedIds.includes(userId)) return true
-  if (userEmail && deletedEmails.includes(userEmail)) return true
 
   return false
 }
@@ -110,6 +92,7 @@ export function filterActiveProfiles(profilesList, registry) {
 
 /**
  * Mencatat penghapusan akun ke Cloud Registry Supabase & Local Cache
+ * Hanya mencatat userId ke daftar hapus, TIDAK memblokir alamat email.
  * @param {object} params - { userId, email, role, fullName, deletedBy, supabase }
  */
 export async function markAccountAsDeletedInCloud({
@@ -132,10 +115,8 @@ export async function markAccountAsDeletedInCloud({
   if (!current.deletedIds.includes(userId)) {
     current.deletedIds.push(userId)
   }
-  if (cleanEmail && !current.deletedEmails.includes(cleanEmail)) {
-    current.deletedEmails.push(cleanEmail)
-  }
 
+  // Simpan rincian akun lama untuk catatan audit tanpa memblokir email
   current.details[userId] = {
     userId,
     email: cleanEmail,
@@ -148,7 +129,7 @@ export async function markAccountAsDeletedInCloud({
   // 2. Simpan ke local cache terlebih dahulu untuk respon UI instan
   try {
     localStorage.setItem(LOCAL_STORAGE_IDS_KEY, JSON.stringify(current.deletedIds))
-    localStorage.setItem(LOCAL_STORAGE_EMAILS_KEY, JSON.stringify(current.deletedEmails))
+    localStorage.removeItem(LOCAL_STORAGE_EMAILS_KEY)
   } catch (e) {}
 
   // 3. Simpan permanen ke Cloud Supabase (tabel pengumuman)
@@ -156,7 +137,7 @@ export async function markAccountAsDeletedInCloud({
     try {
       const payload = {
         deletedIds: current.deletedIds,
-        deletedEmails: current.deletedEmails,
+        deletedEmails: [], // Bebaskan seluruh email agar tetap dapat digunakan kembali
         details: current.details,
         updatedAt: new Date().toISOString()
       }
@@ -190,6 +171,14 @@ export async function markAccountAsDeletedInCloud({
 }
 
 /**
+ * Membebaskan email dari status terhapus (agar selalu bisa digunakan kembali)
+ */
+export async function unmarkEmailAsDeleted(email, supabase) {
+  if (!email) return false
+  return unmarkAccountAsDeleted(email, supabase)
+}
+
+/**
  * Memulihkan akun yang terhapus (jika diperlukan)
  * @param {string} userIdOrEmail 
  * @param {object} supabase 
@@ -201,19 +190,19 @@ export async function unmarkAccountAsDeleted(userIdOrEmail, supabase) {
   const current = await fetchDeletedAccountsRegistry(supabase)
 
   current.deletedIds = current.deletedIds.filter(id => id !== userIdOrEmail)
-  current.deletedEmails = current.deletedEmails.filter(em => em !== clean)
+  current.deletedEmails = (current.deletedEmails || []).filter(em => em !== clean)
   delete current.details[userIdOrEmail]
 
   try {
     localStorage.setItem(LOCAL_STORAGE_IDS_KEY, JSON.stringify(current.deletedIds))
-    localStorage.setItem(LOCAL_STORAGE_EMAILS_KEY, JSON.stringify(current.deletedEmails))
+    localStorage.removeItem(LOCAL_STORAGE_EMAILS_KEY)
   } catch (e) {}
 
   if (supabase) {
     try {
       const payload = {
         deletedIds: current.deletedIds,
-        deletedEmails: current.deletedEmails,
+        deletedEmails: [],
         details: current.details,
         updatedAt: new Date().toISOString()
       }

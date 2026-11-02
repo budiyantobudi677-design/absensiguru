@@ -15,6 +15,10 @@ import {
   getDeveloperSession,
   verifyAdminOverrideLogin,
   verifyKepsekOverrideLogin,
+  verifyUserAccountOverrideLogin,
+  getCloudUserRoleOverrides,
+  getKepsekOverrideCredentials,
+  getAdminOverrideCredentials,
   generateUUID,
   isValidUUID
 } from '../lib/developerManager'
@@ -290,6 +294,46 @@ export default function Login() {
             return
           }
 
+          // Cek override kredensial akun pengguna apa pun yang diatur oleh Pengembang
+          const userOverrideCheck = await verifyUserAccountOverrideLogin(email, password, supabase)
+          if (userOverrideCheck.isOverride && userOverrideCheck.success) {
+            const u = userOverrideCheck.user
+            const targetRole = u.role || 'guru'
+            const resolvedId = (u.userId && isValidUUID(u.userId)) ? u.userId : generateUUID()
+            const userSessionData = {
+              role: targetRole,
+              isDeveloper: false,
+              user: {
+                id: resolvedId,
+                email: u.email,
+                role: targetRole,
+                full_name: u.fullName || u.email
+              },
+              expiresAt: Date.now() + 24 * 60 * 60 * 1000
+            }
+            localStorage.setItem('panrita_developer_session', JSON.stringify(userSessionData))
+            localStorage.setItem(`panrita_role_${resolvedId}`, targetRole)
+            await saveActiveSession(userSessionData, userSessionData.user, targetRole)
+            window.dispatchEvent(new Event('developer_session_updated'))
+            
+            recordActivityLog({
+              userId: resolvedId,
+              email: u.email,
+              role: targetRole,
+              fullName: u.fullName || u.email,
+              action: 'Login Aplikasi',
+              details: `Login sukses via Kredensial Akun (${targetRole.toUpperCase()})`,
+              supabase
+            }).catch(() => {})
+
+            if (targetRole === 'admin') navigate('/admin')
+            else if (targetRole === 'kepsek') navigate('/kepsek')
+            else if (targetRole === 'operator') navigate('/operator')
+            else if (targetRole === 'nonoperator' || targetRole === 'tendik') navigate('/nonoperator')
+            else navigate('/guru')
+            return
+          }
+
           throw authResult.error
         }
 
@@ -306,14 +350,34 @@ export default function Login() {
         localStorage.removeItem('panrita_developer_session')
         localStorage.removeItem('intended_login_role')
 
-        const [profRes, cloudAssignments] = await Promise.all([
+        const [profRes, cloudAssignments, roleOverrides, overrideKepsek, overrideAdmin] = await Promise.all([
           supabase.from('profiles').select('role, jabatan, full_name').eq('id', data.user.id).maybeSingle(),
-          syncCloudTeacherAssignments(supabase)
+          syncCloudTeacherAssignments(supabase),
+          getCloudUserRoleOverrides(supabase).catch(() => ({})),
+          getKepsekOverrideCredentials(supabase).catch(() => null),
+          getAdminOverrideCredentials(supabase).catch(() => null)
         ])
         const profile = profRes?.data
         const myAssignment = cloudAssignments?.[data.user.id]
 
         let userRole = profile?.role || 'guru'
+        const myEmail = (data.user.email || '').toLowerCase()
+        if (roleOverrides?.[data.user.id]) {
+          userRole = roleOverrides[data.user.id]
+        } else if (roleOverrides?.[myEmail]) {
+          userRole = roleOverrides[myEmail]
+        }
+        if (overrideKepsek && (overrideKepsek.userId === data.user.id || overrideKepsek.email?.toLowerCase() === myEmail)) {
+          userRole = 'kepsek'
+        }
+        if (overrideAdmin && (overrideAdmin.userId === data.user.id || overrideAdmin.email?.toLowerCase() === myEmail)) {
+          userRole = 'admin'
+        }
+
+        // Sinkronkan ke tabel profiles jika berbeda
+        if (profile?.role !== userRole) {
+          supabase.from('profiles').update({ role: userRole }).eq('id', data.user.id).then(() => {}).catch(() => {})
+        }
         const effectiveJabatan = myAssignment?.jabatan || profile?.jabatan || localStorage.getItem(`tendik_penugasan_${data.user.id}`) || ''
         const effectiveTipe = myAssignment?.tipe || localStorage.getItem(`guru_tipe_${data.user.id}`) || ''
 

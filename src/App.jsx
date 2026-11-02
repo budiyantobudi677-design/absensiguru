@@ -13,7 +13,14 @@ import DashboardKepsek from './pages/kepsek/DashboardKepsek'
 import DashboardOperator from './pages/operator/DashboardOperator'
 import DashboardTendik from './pages/tendik/DashboardTendik'
 import DashboardPengembang from './pages/developer/DashboardPengembang'
-import { getDeveloperSession } from './lib/developerManager'
+import { 
+  getDeveloperSession, 
+  isDeveloperImpersonating, 
+  returnToDeveloperConsole,
+  getCloudUserRoleOverrides,
+  getKepsekOverrideCredentials,
+  getAdminOverrideCredentials 
+} from './lib/developerManager'
 import { syncCloudTeacherAssignments } from './lib/assignmentManager'
 import { saveActiveSession, getActiveSession, clearActiveSession } from './lib/offlineManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from './lib/deletedAccountsManager'
@@ -63,10 +70,13 @@ function App() {
       }
 
       try {
-        const [profRes, cloudAssignments, deletedReg] = await Promise.all([
+        const [profRes, cloudAssignments, deletedReg, roleOverrides, overrideKepsek, overrideAdmin] = await Promise.all([
           supabase.from('profiles').select('role, jabatan, full_name').eq('id', userSession.user.id).maybeSingle(),
           syncCloudTeacherAssignments(supabase),
-          fetchDeletedAccountsRegistry(supabase)
+          fetchDeletedAccountsRegistry(supabase),
+          getCloudUserRoleOverrides(supabase).catch(() => ({})),
+          getKepsekOverrideCredentials(supabase).catch(() => null),
+          getAdminOverrideCredentials(supabase).catch(() => null)
         ])
 
         if (isAccountDeleted(userSession.user, deletedReg)) {
@@ -85,6 +95,23 @@ function App() {
         const myAssignment = cloudAssignments?.[userSession.user.id]
 
         let userRole = data?.role || cachedRole || 'guru'
+        const myEmail = (userSession.user.email || '').toLowerCase()
+        if (roleOverrides?.[userSession.user.id]) {
+          userRole = roleOverrides[userSession.user.id]
+        } else if (roleOverrides?.[myEmail]) {
+          userRole = roleOverrides[myEmail]
+        }
+        if (overrideKepsek && (overrideKepsek.userId === userSession.user.id || overrideKepsek.email?.toLowerCase() === myEmail)) {
+          userRole = 'kepsek'
+        }
+        if (overrideAdmin && (overrideAdmin.userId === userSession.user.id || overrideAdmin.email?.toLowerCase() === myEmail)) {
+          userRole = 'admin'
+        }
+
+        if (data?.role !== userRole) {
+          supabase.from('profiles').update({ role: userRole }).eq('id', userSession.user.id).then(() => {}).catch(() => {})
+        }
+
         const effectiveJabatan = myAssignment?.jabatan || data?.jabatan || localStorage.getItem(`tendik_penugasan_${userSession.user.id}`) || ''
         const effectiveTipe = myAssignment?.tipe || localStorage.getItem(`guru_tipe_${userSession.user.id}`) || ''
 
@@ -467,6 +494,48 @@ function App() {
 
   return (
     <PullToRefresh>
+      {/* Banner Sesi Impersonasi Mode Pengembang */}
+      {isDeveloperImpersonating() && (
+        <div style={{
+          background: 'linear-gradient(135deg, #0F172A 0%, #071C35 100%)',
+          color: '#FFFFFF',
+          padding: '0.65rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '0.82rem',
+          position: 'sticky',
+          top: 0,
+          zIndex: 999999,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          borderBottom: '1.5px solid #00B4D8'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>🛡️</span>
+            <span>
+              Mode Pengembang: Mengakses akun <strong>{session?.user?.full_name || session?.user?.email || 'Pengguna'}</strong> ({role?.toUpperCase()})
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => returnToDeveloperConsole()}
+            style={{
+              background: 'linear-gradient(135deg, #00B4D8 0%, #0077B6 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '0.4rem 0.95rem',
+              fontWeight: 800,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0, 180, 216, 0.4)'
+            }}
+          >
+            Kembali ke Pengembang
+          </button>
+        </div>
+      )}
+
       {/* Banner Pemberitahuan Pembaruan Minor (Opsional) */}
       {appUpdateInfo.isOutdated && !appUpdateInfo.isForced && !dismissUpdateBanner && (
         <div style={{

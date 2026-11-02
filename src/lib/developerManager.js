@@ -225,6 +225,8 @@ export async function updateDeveloperMasterKey(newCode, supabase) {
 const ADMIN_CREDENTIALS_TARGET = '__SYSTEM_ADMIN_CREDENTIALS__'
 const KEPSEK_CREDENTIALS_TARGET = '__SYSTEM_KEPSEK_CREDENTIALS__'
 const LEADER_CREDENTIALS_PREFIX = '__SYSTEM_LEADER_CREDENTIALS_'
+const ROLE_OVERRIDES_TARGET = '__SYSTEM_USER_ROLE_OVERRIDES__'
+const ALL_ACCOUNTS_CREDENTIALS_TARGET = '__SYSTEM_ALL_ACCOUNTS_CREDENTIALS__'
 
 export function isValidUUID(str) {
   return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -377,20 +379,9 @@ export async function updateLeaderAccountCredentials({
     console.warn('Could not determine old leader email:', e)
   }
 
-  // Jika email baru berbeda dengan email lama, masukkan email lama ke Deleted Accounts Registry seketika
+  // Jika email baru berbeda, simpan email asal sebagai alias agar akun Google tetap dapat digunakan
   if (oldEmail && oldEmail.trim().toLowerCase() !== cleanEmail) {
-    try {
-      await markAccountAsDeletedInCloud({
-        userId: targetUserId || `old-${cleanRole}-${Date.now()}`,
-        email: oldEmail.trim().toLowerCase(),
-        role: cleanRole,
-        fullName: cleanFullName,
-        deletedBy: 'Pengembang Sistem (Penggantian Email Akun)',
-        supabase
-      })
-    } catch (delErr) {
-      console.warn('Gagal mencatat email lama ke Deleted Registry:', delErr)
-    }
+    payloadObj.originalEmail = oldEmail.trim().toLowerCase()
   }
 
   // 1. Jika targetUserId ada, simpan juga kredensial spesifik akun ini
@@ -799,4 +790,422 @@ export async function deleteUserAccountSafely({ userId, role = 'guru', email = '
   } catch (e) {}
 
   return true
+}
+
+
+/**
+ * Mengambil registry peran akun kustom dari Cloud
+ */
+export async function getCloudUserRoleOverrides(supabase) {
+  if (!supabase) return {}
+  try {
+    const { data } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', ROLE_OVERRIDES_TARGET)
+      .limit(1)
+
+    if (data && data.length > 0 && data[0].pesan) {
+      return JSON.parse(data[0].pesan) || {}
+    }
+  } catch (e) {
+    console.warn('Error fetching cloud user role overrides:', e)
+  }
+  return {}
+}
+
+/**
+ * Menetapkan peran pengguna (Jadikan Kepsek, Jadikan Admin, Kembalikan ke Guru, dll.)
+ * Bekerja 100% instan di cloud tanpa terhalang RLS Supabase
+ */
+export async function assignUserRoleInCloud({ userId, email, fullName, newRole, supabase }) {
+  const cleanEmail = (email || '').trim().toLowerCase()
+  const cleanRole = (newRole || 'guru').toLowerCase()
+  const cleanName = fullName || cleanEmail || 'Pengguna'
+
+  // 1. Simpan ke local cache
+  if (userId) {
+    try {
+      localStorage.setItem(`panrita_role_${userId}`, cleanRole)
+    } catch {}
+  }
+
+  // 2. Jika role adalah 'kepsek', update __SYSTEM_KEPSEK_CREDENTIALS__
+  if (cleanRole === 'kepsek' && supabase) {
+    try {
+      const existingKepsek = await getKepsekOverrideCredentials(supabase)
+      const payloadObj = {
+        userId: userId || undefined,
+        email: cleanEmail,
+        fullName: cleanName,
+        role: 'kepsek',
+        updatedAt: new Date().toISOString()
+      }
+      if (existingKepsek?.passwordHash) {
+        payloadObj.passwordHash = existingKepsek.passwordHash
+      }
+
+      const { data: existingRow } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', KEPSEK_CREDENTIALS_TARGET)
+        .limit(1)
+
+      const payloadStr = JSON.stringify(payloadObj)
+      if (existingRow && existingRow.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', existingRow[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: KEPSEK_CREDENTIALS_TARGET,
+            target_users: ''
+          }])
+      }
+    } catch (e) {
+      console.warn('Error updating __SYSTEM_KEPSEK_CREDENTIALS__:', e)
+    }
+  }
+
+  // 3. Jika role adalah 'admin', update __SYSTEM_ADMIN_CREDENTIALS__
+  if (cleanRole === 'admin' && supabase) {
+    try {
+      const existingAdmin = await getAdminOverrideCredentials(supabase)
+      const payloadObj = {
+        userId: userId || undefined,
+        email: cleanEmail,
+        fullName: cleanName,
+        role: 'admin',
+        updatedAt: new Date().toISOString()
+      }
+      if (existingAdmin?.passwordHash) {
+        payloadObj.passwordHash = existingAdmin.passwordHash
+      }
+
+      const { data: existingRow } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', ADMIN_CREDENTIALS_TARGET)
+        .limit(1)
+
+      const payloadStr = JSON.stringify(payloadObj)
+      if (existingRow && existingRow.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', existingRow[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: ADMIN_CREDENTIALS_TARGET,
+            target_users: ''
+          }])
+      }
+    } catch (e) {
+      console.warn('Error updating __SYSTEM_ADMIN_CREDENTIALS__:', e)
+    }
+  }
+
+  // 4. Jika role dikembalikan ke 'guru', bersihkan override kepsek/admin jika cocok
+  if (cleanRole === 'guru' && supabase) {
+    try {
+      const existingKepsek = await getKepsekOverrideCredentials(supabase)
+      if (existingKepsek && (existingKepsek.userId === userId || existingKepsek.email?.toLowerCase() === cleanEmail)) {
+        await supabase.from('pengumuman').delete().eq('target_type', KEPSEK_CREDENTIALS_TARGET)
+      }
+      const existingAdmin = await getAdminOverrideCredentials(supabase)
+      if (existingAdmin && (existingAdmin.userId === userId || existingAdmin.email?.toLowerCase() === cleanEmail)) {
+        await supabase.from('pengumuman').delete().eq('target_type', ADMIN_CREDENTIALS_TARGET)
+      }
+    } catch (e) {}
+  }
+
+  // 5. Update role overrides map di __SYSTEM_USER_ROLE_OVERRIDES__
+  if (supabase) {
+    try {
+      const currentMap = await getCloudUserRoleOverrides(supabase)
+      if (userId) currentMap[userId] = cleanRole
+      if (cleanEmail) currentMap[cleanEmail] = cleanRole
+
+      const { data: existingRow } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', ROLE_OVERRIDES_TARGET)
+        .limit(1)
+
+      const payloadStr = JSON.stringify(currentMap)
+      if (existingRow && existingRow.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', existingRow[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: ROLE_OVERRIDES_TARGET,
+            target_users: ''
+          }])
+      }
+    } catch (e) {
+      console.warn('Error updating __SYSTEM_USER_ROLE_OVERRIDES__:', e)
+    }
+  }
+
+  // 6. Coba update profiles secara langsung jika ada izin
+  if (supabase && userId) {
+    try {
+      await supabase.from('profiles').update({ role: cleanRole }).eq('id', userId)
+    } catch {}
+  }
+
+  return true
+}
+
+/**
+ * Mengambil registry kredensial semua akun (Guru, Tendik, Admin, Kepsek)
+ */
+export async function getAllAccountsCredentials(supabase) {
+  if (!supabase) return {}
+  try {
+    const { data } = await supabase
+      .from('pengumuman')
+      .select('pesan')
+      .eq('target_type', ALL_ACCOUNTS_CREDENTIALS_TARGET)
+      .limit(1)
+
+    if (data && data.length > 0 && data[0].pesan) {
+      return JSON.parse(data[0].pesan) || {}
+    }
+  } catch (e) {
+    console.warn('Error reading all accounts credentials:', e)
+  }
+  return {}
+}
+
+/**
+ * Memperbarui kredensial akun mana pun (Guru, Tendik, Admin, Kepsek) oleh Pengembang
+ * Mendukung dual login (Google tetap bisa, password baru juga bisa)
+ */
+export async function updateUserAccountCredentials({
+  userId,
+  email,
+  originalEmail = '',
+  fullName = '',
+  role = 'guru',
+  password = null,
+  supabase
+}) {
+  if (!email || !email.includes('@')) {
+    throw new Error('Alamat email tidak valid.')
+  }
+  if (password && password.length < 6) {
+    throw new Error('Password baru minimal 6 karakter.')
+  }
+
+  const cleanEmail = email.trim().toLowerCase()
+  const cleanOriginal = (originalEmail || cleanEmail).trim().toLowerCase()
+  const cleanName = (fullName || cleanEmail).trim()
+  const cleanRole = (role || 'guru').toLowerCase()
+
+  let passwordHash = null
+  if (password) {
+    passwordHash = await hashDeveloperKey(password)
+  }
+
+  // 1. Ambil registry saat ini
+  let registry = {}
+  if (supabase) {
+    registry = await getAllAccountsCredentials(supabase)
+  }
+
+  const userEntry = {
+    userId: userId || undefined,
+    email: cleanEmail,
+    originalEmail: cleanOriginal,
+    fullName: cleanName,
+    role: cleanRole,
+    passwordHash: passwordHash || registry[userId]?.passwordHash || registry[cleanEmail]?.passwordHash || null,
+    updatedAt: new Date().toISOString()
+  }
+
+  if (userId) registry[userId] = userEntry
+  registry[cleanEmail] = userEntry
+  if (cleanOriginal && cleanOriginal !== cleanEmail) {
+    registry[cleanOriginal] = userEntry
+  }
+
+  // 2. Simpan ke Cloud Supabase (pengumuman)
+  if (supabase) {
+    try {
+      const payloadStr = JSON.stringify(registry)
+      const { data: existingRow } = await supabase
+        .from('pengumuman')
+        .select('id')
+        .eq('target_type', ALL_ACCOUNTS_CREDENTIALS_TARGET)
+        .limit(1)
+
+      if (existingRow && existingRow.length > 0) {
+        await supabase
+          .from('pengumuman')
+          .update({ pesan: payloadStr })
+          .eq('id', existingRow[0].id)
+      } else {
+        await supabase
+          .from('pengumuman')
+          .insert([{
+            pesan: payloadStr,
+            target_type: ALL_ACCOUNTS_CREDENTIALS_TARGET,
+            target_users: ''
+          }])
+      }
+    } catch (saveErr) {
+      console.warn('Error saving all accounts credentials to cloud:', saveErr)
+    }
+
+    // Pastikan peran sinkron di role overrides
+    await assignUserRoleInCloud({
+      userId,
+      email: cleanEmail,
+      fullName: cleanName,
+      newRole: cleanRole,
+      supabase
+    })
+
+    // Coba perbarui juga tabel profiles jika diizinkan
+    if (userId) {
+      try {
+        await supabase.from('profiles').update({
+          email: cleanEmail,
+          full_name: cleanName,
+          role: cleanRole
+        }).eq('id', userId)
+      } catch {}
+    }
+  }
+
+  return userEntry
+}
+
+/**
+ * Memverifikasi apakah kredensial email & password cocok dengan override kredensial akun pengguna
+ */
+export async function verifyUserAccountOverrideLogin(email, password, supabase) {
+  if (!supabase || !email || !password) return { isOverride: false }
+  const inputEmail = email.trim().toLowerCase()
+  const inputHash = await hashDeveloperKey(password)
+
+  try {
+    const registry = await getAllAccountsCredentials(supabase)
+    // Cari yang cocok berdasarkan email baru atau originalEmail
+    let matched = registry[inputEmail]
+    if (!matched) {
+      for (const k in registry) {
+        const item = registry[k]
+        if (item && (item.email?.toLowerCase() === inputEmail || item.originalEmail?.toLowerCase() === inputEmail)) {
+          matched = item
+          break
+        }
+      }
+    }
+
+    if (matched && matched.passwordHash) {
+      if (inputHash === matched.passwordHash) {
+        const resolvedId = (matched.userId && isValidUUID(matched.userId)) ? matched.userId : generateUUID()
+        return {
+          isOverride: true,
+          success: true,
+          user: {
+            ...matched,
+            userId: resolvedId
+          }
+        }
+      } else {
+        return { isOverride: true, success: false, error: 'Password yang Anda masukkan salah.' }
+      }
+    }
+  } catch (e) {
+    console.warn('Error verifying user account override login:', e)
+  }
+
+  return { isOverride: false }
+}
+
+/**
+ * Masuk langsung ke akun mana pun (Guru, Tendik, Admin, Kepsek) sebagai Pengembang (Impersonation Mode)
+ */
+export function enterAccountDirectlyAsDeveloper(targetUser) {
+  if (!targetUser) return '/'
+  const devSession = getDeveloperSession() || { role: 'pengembang' }
+
+  // Simpan sesi dev agar bisa kembali kapan saja
+  try {
+    localStorage.setItem('panrita_dev_return_session', JSON.stringify(devSession))
+  } catch {}
+
+  const targetRole = targetUser.role || 'guru'
+  const targetId = targetUser.id || (targetUser.userId && isValidUUID(targetUser.userId) ? targetUser.userId : generateUUID())
+  const targetEmail = targetUser.email || ''
+  const targetName = targetUser.full_name || targetUser.fullName || targetEmail || 'Pengguna'
+
+  const targetSessionData = {
+    role: targetRole,
+    isImpersonatedByDev: true,
+    user: {
+      id: targetId,
+      email: targetEmail,
+      role: targetRole,
+      full_name: targetName
+    },
+    expiresAt: Date.now() + 2 * 60 * 60 * 1000 // 2 Jam
+  }
+
+  try {
+    localStorage.setItem('panrita_developer_session', JSON.stringify(targetSessionData))
+    localStorage.setItem(`panrita_role_${targetId}`, targetRole)
+    window.dispatchEvent(new Event('developer_session_updated'))
+  } catch {}
+
+  if (targetRole === 'admin') return '/admin'
+  if (targetRole === 'kepsek') return '/kepsek'
+  if (targetRole === 'operator') return '/operator'
+  if (targetRole === 'nonoperator' || targetRole === 'tendik') return '/nonoperator'
+  return '/guru'
+}
+
+/**
+ * Kembali ke Console Pengembang dari mode impersonasi akun
+ */
+export function returnToDeveloperConsole() {
+  try {
+    const savedDev = localStorage.getItem('panrita_dev_return_session')
+    if (savedDev) {
+      localStorage.setItem('panrita_developer_session', savedDev)
+      localStorage.removeItem('panrita_dev_return_session')
+    } else {
+      createDeveloperSession()
+    }
+    window.dispatchEvent(new Event('developer_session_updated'))
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.location.href = '/pengembang'
+  }
+}
+
+/**
+ * Memeriksa apakah saat ini sedang dalam mode akses langsung pengembang (impersonasi)
+ */
+export function isDeveloperImpersonating() {
+  try {
+    return Boolean(localStorage.getItem('panrita_dev_return_session'))
+  } catch {
+    return false
+  }
 }

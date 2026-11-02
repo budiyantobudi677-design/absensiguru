@@ -8,7 +8,12 @@ import {
   updateLeaderAccountCredentials,
   getAdminOverrideCredentials,
   getKepsekOverrideCredentials,
-  deleteUserAccountSafely
+  deleteUserAccountSafely,
+  getCloudUserRoleOverrides,
+  assignUserRoleInCloud,
+  getAllAccountsCredentials,
+  updateUserAccountCredentials,
+  enterAccountDirectlyAsDeveloper
 } from '../../lib/developerManager'
 import { fetchDeletedAccountsRegistry, isAccountDeleted } from '../../lib/deletedAccountsManager'
 import { 
@@ -359,19 +364,54 @@ export default function DashboardPengembang() {
     }
   }, [activeTab])
 
-  const handleChangeUserRole = async (targetUserId, targetUserName, newRole) => {
-    if (!window.confirm(`Ubah peran ${targetUserName} menjadi '${newRole.toUpperCase()}'?`)) return
+  const handleChangeUserRole = async (targetUserId, targetUserName, newRole, targetUserEmail = '') => {
+    const roleLabel = newRole === 'kepsek' ? 'Kepala Sekolah' : newRole === 'admin' ? 'Administrator' : newRole === 'tendik' ? 'Tendik' : 'Guru'
+    if (!window.confirm(`Ubah peran ${targetUserName} menjadi '${roleLabel.toUpperCase()}'?`)) return
     setUpdatingUserRole(targetUserId)
     try {
-      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', targetUserId)
-      if (error) throw error
-      alert(`Berhasil! Peran ${targetUserName} kini diubah menjadi '${newRole}'.`)
+      // 1. Simpan ke Cloud Override Store (kebal RLS Supabase, aktif seketika untuk login OAuth & password)
+      await assignUserRoleInCloud({
+        userId: targetUserId,
+        email: targetUserEmail,
+        fullName: targetUserName,
+        newRole,
+        supabase
+      })
+
+      // 2. Sinkronkan juga langsung ke database profiles bila diizinkan
+      try {
+        await supabase.from('profiles').update({ role: newRole }).eq('id', targetUserId)
+      } catch (eDb) {
+        console.warn('Notice update profiles db:', eDb)
+      }
+
+      alert(`Berhasil! Peran ${targetUserName} kini resmi ditetapkan sebagai '${roleLabel}'.`)
       await loadSystemMetrics()
       await loadAdminAccountInfo()
     } catch (err) {
-      alert('Gagal mengubah peran: ' + err.message)
+      console.error('Gagal mengubah peran user:', err)
+      alert('Gagal mengubah peran: ' + (err.message || err))
     } finally {
       setUpdatingUserRole(null)
+    }
+  }
+
+  const handleDirectAccess = (targetUser) => {
+    const roleLabel = targetUser.role === 'kepsek' ? 'Kepala Sekolah' : targetUser.role === 'admin' ? 'Administrator' : targetUser.role === 'tendik' ? 'Tendik' : 'Guru'
+    if (!window.confirm(`Masuk langsung ke akun ${roleLabel} "${targetUser.full_name || targetUser.email}" sebagai Pengembang?\n\nAnda dapat kembali ke Konsol Pengembang kapan saja dengan mengklik tombol "Kembali ke Pengembang" di bagian atas layar.`)) {
+      return
+    }
+    const ok = enterAccountDirectlyAsDeveloper(targetUser)
+    if (!ok) {
+      alert('Gagal mengaktifkan sesi akses akun.')
+      return
+    }
+    if (targetUser.role === 'admin') {
+      navigate('/admin')
+    } else if (targetUser.role === 'kepsek') {
+      navigate('/kepsek')
+    } else {
+      navigate('/dashboard')
     }
   }
 
@@ -390,24 +430,36 @@ export default function DashboardPengembang() {
     setLoadingMetrics(true)
     await pingLatency()
     try {
-      const [pRes, cRes, aRes, sRes, deletedReg] = await Promise.all([
+      const [pRes, cRes, aRes, sRes, deletedReg, overrideAdmin, overrideKepsek, cloudRoles, allCreds] = await Promise.all([
         supabase.from('profiles').select('id, full_name, email, role, nip'),
         supabase.from('classes').select('id'),
         supabase.from('absensi').select('id', { count: 'exact', head: true }),
         supabase.from('settings').select('*').eq('id', 1).maybeSingle(),
-        fetchDeletedAccountsRegistry(supabase)
+        fetchDeletedAccountsRegistry(supabase),
+        getAdminOverrideCredentials(supabase),
+        getKepsekOverrideCredentials(supabase),
+        getCloudUserRoleOverrides(supabase),
+        getAllAccountsCredentials(supabase)
       ])
 
       const rawProfs = pRes.data || []
       const activeProfs = rawProfs.filter(p => !isAccountDeleted(p, deletedReg))
 
-      // Sinkronkan akun pimpinan aktif (Admin & Kepala Sekolah) dari override credentials
-      const [overrideAdmin, overrideKepsek] = await Promise.all([
-        getAdminOverrideCredentials(supabase),
-        getKepsekOverrideCredentials(supabase)
-      ])
+      // Terapkan cloud role overrides & kredensial kustom ke setiap akun
+      const mergedProfs = activeProfs.map(p => {
+        const item = { ...p }
+        if (cloudRoles && cloudRoles[p.id]?.role) {
+          item.role = cloudRoles[p.id].role
+        }
+        if (allCreds && allCreds[p.id]) {
+          item.email = allCreds[p.id].email || item.email
+          if (allCreds[p.id].fullName) item.full_name = allCreds[p.id].fullName
+          item.originalEmail = allCreds[p.id].originalEmail || p.email
+        }
+        return item
+      })
 
-      const finalProfs = [...activeProfs]
+      const finalProfs = [...mergedProfs]
 
       // Jika ada override admin aktif, pastikan selalu tampil di leader accounts list
       if (overrideAdmin && overrideAdmin.email && !isAccountDeleted(overrideAdmin.email, deletedReg)) {
@@ -446,7 +498,7 @@ export default function DashboardPengembang() {
       setTeachersList(finalProfs)
 
       setStats({
-        guruCount: profs.filter(p => p.role === 'guru').length,
+        guruCount: finalProfs.filter(p => p.role === 'guru').length,
         classesCount: cRes.data?.length || 0,
         absensiCount: aRes.count || 0,
         schoolName: sRes.data?.nama_sekolah || 'Sekolah Terhubung',
@@ -625,23 +677,37 @@ export default function DashboardPengembang() {
     }
 
     setSavingEditLeader(true)
-    const roleLabel = editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator'
+    const roleLabel = editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : editLeaderRole === 'admin' ? 'Administrator' : editLeaderRole === 'tendik' ? 'Tendik' : 'Guru'
     try {
-      await updateLeaderAccountCredentials({
-        role: editLeaderRole,
+      // 1. Simpan ke sistem kredensial universal (berlaku untuk semua akun: guru, tendik, admin, kepsek)
+      await updateUserAccountCredentials({
+        userId: editingLeaderAccount.id,
         email: editLeaderEmail.trim(),
-        password: editLeaderPassword || undefined,
+        originalEmail: editingLeaderAccount.originalEmail || editingLeaderAccount.email,
         fullName: editLeaderName.trim(),
-        supabase,
-        targetUserId: editingLeaderAccount.id
+        role: editLeaderRole,
+        password: editLeaderPassword || undefined,
+        supabase
       })
 
-      alert(`Berhasil! Data akun ${roleLabel} (${editLeaderEmail.trim()}) telah diperbarui.${editLeaderPassword ? ' Password baru telah diaktifkan.' : ''}`)
+      // 2. Jika akun adalah admin atau kepsek, sinkronkan juga dengan kredensial pimpinan
+      if (editLeaderRole === 'admin' || editLeaderRole === 'kepsek') {
+        await updateLeaderAccountCredentials({
+          role: editLeaderRole,
+          email: editLeaderEmail.trim(),
+          password: editLeaderPassword || undefined,
+          fullName: editLeaderName.trim(),
+          supabase,
+          targetUserId: editingLeaderAccount.id
+        })
+      }
+
+      alert(`Berhasil! Data akun ${roleLabel} (${editLeaderEmail.trim()}) telah diperbarui.${editLeaderPassword ? ' Password baru telah diaktifkan.' : ''}\n\nAkun ini dapat login menggunakan Google OAuth maupun dengan Email & Password baru.`)
       setEditingLeaderAccount(null)
       await loadSystemMetrics()
       await loadAdminAccountInfo()
     } catch (err) {
-      console.error('Error saving leader edits:', err)
+      console.error('Error saving account edits:', err)
       alert(`Gagal memperbarui akun ${roleLabel}: ` + (err.message || 'Terjadi kesalahan sistem.'))
     } finally {
       setSavingEditLeader(false)
@@ -1234,12 +1300,39 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                               </p>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.95rem' }}>
+                            <div style={{ display: 'flex', gap: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.95rem', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleDirectAccess(leader)}
+                                title="Akses akun ini langsung tanpa password"
+                                style={{
+                                  flex: 1,
+                                  minWidth: '110px',
+                                  padding: '0.65rem',
+                                  borderRadius: '10px',
+                                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  fontWeight: 800,
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                                }}
+                              >
+                                <Laptop size={14} />
+                                <span>Akses Akun</span>
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditLeaderModal(leader)}
                                 style={{
                                   flex: 1,
+                                  minWidth: '120px',
                                   padding: '0.65rem',
                                   borderRadius: '10px',
                                   background: isKep ? '#7C3AED' : '#0284C7',
@@ -1576,13 +1669,18 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                       .map(u => {
                         const isKepsek = u.role === 'kepsek'
                         const isAdmin = u.role === 'admin'
+                        const isTendik = u.role === 'tendik'
                         return (
                           <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                             <td style={{ padding: '0.75rem 0.5rem', fontWeight: 700, color: '#FFFFFF' }}>
-                              {u.full_name || '-'}
+                              <div>{u.full_name || '-'}</div>
+                              {u.nip && <div style={{ fontSize: '0.7rem', color: '#64748B' }}>NIP: {u.nip}</div>}
                             </td>
                             <td style={{ padding: '0.75rem 0.5rem', color: '#94A3B8' }}>
-                              {u.email}
+                              <div>{u.email}</div>
+                              {u.originalEmail && u.originalEmail !== u.email && (
+                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>OAuth: {u.originalEmail}</div>
+                              )}
                             </td>
                             <td style={{ padding: '0.75rem 0.5rem' }}>
                               <span style={{
@@ -1590,69 +1688,68 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                                 borderRadius: '6px',
                                 fontSize: '0.72rem',
                                 fontWeight: 800,
-                                background: isKepsek ? 'rgba(167,139,250,0.2)' : isAdmin ? 'rgba(0,180,216,0.2)' : 'rgba(255,255,255,0.08)',
-                                color: isKepsek ? '#C4B5FD' : isAdmin ? '#38BDF8' : '#CBD5E1',
-                                border: isKepsek ? '1px solid #8B5CF6' : isAdmin ? '1px solid #00B4D8' : '1px solid rgba(255,255,255,0.1)'
+                                background: isKepsek ? 'rgba(167,139,250,0.2)' : isAdmin ? 'rgba(0,180,216,0.2)' : isTendik ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)',
+                                color: isKepsek ? '#C4B5FD' : isAdmin ? '#38BDF8' : isTendik ? '#FCD34D' : '#CBD5E1',
+                                border: isKepsek ? '1px solid #8B5CF6' : isAdmin ? '1px solid #00B4D8' : isTendik ? '1px solid #F59E0B' : '1px solid rgba(255,255,255,0.1)'
                               }}>
-                                {isKepsek ? '🎓 Kepala Sekolah' : isAdmin ? '🛡️ Admin' : u.role === 'tendik' ? '💼 Tendik' : '👨‍🏫 Guru'}
+                                {isKepsek ? '🎓 Kepala Sekolah' : isAdmin ? '🛡️ Admin' : isTendik ? '💼 Tendik' : '👨‍🏫 Guru'}
                               </span>
                             </td>
                             <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
                               <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {(isKepsek || isAdmin) && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditLeaderModal(u)}
-                                      title={`Ganti email dan password akun ${isKepsek ? 'Kepala Sekolah' : 'Admin'}`}
-                                      style={{
-                                        padding: '0.35rem 0.6rem',
-                                        borderRadius: '8px',
-                                        background: isKepsek ? '#7C3AED' : '#0284C7',
-                                        color: '#FFFFFF',
-                                        border: 'none',
-                                        fontWeight: 700,
-                                        fontSize: '0.72rem',
-                                        cursor: 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}
-                                    >
-                                      <Edit3 size={11} />
-                                      <span>Ganti Email/Pass</span>
-                                    </button>
+                                {/* Tombol Akses Akun Langsung untuk SEMUA akun */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirectAccess(u)}
+                                  title="Akses akun ini langsung tanpa password sebagai Pengembang"
+                                  style={{
+                                    padding: '0.35rem 0.6rem',
+                                    borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)'
+                                  }}
+                                >
+                                  <Laptop size={11} />
+                                  <span>Akses Akun</span>
+                                </button>
 
-                                    <button
-                                      type="button"
-                                      disabled={deletingUserId === u.id}
-                                      onClick={() => handleDeleteLeaderAccount(u)}
-                                      title={`Hapus data akun ${isKepsek ? 'Kepala Sekolah' : 'Admin'} ini dari sistem`}
-                                      style={{
-                                        padding: '0.35rem 0.6rem',
-                                        borderRadius: '8px',
-                                        background: 'rgba(239, 68, 68, 0.2)',
-                                        border: '1px solid rgba(239, 68, 68, 0.45)',
-                                        color: '#F87171',
-                                        fontWeight: 700,
-                                        fontSize: '0.72rem',
-                                        cursor: deletingUserId === u.id ? 'not-allowed' : 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}
-                                    >
-                                      <Trash2 size={11} />
-                                      <span>{deletingUserId === u.id ? '...' : 'Hapus'}</span>
-                                    </button>
-                                  </>
-                                )}
+                                {/* Tombol Ganti Email & Password untuk SEMUA akun */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditLeaderModal(u)}
+                                  title="Ganti email dan password akun ini"
+                                  style={{
+                                    padding: '0.35rem 0.6rem',
+                                    borderRadius: '8px',
+                                    background: isKepsek ? '#7C3AED' : isAdmin ? '#0284C7' : 'rgba(255,255,255,0.15)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <Edit3 size={11} />
+                                  <span>Ganti Email/Pass</span>
+                                </button>
 
+                                {/* Tombol Tetapkan Peran */}
                                 {!isKepsek && (
                                   <button
                                     type="button"
                                     disabled={updatingUserRole === u.id}
-                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'kepsek')}
+                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'kepsek', u.email)}
                                     style={{
                                       padding: '0.35rem 0.6rem',
                                       borderRadius: '8px',
@@ -1671,7 +1768,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                                   <button
                                     type="button"
                                     disabled={updatingUserRole === u.id}
-                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'admin')}
+                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'admin', u.email)}
                                     style={{
                                       padding: '0.35rem 0.6rem',
                                       borderRadius: '8px',
@@ -1686,11 +1783,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                                     Jadikan Admin
                                   </button>
                                 )}
-                                {(isKepsek || isAdmin) && (
+                                {(isKepsek || isAdmin || isTendik) && (
                                   <button
                                     type="button"
                                     disabled={updatingUserRole === u.id}
-                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'guru')}
+                                    onClick={() => handleChangeUserRole(u.id, u.full_name || u.email, 'guru', u.email)}
                                     style={{
                                       padding: '0.35rem 0.6rem',
                                       borderRadius: '8px',
@@ -1705,6 +1802,30 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                                     Kembalikan ke Guru
                                   </button>
                                 )}
+
+                                {/* Tombol Hapus untuk SEMUA akun */}
+                                <button
+                                  type="button"
+                                  disabled={deletingUserId === u.id}
+                                  onClick={() => handleDeleteLeaderAccount(u)}
+                                  title="Hapus data akun ini dari sistem"
+                                  style={{
+                                    padding: '0.35rem 0.6rem',
+                                    borderRadius: '8px',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.45)',
+                                    color: '#F87171',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    cursor: deletingUserId === u.id ? 'not-allowed' : 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <Trash2 size={11} />
+                                  <span>{deletingUserId === u.id ? '...' : 'Hapus'}</span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -3103,10 +3224,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FFFFFF' }}>
-                      Edit Akun {editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : 'Administrator'}
+                      Edit Kredensial Akun {editLeaderRole === 'kepsek' ? 'Kepala Sekolah' : editLeaderRole === 'admin' ? 'Administrator' : editLeaderRole === 'tendik' ? 'Tendik' : 'Guru'}
                     </h3>
                     <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8' }}>
-                      Ubah alamat email dan kata sandi akun pimpinan
+                      Ubah email & kata sandi (dapat login via Google OAuth maupun Email & Password)
                     </p>
                   </div>
                 </div>
@@ -3131,11 +3252,11 @@ Apakah Anda yakin untuk melanjutkan penghapusan akun ${roleLabel} ini?`
                       borderRadius: '8px',
                       fontSize: '0.8rem',
                       fontWeight: 800,
-                      background: editLeaderRole === 'kepsek' ? 'rgba(167,139,250,0.25)' : 'rgba(0,180,216,0.25)',
-                      color: editLeaderRole === 'kepsek' ? '#C4B5FD' : '#38BDF8',
-                      border: editLeaderRole === 'kepsek' ? '1px solid #8B5CF6' : '1px solid #00B4D8'
+                      background: editLeaderRole === 'kepsek' ? 'rgba(167,139,250,0.25)' : editLeaderRole === 'admin' ? 'rgba(0,180,216,0.25)' : editLeaderRole === 'tendik' ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.1)',
+                      color: editLeaderRole === 'kepsek' ? '#C4B5FD' : editLeaderRole === 'admin' ? '#38BDF8' : editLeaderRole === 'tendik' ? '#FCD34D' : '#CBD5E1',
+                      border: editLeaderRole === 'kepsek' ? '1px solid #8B5CF6' : editLeaderRole === 'admin' ? '1px solid #00B4D8' : editLeaderRole === 'tendik' ? '1px solid #F59E0B' : '1px solid rgba(255,255,255,0.2)'
                     }}>
-                      {editLeaderRole === 'kepsek' ? '🎓 Kepala Sekolah' : '🛡️ Administrator'}
+                      {editLeaderRole === 'kepsek' ? '🎓 Kepala Sekolah' : editLeaderRole === 'admin' ? '🛡️ Administrator' : editLeaderRole === 'tendik' ? '💼 Tendik' : '👨‍🏫 Guru'}
                     </span>
                   </div>
                 </div>
