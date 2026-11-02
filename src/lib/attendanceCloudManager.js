@@ -105,7 +105,9 @@ export async function saveAttendanceRecord({
               waktu_masuk: finalWaktuMasuk,
               lokasi_masuk: finalLocMasuk,
               status: finalStatus,
-              keterangan: keterangan || existRows[0].keterangan || ''
+              keterangan: keterangan || existRows[0].keterangan || '',
+              shift_id: shiftId || existRows[0].shift_id || null,
+              shift_nama: shiftNama || existRows[0].shift_nama || null
             })
             .eq('id', existRows[0].id)
             .select()
@@ -122,7 +124,9 @@ export async function saveAttendanceRecord({
               tanggal: today,
               lokasi_masuk: loc,
               status: effectiveStatus,
-              keterangan: keterangan || ''
+              keterangan: keterangan || '',
+              shift_id: shiftId || null,
+              shift_nama: shiftNama || null
             })
             .select()
             .maybeSingle()
@@ -588,6 +592,12 @@ export async function fetchAttendanceRecords({
       }
       if (item.keterangan && item.keterangan.includes('FOTO_WEBP') && !existing.keterangan?.includes('FOTO_WEBP')) {
         existing.keterangan = item.keterangan
+      }
+      if (!existing.shift_id && item.shift_id) {
+        existing.shift_id = item.shift_id
+      }
+      if (!existing.shift_nama && item.shift_nama) {
+        existing.shift_nama = item.shift_nama
       }
     } else {
       mergedMap.set(key, { ...item })

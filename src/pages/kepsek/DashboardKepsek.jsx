@@ -35,6 +35,13 @@ import { fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../li
 import { saveAttendanceRecord, fetchAttendanceRecords, getTodayUserAttendance } from '../../lib/attendanceCloudManager'
 import { recordActivityLog } from '../../lib/activityLogManager'
 import { fetchClassesFromCloud, fetchStudentsFromCloud } from '../../lib/classCloudManager'
+import {
+  DEFAULT_SHIFTS,
+  fetchShiftSystemData,
+  resolveTeacherShiftForDate,
+  isAttendanceLate,
+  getCachedShiftSystem
+} from '../../lib/shiftManager'
 
 export default function DashboardKepsek() {
   const isNative = Capacitor.isNativePlatform()
@@ -43,6 +50,26 @@ export default function DashboardKepsek() {
   const [activeTab, setActiveTab] = useState(window.innerWidth < 1024 ? 'absensi' : 'overview') 
   const [isIncognito, setIsIncognito] = useState(false)
   const [crossDeviceStatus, setCrossDeviceStatus] = useState({ allowed: true })
+
+  // State Sistem Shift & Plotting untuk Kepsek
+  const [shiftSystem, setShiftSystem] = useState(() => getCachedShiftSystem())
+
+  useEffect(() => {
+    let isMounted = true
+    fetchShiftSystemData(supabase).then(sData => {
+      if (isMounted && sData) setShiftSystem(sData)
+    }).catch(() => {})
+    return () => { isMounted = false }
+  }, [])
+
+  const kepsekTodayShift = useMemo(() => {
+    return resolveTeacherShiftForDate({
+      teacherId: admin?.id || 'kepsek-active-id',
+      date: new Date(),
+      shifts: shiftSystem?.shifts || DEFAULT_SHIFTS,
+      assignments: shiftSystem?.assignments || {}
+    })
+  }, [admin?.id, shiftSystem])
 
   // Data Kepala Sekolah
   const [kepsekNama, setKepsekNama] = useState(() => {
@@ -839,19 +866,35 @@ export default function DashboardKepsek() {
       const now = getSecureServerIsoString()
 
       if (jenis === 'masuk') {
+        let masukStatus = 'hadir'
+        const nowDate = getSecureServerDate()
+        const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
+        const isSiang = kepsekTodayShift?.shiftId === 'shift-genap' || kepsekTodayShift?.shiftName?.toLowerCase().includes('siang')
+        let limitMins = isSiang ? (10 * 60 + 15) : (7 * 60 + 30)
+        if (isSiang && nowDate.getDay() === 5) {
+          limitMins = 13 * 60 + 15
+        } else if (isSiang && nowDate.getDay() === 6) {
+          limitMins = 11 * 60 + 45
+        }
+        if (currentMins > limitMins) {
+          masukStatus = 'terlambat'
+        }
+
         const res = await saveAttendanceRecord({
           userId: admin.id,
           jenis: 'masuk',
           now,
           today,
           loc,
-          status: 'hadir',
+          status: masukStatus,
           supabase,
-          userProfile: admin
+          userProfile: admin,
+          shiftNama: kepsekTodayShift?.shiftName,
+          shiftId: kepsekTodayShift?.shiftId
         })
         const data = res.data
         setKepsekHasCheckedIn(true)
-        setKepsekTodayStatus('hadir')
+        setKepsekTodayStatus(masukStatus)
         setKepsekTodayAbsensi(data)
         recordActivityLog({
           userId: admin.id,
@@ -859,11 +902,15 @@ export default function DashboardKepsek() {
           role: 'kepsek',
           fullName: admin.full_name || admin.email,
           action: 'Presensi Masuk',
-          details: `Presensi Masuk Kepala Sekolah jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
-          status: 'hadir',
+          details: `Presensi Masuk Kepala Sekolah (${masukStatus.toUpperCase()}) jam ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WITA`,
+          status: masukStatus,
           supabase
         })
-        setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan.", type: "success" })
+        if (masukStatus === 'terlambat') {
+          setKepsekPopup({ show: true, title: "Absen Masuk (Terlambat)", message: `Presensi masuk tercatat pukul ${getSecureServerDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} (Terlambat).`, type: "warning" })
+        } else {
+          setKepsekPopup({ show: true, title: "Absen Berhasil!", message: "Presensi masuk Anda telah tersimpan tepat waktu.", type: "success" })
+        }
       } else if (jenis === 'pulang') {
         const res = await saveAttendanceRecord({
           userId: admin.id,
@@ -1524,16 +1571,7 @@ export default function DashboardKepsek() {
           if(!userMap[a.user_id]) return;
           const tgl = new Date(a.tanggal).getDate();
           const tl = isTugasLuar(a);
-          const isLate = !tl && (() => {
-            if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
-            if (!a.waktu_masuk) return a.status === 'terlambat';
-            try {
-              const d = new Date(a.waktu_masuk);
-              const mins = d.getHours() * 60 + d.getMinutes();
-              if (mins <= 7 * 60 + 30) return false;
-              return mins > (7 * 60 + 30) || a.status === 'terlambat';
-            } catch { return a.status === 'terlambat'; }
-          })();
+          const isLate = isAttendanceLate(a, shiftSystem);
 
           const inTime = tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
           const outTime = tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
@@ -1567,16 +1605,7 @@ export default function DashboardKepsek() {
 
        rows = nonBulananRows.map((a, index) => {
          const tl = isTugasLuar(a);
-         const isLate = !tl && (() => {
-           if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
-           if (!a.waktu_masuk) return a.status === 'terlambat';
-           try {
-             const d = new Date(a.waktu_masuk);
-             const mins = d.getHours() * 60 + d.getMinutes();
-             if (mins <= 7 * 60 + 30) return false;
-             return mins > (7 * 60 + 30) || a.status === 'terlambat';
-           } catch { return a.status === 'terlambat'; }
-         })();
+         const isLate = isAttendanceLate(a, shiftSystem);
          const isKepsek = (a.profiles?.role || '').toLowerCase() === 'kepsek' || 
                           (a.profiles?.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
                           (a.profiles?.jabatan || '').toLowerCase().includes('kepala sekolah');

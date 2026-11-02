@@ -36,7 +36,8 @@ import {
   resolveTeacherShiftForDate,
   getIsoWeekNumber,
   isOddWeek,
-  getIndonesianDayName
+  getIndonesianDayName,
+  isAttendanceLate
 } from '../../lib/shiftManager'
 import { fetchClassesFromCloud, sortClassesNaturally } from '../../lib/classCloudManager'
 import { 
@@ -454,38 +455,28 @@ export default function DashboardGuru({ roleOverride = null }) {
     return currentMins < (pH * 60 + pM)
   }, [currentTime, todayShift?.jamPulang])
 
-  // Cek apakah presensi masuk hari ini terlambat (Tugas Luar tidak pernah terlambat, toleransi s.d. 07.30)
+  // Cek apakah presensi masuk hari ini terlambat (Mendukung Shift Pagi toleransi 07.30 & Shift Siang toleransi 15 menit s.d. 10.15)
   const isTodayLate = useMemo(() => {
     if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return false
     if (!todayAbsensi?.waktu_masuk) return false
-    try {
-      const masukDate = new Date(todayAbsensi.waktu_masuk)
-      const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-      // Khusus rentang 07.00 - 07.30 (atau <= 07:30) dipastikan TIDAK TERLAMBAT
-      if (masukMins <= 7 * 60 + 30) return false
-      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
-      return masukMins > (limitH * 60 + limitM)
-    } catch {
-      return todayStatus === 'terlambat' || todayAbsensi?.status === 'terlambat'
-    }
-  }, [todayStatus, todayAbsensi?.status, todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayShift?.jamMasukBatas])
+    return isAttendanceLate(todayAbsensi, shiftSystem)
+  }, [todayAbsensi, shiftSystem])
 
-  // Hitung jumlah menit keterlambatan hari ini
+  // Hitung jumlah menit keterlambatan hari ini (hanya jika benar-benar terlambat)
   const lateMinutesToday = useMemo(() => {
+    if (!isTodayLate) return 0
     if (todayAbsensi?.keterangan?.includes('Tugas Luar') || todayAbsensi?.status === 'tugas_luar') return 0
     if (!todayAbsensi?.waktu_masuk || !todayShift?.jamMasuk) return 0
     try {
       const masukDate = new Date(todayAbsensi.waktu_masuk)
       const masukMins = masukDate.getHours() * 60 + masukDate.getMinutes()
-      // Jika masih dalam rentang 07.00 - 07.30, lateMinutes adalah 0
-      if (masukMins <= 7 * 60 + 30) return 0
       const [inH, inM] = (todayShift.jamMasuk || '07:00').split(':').map(Number)
       const scheduledMins = inH * 60 + inM
       return Math.max(0, masukMins - scheduledMins)
     } catch {
       return 0
     }
-  }, [todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayAbsensi?.status, todayShift?.jamMasuk])
+  }, [isTodayLate, todayAbsensi?.waktu_masuk, todayAbsensi?.keterangan, todayAbsensi?.status, todayShift?.jamMasuk])
 
   // Theme mode
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme_mode') === 'dark')
@@ -1762,8 +1753,17 @@ export default function DashboardGuru({ roleOverride = null }) {
     if (jenis === 'masuk') {
       const nowDate = new Date(now)
       const currentMins = nowDate.getHours() * 60 + nowDate.getMinutes()
-      const [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
-      if (currentMins > (limitH * 60 + limitM)) {
+      const [inH, inM] = (todayShift?.jamMasuk || '07:00').split(':').map(Number)
+      const scheduledMins = inH * 60 + inM
+      let [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
+      let limitMins = limitH * 60 + limitM
+      if (todayShift?.shiftId === 'shift-ganjil' || scheduledMins <= 7 * 60 + 30) {
+        if (limitMins < 7 * 60 + 30) limitMins = 7 * 60 + 30
+      }
+      if (todayShift?.shiftId === 'shift-genap') {
+        limitMins = inH * 60 + inM + 15
+      }
+      if (currentMins > limitMins) {
         offlineStatus = 'terlambat'
       }
     }
@@ -1862,7 +1862,7 @@ export default function DashboardGuru({ roleOverride = null }) {
         }
       }
 
-      // Deteksi status keterlambatan jika absen masuk
+      // Deteksi status keterlambatan jika absen masuk (Mendukung Pagi s.d. 07.30 & Siang toleransi 15 menit s.d. 10.15)
       let masukStatus = 'hadir'
       let lateMinutes = 0
       if (jenis === 'masuk') {
@@ -1872,9 +1872,13 @@ export default function DashboardGuru({ roleOverride = null }) {
         const scheduledMins = inH * 60 + inM
         let [limitH, limitM] = (todayShift?.jamMasukBatas || '07:30').split(':').map(Number)
         let limitMins = limitH * 60 + limitM
-        // Rentang pagi (07.00 - 07.30) dipastikan batas toleransinya minimal s.d. 07.30 (tidak terlambat)
-        if (scheduledMins <= 7 * 60 + 30 && limitMins < 7 * 60 + 30) {
-          limitMins = 7 * 60 + 30
+        // Shift Pagi: Batas toleransi minimal s.d. 07.30
+        if (todayShift?.shiftId === 'shift-ganjil' || scheduledMins <= 7 * 60 + 30) {
+          if (limitMins < 7 * 60 + 30) limitMins = 7 * 60 + 30
+        }
+        // Shift Siang: Batas toleransi 15 menit (s.d. 10.15)
+        if (todayShift?.shiftId === 'shift-genap') {
+          limitMins = inH * 60 + inM + 15
         }
         if (currentMins > limitMins) {
           masukStatus = 'terlambat'

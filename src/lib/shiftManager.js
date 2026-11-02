@@ -436,3 +436,95 @@ export function resolveTeacherShiftForDate({
     mode: userAssignment.mode || 'fixed'
   }
 }
+
+/**
+ * Memvalidasi apakah rekaman presensi masuk dinyatakan terlambat atau tepat waktu.
+ * Mendukung presensi Shift Pagi (toleransi s.d. 07.30 WITA) dan Shift Siang (toleransi 15 menit s.d. 10.15 WITA).
+ */
+export function isAttendanceLate(item, shiftSystem = null) {
+  if (!item) return false
+  // Tugas Luar, Izin, Sakit, Alpa bukan status terlambat
+  if (
+    item.status === 'tugas_luar' || 
+    item.status === 'izin' || 
+    item.status === 'sakit' || 
+    item.status === 'alpa' ||
+    item.keterangan?.includes('Tugas Luar') ||
+    item.keterangan?.includes('Pelatihan')
+  ) {
+    return false
+  }
+
+  if (!item.waktu_masuk) {
+    return item.status === 'terlambat'
+  }
+
+  try {
+    const d = new Date(item.waktu_masuk)
+    const mins = d.getHours() * 60 + d.getMinutes()
+    const dayIndex = d.getDay() // 0 = Minggu, 1 = Senin, ..., 5 = Jumat, 6 = Sabtu
+
+    const sId = (item.shift_id || '').toLowerCase()
+    const sNama = (item.shift_nama || '').toLowerCase()
+    const ket = (item.keterangan || '').toLowerCase()
+
+    let isShiftSiang = sId.includes('genap') || sId.includes('siang') || 
+                       sNama.includes('siang') || sNama.includes('genap') ||
+                       ket.includes('shift siang') || ket.includes('shift genap')
+
+    if (!isShiftSiang && item.user_id) {
+      try {
+        const sys = shiftSystem || getCachedShiftSystem()
+        const assign = sys?.assignments?.[item.user_id]
+        if (assign) {
+          if (assign.fixedShiftId === 'shift-genap' || (assign.mode === 'fixed' && assign.fixedShiftId === 'shift-genap')) {
+            isShiftSiang = true
+          } else {
+            const resolved = resolveTeacherShiftForDate({
+              teacherId: item.user_id,
+              date: d,
+              shifts: sys?.shifts || DEFAULT_SHIFTS,
+              assignments: sys?.assignments || {}
+            })
+            if (resolved?.shiftId === 'shift-genap' || resolved?.shiftName?.toLowerCase().includes('siang')) {
+              isShiftSiang = true
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Jika presensi di jam siang (08:30 s.d. 10:15) dan status awalnya sudah sah 'hadir', hormati sebagai shift siang
+    if (!isShiftSiang && mins >= 8 * 60 + 30 && mins <= 10 * 60 + 15 && item.status === 'hadir') {
+      isShiftSiang = true
+    }
+
+    if (isShiftSiang) {
+      // Toleransi Khusus Shift Siang: Tetap 15 menit
+      // Senin - Kamis: Jam Masuk 10.00, batas 10.15 WITA (615 menit)
+      // Jumat: Jam Masuk 12.00 / 13.00, batas 12.15 / 13.15 WITA
+      // Sabtu: Jam Masuk 09.30 / 11.30, batas 09.45 / 11.45 WITA
+      let limitMins = 10 * 60 + 15
+      if (dayIndex === 5) {
+        limitMins = 13 * 60 + 15
+      } else if (dayIndex === 6) {
+        limitMins = 11 * 60 + 45
+      }
+
+      // Presensi masuk di bawah atau sama dengan batas toleransi -> Tepat Waktu (Tidak Terlambat)
+      if (mins <= limitMins) {
+        return false
+      }
+      return true
+    } else {
+      // Shift Pagi (Shift Ganjil / Default):
+      // Batas toleransi pukul 07.30 WITA (450 menit)
+      if (mins <= 7 * 60 + 30) {
+        return false
+      }
+      return true
+    }
+  } catch {
+    return item.status === 'terlambat'
+  }
+}

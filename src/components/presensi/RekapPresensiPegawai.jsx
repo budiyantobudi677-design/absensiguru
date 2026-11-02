@@ -12,6 +12,7 @@ import { saveAs } from 'file-saver'
 import { supabase } from '../../lib/supabase'
 import { recordDeletedAttendance, fetchDeletedAttendanceRegistry, filterActiveAttendance } from '../../lib/deletedAttendanceManager'
 import { loadKepsekConfigFromCloud, getActiveKopData } from '../../lib/persuratanGenerator'
+import { isAttendanceLate, getCachedShiftSystem, fetchShiftSystemData } from '../../lib/shiftManager'
 
 /**
  * Pengurutan Hierarkis Pegawai Sesuai Standar Dinas & Aturan Sekolah:
@@ -148,6 +149,17 @@ export default function RekapPresensiPegawai({
     return () => { isMounted = false }
   }, [])
 
+  // State Sistem Shift Sekolah & Penugasan Pegawai
+  const [shiftSystem, setShiftSystem] = useState(() => getCachedShiftSystem())
+
+  useEffect(() => {
+    let isMounted = true
+    fetchShiftSystemData(supabase).then(sData => {
+      if (isMounted && sData) setShiftSystem(sData)
+    }).catch(() => {})
+    return () => { isMounted = false }
+  }, [])
+
   // Helper pembersih string NIP & Nama
   const getValidNip = (val) => {
     if (!val) return ''
@@ -239,23 +251,10 @@ export default function RekapPresensiPegawai({
     )
   }
 
-  // Cek apakah rekaman presensi terlambat (jam masuk setelah 07.30 atau status terlambat)
+  // Cek apakah rekaman presensi terlambat (Mendukung Shift Pagi s.d. 07.30 & Shift Siang toleransi 15 menit s.d. 10.15)
   const isLateRecord = (item) => {
     if (!item) return false
-    if (isTugasLuar(item)) return false
-    if (['izin', 'sakit', 'alpa'].includes(item.status)) return false
-    if (item.status === 'terlambat') return true
-    if (item.keterangan && item.keterangan.toLowerCase().includes('terlambat')) return true
-    if (!item.waktu_masuk) return false
-    try {
-      const d = new Date(item.waktu_masuk)
-      const mins = d.getHours() * 60 + d.getMinutes()
-      // 07.00 - 07.30 WITA dipastikan tepat waktu (tidak terlambat)
-      if (mins <= 7 * 60 + 30) return false
-      return mins > (7 * 60 + 30)
-    } catch (e) {
-      return false
-    }
+    return isAttendanceLate(item, shiftSystem)
   }
 
   const extractPhoto = (item) => {

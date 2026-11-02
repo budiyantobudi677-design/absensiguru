@@ -47,7 +47,8 @@ import {
   getIsoWeekNumber,
   isOddWeek,
   getIndonesianDayName,
-  getAlternateShiftId
+  getAlternateShiftId,
+  isAttendanceLate
 } from '../../lib/shiftManager'
 
 export default function DashboardAdmin() {
@@ -1648,17 +1649,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
           if(!userMap[a.user_id]) return;
           const tgl = new Date(a.tanggal).getDate();
           const tl = isTugasLuar(a);
-          const isLate = !tl && (() => {
-            if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
-            if (!a.waktu_masuk) return a.status === 'terlambat';
-            try {
-              const d = new Date(a.waktu_masuk);
-              const mins = d.getHours() * 60 + d.getMinutes();
-              // Rentang 07.00 - 07.30 (atau <= 07:30) dipastikan TIDAK TERLAMBAT (HADIR)
-              if (mins <= 7 * 60 + 30) return false;
-              return mins > (7 * 60 + 30) || a.status === 'terlambat';
-            } catch { return a.status === 'terlambat'; }
-          })();
+          const isLate = isAttendanceLate(a, shiftSystem);
 
           const inTime = tl ? '07.00' : (a.waktu_masuk ? new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
           const outTime = tl ? '14.00' : (a.waktu_pulang ? new Date(a.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
@@ -1692,16 +1683,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
 
        rows = nonBulananRows.map((a, index) => {
          const tl = isTugasLuar(a);
-         const isLate = !tl && (() => {
-           if (['izin', 'sakit', 'alpa'].includes(a.status)) return false;
-           if (!a.waktu_masuk) return a.status === 'terlambat';
-           try {
-             const d = new Date(a.waktu_masuk);
-             const mins = d.getHours() * 60 + d.getMinutes();
-             if (mins <= 7 * 60 + 30) return false;
-             return mins > (7 * 60 + 30) || a.status === 'terlambat';
-           } catch { return a.status === 'terlambat'; }
-         })();
+         const isLate = isAttendanceLate(a, shiftSystem);
          const isKepsek = (a.profiles?.role || '').toLowerCase() === 'kepsek' || 
                           (a.profiles?.penugasan_tipe || '').toLowerCase() === 'kepsek' || 
                           (a.profiles?.jabatan || '').toLowerCase().includes('kepala sekolah');
@@ -4457,6 +4439,17 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       assignmentData,
                       supabase
                     })
+                    const isKepsekTeacher = editingShiftTeacher.role === 'kepsek' || 
+                                           editingShiftTeacher.penugasan_tipe === 'kepsek' ||
+                                           (editingShiftTeacher.jabatan || '').toLowerCase().includes('kepala sekolah') ||
+                                           teacherId === 'kepsek-active-id';
+                    if (isKepsekTeacher) {
+                      await saveTeacherShiftAssignment({
+                        teacherId: 'kepsek-active-id',
+                        assignmentData,
+                        supabase
+                      }).catch(() => {})
+                    }
                     setShiftSystem(prev => ({
                       ...prev,
                       assignments: {
@@ -4465,7 +4458,14 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           teacherId,
                           ...assignmentData,
                           updatedAt: new Date().toISOString()
-                        }
+                        },
+                        ...(isKepsekTeacher ? {
+                          'kepsek-active-id': {
+                            teacherId: 'kepsek-active-id',
+                            ...assignmentData,
+                            updatedAt: new Date().toISOString()
+                          }
+                        } : {})
                       }
                     }))
                     alert(`Jadwal shift untuk ${editingShiftTeacher.full_name || editingShiftTeacher.email} berhasil disimpan!`)
@@ -4478,7 +4478,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 }}>
                   {/* Info Status Kalender Pekan Berjalan */}
                   <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '0.65rem 0.85rem', borderRadius: '12px', fontSize: '0.75rem', color: '#475569', marginBottom: '1.15rem' }}>
-                    📅 <strong>Kalender Pekan Ini:</strong> Minggu Ke-${weekNum} (${oddNow ? 'Pekan Ganjil' : 'Pekan Genap'}). Sistem otomatis menerapkan jam masuk sesuai giliran pekan ini.
+                    📅 <strong>Kalender Pekan Ini:</strong> Minggu Ke-{weekNum} ({oddNow ? 'Pekan Ganjil' : 'Pekan Genap'}). Sistem otomatis menerapkan jam masuk sesuai giliran pekan ini.
                   </div>
 
                   {/* Pilihan Mode Shift */}
@@ -4596,9 +4596,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   {/* Bagian 2: Pengaturan Rotasi Mingguan (Pekan Ganjil vs Pekan Genap) */}
                   <div id="sec-rolling" style={{ display: currentMode === 'rolling_weekly' ? 'block' : 'none', marginBottom: '1.25rem' }}>
                     {/* Box Pekan Ganjil */}
-                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem', marginBottom: '0.75rem' }}>
-                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <span>🔵</span> <span>Pola Saat PEKAN GANJIL (Minggu ke-1, 3, 5, 7, ...)</span>
+                    <div style={{ background: oddNow ? '#EFF6FF' : '#F8FAFC', border: oddNow ? '1.5px solid #93C5FD' : '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem', marginBottom: '0.75rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '5px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span>🔵</span> <span>Pola Saat PEKAN GANJIL (Minggu ke-1, 3, 5, 7, ...)</span>
+                        </div>
+                        {oddNow && <span style={{ background: '#2563EB', color: 'white', fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>🔥 AKTIF PEKAN INI</span>}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                         <div>
@@ -4617,9 +4620,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </div>
 
                     {/* Box Pekan Genap */}
-                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem' }}>
-                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <span>🟣</span> <span>Pola Saat PEKAN GENAP (Minggu ke-2, 4, 6, 8, ...)</span>
+                    <div style={{ background: !oddNow ? '#FAF5FF' : '#F8FAFC', border: !oddNow ? '1.5px solid #D8B4FE' : '1px solid #E2E8F0', borderRadius: '12px', padding: '0.85rem' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1E293B', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '5px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span>🟣</span> <span>Pola Saat PEKAN GENAP (Minggu ke-2, 4, 6, 8, ...)</span>
+                        </div>
+                        {!oddNow && <span style={{ background: '#7C3AED', color: 'white', fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>🔥 AKTIF PEKAN INI</span>}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                         <div>
