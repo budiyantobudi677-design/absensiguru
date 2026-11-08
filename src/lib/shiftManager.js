@@ -46,6 +46,14 @@ export const DEFAULT_SHIFTS = {
 /**
  * Menghitung nomor minggu dalam setahun (Standar ISO 8601)
  */
+export function getLocalDateString(d = new Date()) {
+  const date = d instanceof Date ? d : new Date(d)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function getIsoWeekNumber(d = new Date()) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7))
@@ -101,12 +109,13 @@ export function getCachedShiftSystem() {
         }
         return {
           shifts: baseShifts,
-          assignments: parsed.assignments || {}
+          assignments: parsed.assignments || {},
+          dailyShiftOverrides: parsed.dailyShiftOverrides || {}
         }
       }
     }
   } catch (e) {}
-  return { shifts: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)), assignments: {} }
+  return { shifts: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)), assignments: {}, dailyShiftOverrides: {} }
 }
 
 /**
@@ -119,6 +128,7 @@ export async function fetchShiftSystemData(supabase) {
 
   let currentShifts = JSON.parse(JSON.stringify(systemData.shifts || DEFAULT_SHIFTS))
   let currentAssignments = { ...(systemData.assignments || {}) }
+  let currentOverrides = { ...(systemData.dailyShiftOverrides || {}) }
 
   // 1. Coba baca dari tabel SQL resmi 'school_shifts' & 'teacher_shift_assignments'
   try {
@@ -197,6 +207,12 @@ export async function fetchShiftSystemData(supabase) {
             ...parsedCloud.assignments
           }
         }
+        if (parsedCloud.dailyShiftOverrides && typeof parsedCloud.dailyShiftOverrides === 'object') {
+          currentOverrides = {
+            ...currentOverrides,
+            ...parsedCloud.dailyShiftOverrides
+          }
+        }
       }
     }
   } catch (e) {
@@ -223,7 +239,8 @@ export async function fetchShiftSystemData(supabase) {
 
   systemData = {
     shifts: currentShifts,
-    assignments: currentAssignments
+    assignments: currentAssignments,
+    dailyShiftOverrides: currentOverrides
   }
 
   // Simpan kembali ke LocalStorage agar seketika bisa dipakai di semua halaman
@@ -237,10 +254,12 @@ export async function fetchShiftSystemData(supabase) {
 /**
  * Menyimpan seluruh konfigurasi shift & plotting guru ke Cloud Supabase & LocalStorage
  */
-export async function saveShiftSystemData({ shifts, assignments }, supabase) {
+export async function saveShiftSystemData({ shifts, assignments, dailyShiftOverrides }, supabase) {
+  const current = getCachedShiftSystem()
   const payload = {
-    shifts: shifts || DEFAULT_SHIFTS,
-    assignments: assignments || {},
+    shifts: shifts || current.shifts || DEFAULT_SHIFTS,
+    assignments: assignments || current.assignments || {},
+    dailyShiftOverrides: dailyShiftOverrides !== undefined ? dailyShiftOverrides : (current.dailyShiftOverrides || {}),
     updatedAt: new Date().toISOString()
   }
 
@@ -350,19 +369,73 @@ export async function saveTeacherShiftAssignment({ teacherId, assignmentData, su
 }
 
 /**
+ * Menambahkan atau memperbarui override shift harian khusus untuk tanggal tertentu
+ * Misalnya: Semua Guru Masuk Pagi pada tanggal YYYY-MM-DD
+ */
+export async function addDailyShiftOverride({
+  dateStr, // YYYY-MM-DD
+  targetShiftId = 'shift-ganjil',
+  reason = 'Semua Masuk Pagi',
+  createdBy = 'Administrator',
+  supabase
+}) {
+  if (!dateStr) return { success: false, error: 'Tanggal wajib diisi' }
+  const current = await fetchShiftSystemData(supabase)
+  const overrides = { ...(current.dailyShiftOverrides || {}) }
+
+  overrides[dateStr] = {
+    date: dateStr,
+    targetShiftId: targetShiftId || 'shift-ganjil',
+    reason: reason || 'Semua Masuk Pagi (Penyesuaian Khusus)',
+    createdBy: createdBy || 'Administrator',
+    createdAt: new Date().toISOString()
+  }
+
+  return await saveShiftSystemData({
+    shifts: current.shifts,
+    assignments: current.assignments,
+    dailyShiftOverrides: overrides
+  }, supabase)
+}
+
+/**
+ * Menghapus/Membatalkan override shift harian khusus untuk tanggal tertentu
+ */
+export async function removeDailyShiftOverride({ dateStr, supabase }) {
+  if (!dateStr) return { success: false }
+  const current = await fetchShiftSystemData(supabase)
+  const overrides = { ...(current.dailyShiftOverrides || {}) }
+  if (overrides[dateStr]) {
+    delete overrides[dateStr]
+  }
+
+  return await saveShiftSystemData({
+    shifts: current.shifts,
+    assignments: current.assignments,
+    dailyShiftOverrides: overrides
+  }, supabase)
+}
+
+/**
  * Menghitung Shift Aktif untuk Guru pada Tanggal Tertentu (Hari ini)
  * Memperhitungkan Pekan Ganjil / Pekan Genap & Pola Rotasi Senin-Rabu vs Kamis-Sabtu
+ * Mendukung Penyesuaian Harian Khusus (misal: Semua Masuk Pagi pada tanggal tertentu)
  */
 export function resolveTeacherShiftForDate({
   teacherId,
   date = new Date(),
   shifts = DEFAULT_SHIFTS,
-  assignments = {}
+  assignments = {},
+  dailyShiftOverrides = null
 }) {
   const dayName = getIndonesianDayName(date)
   const weekNum = getIsoWeekNumber(date)
   const odd = isOddWeek(date)
   const weekType = odd ? 'Pekan Ganjil' : 'Pekan Genap'
+
+  const targetDateStr = getLocalDateString(date)
+  const effectiveOverrides = dailyShiftOverrides || getCachedShiftSystem()?.dailyShiftOverrides || {}
+  const overrideForDate = effectiveOverrides[targetDateStr]
 
   const userAssignment = assignments[teacherId] || {
     mode: 'fixed',
@@ -370,8 +443,15 @@ export function resolveTeacherShiftForDate({
   }
 
   let targetShiftId = 'shift-ganjil'
+  let isSpecialDailyOverride = false
+  let specialReason = null
 
-  if (userAssignment.mode === 'fixed') {
+  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Masuk Pagi)
+  if (overrideForDate && overrideForDate.targetShiftId) {
+    targetShiftId = overrideForDate.targetShiftId
+    isSpecialDailyOverride = true
+    specialReason = overrideForDate.reason || 'Semua Masuk Pagi (Penyesuaian Khusus)'
+  } else if (userAssignment.mode === 'fixed') {
     targetShiftId = userAssignment.fixedShiftId || 'shift-ganjil'
   } else if (userAssignment.mode === 'rolling_weekly') {
     // Senin - Rabu vs Kamis - Sabtu
@@ -433,7 +513,9 @@ export function resolveTeacherShiftForDate({
     jamMasukBatas,
     jamPulang: dayRule.jamPulang || '14:00',
     isLibur: !!dayRule.libur,
-    mode: userAssignment.mode || 'fixed'
+    mode: userAssignment.mode || 'fixed',
+    isSpecialDailyOverride,
+    specialReason
   }
 }
 

@@ -439,9 +439,32 @@ export default function DashboardGuru({ roleOverride = null }) {
       teacherId: user?.id,
       date: new Date(),
       shifts: shiftSystem?.shifts || DEFAULT_SHIFTS,
-      assignments: shiftSystem?.assignments || {}
+      assignments: shiftSystem?.assignments || {},
+      dailyShiftOverrides: shiftSystem?.dailyShiftOverrides || {}
     })
   }, [user?.id, shiftSystem])
+
+  // Cek apakah ada jadwal Masuk Pagi khusus besok
+  const tomorrowSpecialShift = useMemo(() => {
+    try {
+      const tomorrowObj = new Date()
+      tomorrowObj.setDate(tomorrowObj.getDate() + 1)
+      const y = tomorrowObj.getFullYear()
+      const m = String(tomorrowObj.getMonth() + 1).padStart(2, '0')
+      const d = String(tomorrowObj.getDate()).padStart(2, '0')
+      const tomorrowStr = `${y}-${m}-${d}`
+      const override = shiftSystem?.dailyShiftOverrides?.[tomorrowStr]
+      if (override) {
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+        return {
+          ...override,
+          dayName: days[tomorrowObj.getDay()],
+          dateStr: tomorrowStr
+        }
+      }
+    } catch {}
+    return null
+  }, [shiftSystem])
 
   // Toggle Tampilan Jadwal Shift Guru (Default disembunyikan agar tampilan bersih)
   const [showShiftSchedule, setShowShiftSchedule] = useState(false)
@@ -3011,6 +3034,54 @@ export default function DashboardGuru({ roleOverride = null }) {
                     </button>
                   </div>
 
+                  {/* Alert Penyesuaian Hari Ini: Semua Guru Masuk Pagi */}
+                  {todayShift?.isSpecialDailyOverride && (
+                    <div style={{
+                      margin: '0 auto 0.85rem auto',
+                      maxWidth: '420px',
+                      background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
+                      border: '1.5px solid #F59E0B',
+                      borderRadius: '14px',
+                      padding: '0.75rem 1rem',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)'
+                    }}>
+                      <span style={{ fontSize: '1.25rem' }}>☀️</span>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400E' }}>
+                          Instruksi Hari Ini: Seluruh Guru Masuk Pagi (07:00 – 14:00 WITA)
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: '#B45309' }}>
+                          Kegiatan: <strong>{todayShift.specialReason || 'Semua Masuk Pagi'}</strong> • Besok otomatis kembali ke rotasi normal.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pengingat Terjadwal untuk Besok */}
+                  {tomorrowSpecialShift && !todayShift?.isSpecialDailyOverride && (
+                    <div style={{
+                      margin: '0 auto 0.85rem auto',
+                      maxWidth: '420px',
+                      background: 'linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 100%)',
+                      border: '1px solid #93C5FD',
+                      borderRadius: '14px',
+                      padding: '0.65rem 1rem',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <span style={{ fontSize: '1.1rem' }}>🔔</span>
+                      <div style={{ fontSize: '0.75rem', color: '#1E40AF' }}>
+                        <strong>Pengingat Besok ({tomorrowSpecialShift.dayName}):</strong> Seluruh guru dijadwalkan Masuk Pagi ({tomorrowSpecialShift.reason || 'Penyesuaian Khusus'}).
+                      </div>
+                    </div>
+                  )}
+
                   {/* Banner Info Shift Hari Ini (Tampilan Sebelumnya, Tampil Inline Tanpa Popup) */}
                   {showShiftSchedule && (
                     <div style={{
@@ -3036,10 +3107,10 @@ export default function DashboardGuru({ roleOverride = null }) {
                           fontWeight: 800,
                           padding: '2px 8px',
                           borderRadius: '999px',
-                          background: '#4F46E5',
+                          background: todayShift?.isSpecialDailyOverride ? '#D97706' : '#4F46E5',
                           color: 'white'
                         }}>
-                          {todayShift?.shiftName || 'Shift'}
+                          {todayShift?.isSpecialDailyOverride ? 'Shift Pagi (Khusus)' : (todayShift?.shiftName || 'Shift')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', color: '#1E1B4B', paddingTop: '0.35rem', borderTop: '1px solid rgba(199, 210, 254, 0.7)' }}>

@@ -48,7 +48,10 @@ import {
   isOddWeek,
   getIndonesianDayName,
   getAlternateShiftId,
-  isAttendanceLate
+  isAttendanceLate,
+  getLocalDateString,
+  addDailyShiftOverride,
+  removeDailyShiftOverride
 } from '../../lib/shiftManager'
 
 export default function DashboardAdmin() {
@@ -260,6 +263,56 @@ export default function DashboardAdmin() {
   const [activeShiftSettingId, setActiveShiftSettingId] = useState('shift-ganjil')
   const [shiftAdminSubTab, setShiftAdminSubTab] = useState('plotting') // 'plotting' | 'master'
   const [savingShift, setSavingShift] = useState(false)
+
+  // State Penyesuaian Shift Khusus (Semua Guru Masuk Pagi)
+  const [showSpecialShiftModal, setShowSpecialShiftModal] = useState(false)
+  const [specialShiftDate, setSpecialShiftDate] = useState(() => getLocalDateString())
+  const [specialShiftReason, setSpecialShiftReason] = useState('')
+  const [savingSpecialShift, setSavingSpecialShift] = useState(false)
+  const [specialShiftNotice, setSpecialShiftNotice] = useState({ type: '', text: '' })
+
+  const handleApplySpecialShift = async () => {
+    if (!specialShiftDate) {
+      alert('Pilih tanggal pelaksanaan terlebih dahulu.')
+      return
+    }
+    setSavingSpecialShift(true)
+    setSpecialShiftNotice({ type: '', text: '' })
+    try {
+      await addDailyShiftOverride({
+        dateStr: specialShiftDate,
+        targetShiftId: 'shift-ganjil',
+        reason: specialShiftReason.trim() || 'Semua Guru Masuk Pagi',
+        createdBy: admin?.full_name || 'Administrator',
+        supabase
+      })
+      const fresh = await fetchShiftSystemData(supabase)
+      setShiftSystem(fresh)
+      setSpecialShiftNotice({
+        type: 'success',
+        text: `Berhasil mengatur Semua Guru Masuk Pagi untuk tanggal ${specialShiftDate}!`
+      })
+      setTimeout(() => {
+        setSpecialShiftNotice({ type: '', text: '' })
+        setShowSpecialShiftModal(false)
+      }, 1200)
+    } catch (e) {
+      setSpecialShiftNotice({ type: 'error', text: 'Gagal menyimpan penyesuaian: ' + (e.message || e) })
+    } finally {
+      setSavingSpecialShift(false)
+    }
+  }
+
+  const handleRemoveSpecialShift = async (dateStr) => {
+    if (!window.confirm(`Batalkan penyesuaian Masuk Pagi untuk tanggal ${dateStr}? Jadwal guru akan kembali normal.`)) return
+    try {
+      await removeDailyShiftOverride({ dateStr, supabase })
+      const fresh = await fetchShiftSystemData(supabase)
+      setShiftSystem(fresh)
+    } catch (e) {
+      alert('Gagal membatalkan: ' + (e.message || e))
+    }
+  }
 
   const [overviewStats, setOverviewStats] = useState({ hadir: 0, tidakHadir: 0 })
   // KBM Pembelajaran States
@@ -3847,8 +3900,36 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   </div>
                 </div>
 
-                {/* Sub-tab pills */}
-                <div style={{ display: 'flex', gap: '8px', background: '#F1F5F9', padding: '4px', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  {/* Tombol Utama: Setel Semua Masuk Pagi */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpecialShiftDate(getLocalDateString())
+                      setShowSpecialShiftModal(true)
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.55rem 1.05rem',
+                      borderRadius: '12px',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.35)'
+                    }}
+                    title="Atur penyesuaian shift agar semua guru masuk pagi pada tanggal tertentu"
+                  >
+                    <span>☀️</span>
+                    <span>Setel Semua Masuk Pagi</span>
+                  </button>
+
+                  {/* Sub-tab pills */}
+                  <div style={{ display: 'flex', gap: '8px', background: '#F1F5F9', padding: '4px', borderRadius: '12px' }}>
                   <button
                     type="button"
                     onClick={() => setShiftAdminSubTab('plotting')}
@@ -3884,7 +3965,121 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     ⚙️ Master Jam Shift Sekolah
                   </button>
                 </div>
+              </div>
              </div>
+
+             {/* STATUS OVERRIDE KHUSUS HARI INI & MENDATANG */}
+             {(() => {
+               const todayStr = getLocalDateString()
+               const overrides = shiftSystem.dailyShiftOverrides || {}
+               const todayOverride = overrides[todayStr]
+               const upcomingDates = Object.keys(overrides)
+                 .filter(d => d > todayStr)
+                 .sort()
+
+               return (
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                   {todayOverride && (
+                     <div style={{
+                       background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
+                       border: '1.5px solid #F59E0B',
+                       borderRadius: '16px',
+                       padding: '1rem 1.25rem',
+                       display: 'flex',
+                       alignItems: 'center',
+                       justifyContent: 'space-between',
+                       flexWrap: 'wrap',
+                       gap: '0.75rem',
+                       boxShadow: '0 4px 15px rgba(245, 158, 11, 0.15)'
+                     }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                         <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
+                           ☀️
+                         </div>
+                         <div>
+                           <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#92400E' }}>
+                             Penyesuaian Hari Ini Aktif: Seluruh Guru Disetel Masuk Pagi (07:00 - 14:00 WITA)
+                           </div>
+                           <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
+                             Kegiatan: <strong>{todayOverride.reason || 'Semua Masuk Pagi'}</strong> • Besok otomatis kembali ke rotasi normal masing-masing guru.
+                           </div>
+                         </div>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => handleRemoveSpecialShift(todayStr)}
+                         style={{
+                           padding: '0.45rem 0.95rem',
+                           background: '#FFFFFF',
+                           color: '#DC2626',
+                           border: '1.5px solid #FECACA',
+                           borderRadius: '10px',
+                           fontSize: '0.78rem',
+                           fontWeight: 800,
+                           cursor: 'pointer',
+                           boxShadow: '0 2px 6px rgba(220, 38, 38, 0.1)'
+                         }}
+                       >
+                         Batalkan Hari Ini
+                       </button>
+                     </div>
+                   )}
+
+                   {upcomingDates.length > 0 && (
+                     <div style={{
+                       background: '#F0FDF4',
+                       border: '1px solid #BBF7D0',
+                       borderRadius: '12px',
+                       padding: '0.75rem 1rem',
+                       display: 'flex',
+                       alignItems: 'center',
+                       justifyContent: 'space-between',
+                       flexWrap: 'wrap',
+                       gap: '0.5rem'
+                     }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                         <Calendar size={16} color="#16A34A" />
+                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#166534' }}>
+                           Jadwal Masuk Pagi Terjadwal Mendatang:
+                         </span>
+                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                           {upcomingDates.map(dateKey => {
+                             const item = overrides[dateKey]
+                             return (
+                               <span
+                                 key={dateKey}
+                                 style={{
+                                   display: 'inline-flex',
+                                   alignItems: 'center',
+                                   gap: '5px',
+                                   background: '#DCFCE7',
+                                   color: '#15803D',
+                                   border: '1px solid #86EFAC',
+                                   padding: '2px 8px',
+                                   borderRadius: '6px',
+                                   fontSize: '0.74rem',
+                                   fontWeight: 700
+                                 }}
+                               >
+                                 <span>{dateKey} ({item.reason || 'Pagi'})</span>
+                                 <button
+                                   type="button"
+                                   onClick={() => handleRemoveSpecialShift(dateKey)}
+                                   title="Hapus jadwal penyesuaian ini"
+                                   style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                                 >
+                                   <X size={12} />
+                                 </button>
+                               </span>
+                             )
+                           })}
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               )
+             })()}
 
              {/* Banner Pekan Berjalan */}
              <div style={{
@@ -4752,6 +4947,315 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* MODAL SETEL SEMUA GURU MASUK PAGI (PENYESUAIAN HARIAN KHUSUS) */}
+        {showSpecialShiftModal && (() => {
+          const todayStr = getLocalDateString()
+          const tomorrowObj = new Date()
+          tomorrowObj.setDate(tomorrowObj.getDate() + 1)
+          const tomorrowStr = getLocalDateString(tomorrowObj)
+
+          const lusaObj = new Date()
+          lusaObj.setDate(lusaObj.getDate() + 2)
+          const lusaStr = getLocalDateString(lusaObj)
+
+          const overrides = shiftSystem.dailyShiftOverrides || {}
+          const allDates = Object.keys(overrides).sort()
+
+          return (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(5px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 99999,
+              padding: '1rem'
+            }}>
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '24px',
+                maxWidth: '560px',
+                width: '100%',
+                padding: '1.75rem',
+                boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                {/* Modal Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.85rem', borderBottom: '1px solid #E2E8F0', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>
+                      ☀️
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#1E293B' }}>
+                        Setel Semua Guru Masuk Pagi
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748B' }}>
+                        Penyesuaian shift khusus harian (otomatis normal kembali keesokan harinya)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSpecialShiftModal(false)}
+                    style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Status Notice */}
+                {specialShiftNotice.text && (
+                  <div style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: '12px',
+                    marginBottom: '1rem',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    background: specialShiftNotice.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+                    border: specialShiftNotice.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444',
+                    color: specialShiftNotice.type === 'success' ? '#059669' : '#DC2626'
+                  }}>
+                    {specialShiftNotice.text}
+                  </div>
+                )}
+
+                {/* Form Fields */}
+                <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.15rem', paddingRight: '4px' }}>
+                  {/* Step 1: Pilih Tanggal */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
+                      1. Pilih Tanggal Pelaksanaan:
+                    </label>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSpecialShiftDate(todayStr)}
+                        style={{
+                          padding: '0.45rem 0.85rem',
+                          borderRadius: '8px',
+                          border: specialShiftDate === todayStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
+                          background: specialShiftDate === todayStr ? '#FEF3C7' : '#F8FAFC',
+                          color: specialShiftDate === todayStr ? '#92400E' : '#475569',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Hari Ini ({todayStr})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpecialShiftDate(tomorrowStr)}
+                        style={{
+                          padding: '0.45rem 0.85rem',
+                          borderRadius: '8px',
+                          border: specialShiftDate === tomorrowStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
+                          background: specialShiftDate === tomorrowStr ? '#FEF3C7' : '#F8FAFC',
+                          color: specialShiftDate === tomorrowStr ? '#92400E' : '#475569',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Besok ({tomorrowStr})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpecialShiftDate(lusaStr)}
+                        style={{
+                          padding: '0.45rem 0.85rem',
+                          borderRadius: '8px',
+                          border: specialShiftDate === lusaStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
+                          background: specialShiftDate === lusaStr ? '#FEF3C7' : '#F8FAFC',
+                          color: specialShiftDate === lusaStr ? '#92400E' : '#475569',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Lusa ({lusaStr})
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="date"
+                        value={specialShiftDate}
+                        onChange={(e) => setSpecialShiftDate(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '10px',
+                          border: '1.5px solid #CBD5E1',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          color: '#1E293B'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 2: Alasan / Kegiatan */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
+                      2. Alasan / Nama Kegiatan:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Upacara Bendera, Ujian Semester, Rapat Dinas..."
+                      value={specialShiftReason}
+                      onChange={(e) => setSpecialShiftReason(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '10px',
+                        border: '1.5px solid #CBD5E1',
+                        fontSize: '0.85rem',
+                        color: '#1E293B',
+                        marginBottom: '0.5rem'
+                      }}
+                    />
+                    {/* Quick suggestion chips */}
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                      {['Upacara Bendera', 'Ujian Semester (PAS/PAT)', 'Rapat Dinas Guru', 'Class Meeting / Porseni', 'Kegiatan Peringatan Hari Besar'].map(chip => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setSpecialShiftReason(chip)}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: '#F1F5F9',
+                            border: '1px solid #E2E8F0',
+                            color: '#475569',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          + {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Step 3: Informasi Ketentuan */}
+                  <div style={{
+                    background: '#FEF3C7',
+                    border: '1px solid #FDE68A',
+                    borderRadius: '12px',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.76rem',
+                    color: '#92400E',
+                    lineHeight: '1.5'
+                  }}>
+                    <strong>Ketentuan Jam Kerja:</strong>
+                    <div>• Seluruh guru diterapkan <strong>Shift Pagi (07:00 – 14:00 WITA)</strong> dengan batas toleransi s.d. 07:30.</div>
+                    <div>• Pengaturan ini <strong>hanya berlaku pada tanggal yang dipilih</strong>. Keesokan harinya, jadwal seluruh guru <strong>otomatis kembali normal</strong> sesuai plotting masing-masing.</div>
+                  </div>
+
+                  {/* Step 4: Daftar Penyesuaian Terjadwal */}
+                  {allDates.length > 0 && (
+                    <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '0.85rem' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', marginBottom: '0.45rem' }}>
+                        Daftar Penyesuaian Terjadwal:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {allDates.map(dKey => {
+                          const item = overrides[dKey]
+                          const isToday = dKey === todayStr
+                          return (
+                            <div
+                              key={dKey}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '0.5rem 0.75rem',
+                                background: isToday ? '#FFFBEB' : '#F8FAFC',
+                                border: isToday ? '1px solid #FDE68A' : '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem'
+                              }}
+                            >
+                              <div>
+                                <strong style={{ color: isToday ? '#B45309' : '#1E293B' }}>
+                                  {dKey} {isToday ? '(Hari Ini)' : ''}:
+                                </strong>{' '}
+                                <span style={{ color: '#64748B' }}>{item.reason || 'Semua Masuk Pagi'}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSpecialShift(dKey)}
+                                title="Batalkan penyesuaian untuk tanggal ini"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#DC2626',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontSize: '0.72rem',
+                                  padding: '2px 6px'
+                                }}
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', paddingTop: '1rem', borderTop: '1px solid #E2E8F0', marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowSpecialShiftModal(false)}
+                    style={{
+                      padding: '0.6rem 1.15rem',
+                      borderRadius: '10px',
+                      background: '#F1F5F9',
+                      border: 'none',
+                      color: '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingSpecialShift}
+                    onClick={handleApplySpecialShift}
+                    style={{
+                      padding: '0.6rem 1.35rem',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: savingSpecialShift ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.35)'
+                    }}
+                  >
+                    {savingSpecialShift ? 'Menyimpan...' : 'Simpan & Terapkan'}
+                  </button>
+                </div>
               </div>
             </div>
           )
