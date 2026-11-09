@@ -19,7 +19,7 @@ import { syncCloudTeacherAssignments, saveTeacherAssignmentToCloud, getClassesTa
 import { fetchDeletedAccountsRegistry, isAccountDeleted, filterActiveProfiles } from '../../lib/deletedAccountsManager'
 import { Preferences } from '@capacitor/preferences'
 import { Capacitor } from '@capacitor/core'
-import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess } from '../../lib/security'
+import { getSecureServerDate, getSecureServerIsoString, getSecureLocalDateString, syncServerTime, getSecureLocation, verifyAttendancePlatform, isIncognitoMode, checkCrossDeviceAccess, startGpsPreWarm, stopGpsPreWarm } from '../../lib/security'
 import PresensiOnlyApkNotice from '../../components/PresensiOnlyApkNotice'
 import RekapPresensiPegawai from '../../components/presensi/RekapPresensiPegawai'
 import PusatKomunikasi from '../../components/communication/PusatKomunikasi'
@@ -407,6 +407,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   // Offline State
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
   const [unsyncedCount, setUnsyncedCount] = useState(0)
+  const [gpsStatus, setGpsStatus] = useState({ ready: false, accuracy: null, text: 'Mencari sinyal GPS...' })
   
   const [todayStatus, setTodayStatus] = useState(null)
   const [pengumumanData, setPengumumanData] = useState([])
@@ -861,6 +862,18 @@ export default function DashboardGuru({ roleOverride = null }) {
     fetchUser()
     syncServerTime().then(() => setCurrentTime(getSecureServerDate()))
     const timer = setInterval(() => setCurrentTime(getSecureServerDate()), 1000)
+
+    // Mulai pemanasan sinyal GPS sejak halaman dibuka agar saat tombol presensi ditekan langsung siap & akurat
+    startGpsPreWarm((pos) => {
+      const acc = Math.round(pos.accuracy || 999)
+      if (acc <= 30) {
+        setGpsStatus({ ready: true, accuracy: acc, text: `GPS Akurat (±${acc}m)` })
+      } else if (acc <= 60) {
+        setGpsStatus({ ready: true, accuracy: acc, text: `GPS Cukup Baik (±${acc}m)` })
+      } else {
+        setGpsStatus({ ready: false, accuracy: acc, text: `Mengunci Satelit (±${acc}m)...` })
+      }
+    })
     
     // Offline Listeners
     const handleOnline = () => { setIsOffline(false); syncOfflineData(); }
@@ -902,6 +915,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     return () => {
       clearInterval(timer)
       clearInterval(reminderTimer)
+      stopGpsPreWarm()
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
       window.removeEventListener('today_attendance_reset', handleAttendanceReset)
@@ -1342,12 +1356,28 @@ export default function DashboardGuru({ roleOverride = null }) {
           localStorage.setItem(`today_absensi_${today}_${currentUser.id}`, JSON.stringify(combined))
         } catch (e) {}
       } else {
-        setHasCheckedIn(false)
-        setTodayStatus(null)
-        setTodayAbsensi(null)
-        try {
-          localStorage.removeItem(`today_absensi_${today}_${currentUser.id}`)
-        } catch (e) {}
+        // Cek apakah ada data presensi lokal sebelumnya (agar saat offline tidak terhapus)
+        const cachedRaw = localStorage.getItem(`today_absensi_${today}_${currentUser.id}`)
+        let cached = null
+        try { cached = cachedRaw ? JSON.parse(cachedRaw) : null } catch (e) {}
+
+        if (cached && (cached.waktu_masuk || cached.status === 'sakit' || cached.status === 'izin')) {
+          if (offlinePulang && !cached.waktu_pulang) {
+            cached.waktu_pulang = offlinePulang.waktu
+            cached.lokasi_pulang = offlinePulang.loc
+          }
+          setHasCheckedIn(true)
+          setTodayStatus(cached.status || 'hadir')
+          setTodayAbsensi(cached)
+        } else if (!isOffline && navigator.onLine) {
+          // Hanya hapus jika benar-benar online dan memang dari cloud tidak ada data
+          setHasCheckedIn(false)
+          setTodayStatus(null)
+          setTodayAbsensi(null)
+          try {
+            localStorage.removeItem(`today_absensi_${today}_${currentUser.id}`)
+          } catch (e) {}
+        }
       }
       setIsVerifyingStatus(false)
 
@@ -1797,7 +1827,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     if (jenis !== 'pulang') {
        setHasCheckedIn(true)
        setTodayStatus(offlineStatus)
-       setTodayAbsensi({
+       const newRec = {
          user_id: user.id,
          waktu_masuk: now,
          tanggal: today,
@@ -1805,15 +1835,23 @@ export default function DashboardGuru({ roleOverride = null }) {
          status: offlineStatus,
          keterangan: ket,
          is_offline: true
-       })
+       }
+       setTodayAbsensi(newRec)
+       try {
+         localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(newRec))
+       } catch (e) {}
        setIzinMode(null)
     } else {
-       setTodayAbsensi(prev => ({
-         ...(prev || { user_id: user.id, tanggal: today, status: 'hadir' }),
+       const updated = {
+         ...(todayAbsensi || { user_id: user.id, tanggal: today, status: 'hadir' }),
          waktu_pulang: now,
          lokasi_pulang: loc,
          is_offline_pulang: true
-       }))
+       }
+       setTodayAbsensi(updated)
+       try {
+         localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(updated))
+       } catch (e) {}
     }
     showPopup("Tersimpan Luring (Offline)", "Presensi tercatat di perangkat. Akan dikirim otomatis ke server saat internet tersambung.", "success")
     setLoading(false)
@@ -1931,19 +1969,21 @@ export default function DashboardGuru({ roleOverride = null }) {
       // Geofencing Validation (khusus absen masuk & pulang)
       if (geofenceSettings.enabled && (jenis === 'masuk' || jenis === 'pulang')) {
         let activeGeofence = { ...geofenceSettings }
-        try {
-          const freshSettings = await fetchSchoolSettings(supabase)
-          if (freshSettings) {
-            activeGeofence = {
-              enabled: freshSettings.geofence_enabled ?? geofenceSettings.enabled,
-              lat: freshSettings.school_lat || geofenceSettings.lat,
-              lng: freshSettings.school_lng || geofenceSettings.lng,
-              radius: freshSettings.school_radius || geofenceSettings.radius
+        if (navigator.onLine && !isOffline) {
+          try {
+            const freshSettings = await fetchSchoolSettings(supabase)
+            if (freshSettings) {
+              activeGeofence = {
+                enabled: freshSettings.geofence_enabled ?? geofenceSettings.enabled,
+                lat: freshSettings.school_lat || geofenceSettings.lat,
+                lng: freshSettings.school_lng || geofenceSettings.lng,
+                radius: freshSettings.school_radius || geofenceSettings.radius
+              }
+              setGeofenceSettings(activeGeofence)
             }
-            setGeofenceSettings(activeGeofence)
+          } catch (e) {
+            console.warn('Gagal ambil fresh geofence settings:', e)
           }
-        } catch (e) {
-          console.warn('Gagal ambil fresh geofence settings:', e)
         }
 
         if (activeGeofence.enabled) {
@@ -1955,15 +1995,23 @@ export default function DashboardGuru({ roleOverride = null }) {
           )
 
           const gpsAccuracy = position.accuracy || 0
-          const accuracyTolerance = (gpsAccuracy > 0 && gpsAccuracy <= 30) ? Math.round(gpsAccuracy / 2) : 0
+          const accuracyTolerance = (gpsAccuracy > 0 && gpsAccuracy <= 50) ? Math.round(gpsAccuracy / 2) : 0
           const effectiveDistance = Math.max(0, distance - accuracyTolerance)
 
           if (effectiveDistance > activeGeofence.radius) {
-            showPopup(
-              "Di Luar Radius Sekolah",
-              `Anda berada ${distance}m dari sekolah (maksimal ${activeGeofence.radius}m). Mohon mendekat ke area sekolah.`,
-              "error"
-            )
+            if (gpsAccuracy > 50) {
+              showPopup(
+                "Sinyal GPS Masih Mengunci Satelit",
+                `Sinyal GPS saat ini masih membaca akurasi kasar (±${Math.round(gpsAccuracy)}m) sehingga terdeteksi ${distance}m dari sekolah. Mohon tunggu beberapa saat di area terbuka hingga indikator GPS berwarna hijau dan coba kembali.`,
+                "warning"
+              )
+            } else {
+              showPopup(
+                "Di Luar Radius Sekolah",
+                `Anda berada ${distance}m dari sekolah (maksimal ${activeGeofence.radius}m). Mohon mendekat ke area sekolah.`,
+                "error"
+              )
+            }
             setLoading(false)
             return
           }
@@ -3148,10 +3196,35 @@ export default function DashboardGuru({ roleOverride = null }) {
                 </div>
               ) : !hasCheckedIn ? (
                 platformCheck.allowed ? (
-                  <>
+                  <div style={{ textAlign: 'center', margin: '0 auto', maxWidth: '380px' }}>
+                    {/* Status Sinyal GPS Presisi */}
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '999px',
+                      fontSize: '0.74rem',
+                      fontWeight: '600',
+                      marginBottom: '1rem',
+                      background: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#ECFDF5' : '#FEF3C7') : '#F1F5F9',
+                      border: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '1px solid #A7F3D0' : '1px solid #FDE68A') : '1px solid #CBD5E1',
+                      color: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#065F46' : '#92400E') : '#64748B'
+                    }}>
+                      <span style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#10B981' : '#F59E0B') : '#94A3B8',
+                        boxShadow: gpsStatus.ready ? '0 0 0 2px rgba(16,185,129,0.2)' : 'none'
+                      }} />
+                      <span>{gpsStatus.text}</span>
+                    </div>
+
                     <button className="btn-clock" onClick={() => handleAbsen('masuk')} disabled={loading} style={{ marginBottom: '1.5rem' }}>
                       <Fingerprint size={48} strokeWidth={1.5} />
-                      <span>Clock In</span>
+                      <span>{loading ? 'Memproses...' : 'Clock In'}</span>
                     </button>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr', gap: '0.65rem', justifyContent: 'center', marginTop: '1rem', maxWidth: '380px', margin: '1rem auto 0 auto' }}>
                       <button onClick={() => { setIzinMode('sakit'); setShowTugasLuarModal(false); }} className="btn" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FCA5A5', padding: '0.75rem 0.5rem', fontWeight: '600', fontSize: '0.85rem' }}>Sakit</button>
@@ -3160,7 +3233,7 @@ export default function DashboardGuru({ roleOverride = null }) {
                         <Briefcase size={15} /> Tugas Luar
                       </button>
                     </div>
-                  </>
+                  </div>
                 ) : null
               ) : (todayStatus === 'sakit' || todayStatus === 'izin') ? (
                 <div className="card" style={{ padding: '1.75rem 1.5rem', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626', textAlign: 'center' }}>
@@ -3372,9 +3445,34 @@ export default function DashboardGuru({ roleOverride = null }) {
                         </span>
                       </div>
                     )}
+                    {/* Status Sinyal GPS Presisi */}
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '999px',
+                      fontSize: '0.74rem',
+                      fontWeight: '600',
+                      marginBottom: '1rem',
+                      background: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#ECFDF5' : '#FEF3C7') : '#F1F5F9',
+                      border: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '1px solid #A7F3D0' : '1px solid #FDE68A') : '1px solid #CBD5E1',
+                      color: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#065F46' : '#92400E') : '#64748B'
+                    }}>
+                      <span style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: gpsStatus.ready ? (gpsStatus.accuracy && gpsStatus.accuracy <= 30 ? '#10B981' : '#F59E0B') : '#94A3B8',
+                        boxShadow: gpsStatus.ready ? '0 0 0 2px rgba(16,185,129,0.2)' : 'none'
+                      }} />
+                      <span>{gpsStatus.text}</span>
+                    </div>
+
                     <button className="btn-clock out" onClick={() => handleAbsen('pulang')} disabled={loading}>
                       <Fingerprint size={48} strokeWidth={1.5} />
-                      <span>Clock Out</span>
+                      <span>{loading ? 'Memproses...' : 'Clock Out'}</span>
                     </button>
                   </div>
                 )

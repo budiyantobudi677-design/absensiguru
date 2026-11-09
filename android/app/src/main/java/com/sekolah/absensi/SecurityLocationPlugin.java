@@ -18,6 +18,69 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "SecurityLocation")
 public class SecurityLocationPlugin extends Plugin {
 
+    // Cache koordinat presisi tinggi yang dibagikan antar pemanggilan
+    private static Location sLatestAccurateLocation = null;
+    private static long sLatestAccurateTime = 0;
+    private static LocationListener sWarmupListener = null;
+
+    /**
+     * Pemanasan modul GPS di latar belakang sejak halaman dibuka
+     */
+    @PluginMethod
+    public void warmUpLocation(PluginCall call) {
+        Context context = getContext();
+        LocationManager locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager == null) {
+            if (call != null) call.resolve(new JSObject().put("warmed", false));
+            return;
+        }
+
+        try {
+            boolean isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+            boolean isFusedEnabled = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    isFusedEnabled = locationManager.isProviderEnabled(LocationManager.FUSED_PROVIDER);
+                } catch (Exception ignored) {}
+            }
+
+            if (sWarmupListener == null && (isGpsEnabled || isFusedEnabled)) {
+                sWarmupListener = new LocationListener() {
+                    @Override
+                    public void onLocationChanged(Location location) {
+                        if (location != null && location.hasAccuracy() && location.getAccuracy() <= 35.0f) {
+                            sLatestAccurateLocation = location;
+                            sLatestAccurateTime = SystemClock.elapsedRealtime();
+                        }
+                    }
+                    @Override
+                    public void onStatusChanged(String provider, int status, Bundle extras) {}
+                    @Override
+                    public void onProviderEnabled(String provider) {}
+                    @Override
+                    public void onProviderDisabled(String provider) {}
+                };
+
+                if (isFusedEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        locationManager.requestLocationUpdates(LocationManager.FUSED_PROVIDER, 1000L, 0f, sWarmupListener, Looper.getMainLooper());
+                    } catch (Exception ignored) {}
+                }
+                if (isGpsEnabled) {
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, sWarmupListener, Looper.getMainLooper());
+                }
+            }
+
+            if (call != null) {
+                JSObject ret = new JSObject();
+                ret.put("warmed", true);
+                call.resolve(ret);
+            }
+        } catch (Exception e) {
+            if (call != null) call.resolve(new JSObject().put("warmed", false));
+        }
+    }
+
     @PluginMethod
     public void getSecureLocation(PluginCall call) {
         Context context = getContext();
@@ -43,7 +106,19 @@ public class SecurityLocationPlugin extends Plugin {
                 return;
             }
 
-            // Cari lokasi terbaik yang sudah diketahui sebelumnya (Utamakan GPS & Fused dengan akurasi tinggi)
+            long nowElapsed = SystemClock.elapsedRealtime();
+
+            // 1. Periksa apakah sudah ada cache hangat hasil pre-warming yang akurat & segar (< 20 detik)
+            if (sLatestAccurateLocation != null) {
+                long warmAge = nowElapsed - sLatestAccurateTime;
+                float warmAcc = sLatestAccurateLocation.hasAccuracy() ? sLatestAccurateLocation.getAccuracy() : 999f;
+                if (warmAge < 20000L && warmAcc <= 25.0f) {
+                    returnLocationResult(call, sLatestAccurateLocation);
+                    return;
+                }
+            }
+
+            // 2. Periksa cache lokasi terakhir sistem yang benar-benar akurat (< 20 detik & <= 25m)
             Location lastGps = isGpsEnabled ? locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) : null;
             Location lastFused = null;
             if (isFusedEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -51,45 +126,23 @@ public class SecurityLocationPlugin extends Plugin {
                     lastFused = locationManager.getLastKnownLocation(LocationManager.FUSED_PROVIDER);
                 } catch (Exception ignored) {}
             }
-            Location lastNetwork = isNetworkEnabled ? locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) : null;
-            Location lastPassive = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
 
-            long nowElapsed = SystemClock.elapsedRealtime();
-
-            // Pilih kandidat cache paling presisi (utamakan yang segar < 20 detik dan akurasi <= 25 meter)
-            Location bestLocation = null;
-            Location[] candidates = new Location[]{ lastGps, lastFused, lastPassive, lastNetwork };
+            Location[] candidates = new Location[]{ lastGps, lastFused };
             for (Location cand : candidates) {
                 if (cand == null) continue;
-                if (bestLocation == null) {
-                    bestLocation = cand;
-                } else {
-                    long candAge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
-                        ? (nowElapsed - (cand.getElapsedRealtimeNanos() / 1000000L)) : 60000L;
-                    long bestAge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
-                        ? (nowElapsed - (bestLocation.getElapsedRealtimeNanos() / 1000000L)) : 60000L;
-                    float candAcc = cand.hasAccuracy() ? cand.getAccuracy() : 999f;
-                    float bestAcc = bestLocation.hasAccuracy() ? bestLocation.getAccuracy() : 999f;
-
-                    // Jika kandidat baru jauh lebih akurat (atau sama akurat tapi lebih baru), pilih kandidat tersebut
-                    if (candAge < 45000 && (candAcc + 15f < bestAcc || (Math.abs(candAcc - bestAcc) <= 15f && candAge < bestAge))) {
-                        bestLocation = cand;
-                    }
-                }
-            }
-
-            // Hanya gunakan cache secara instan jika benar-benar segar (< 15 detik) DAN presisi tinggi (akurasi <= 25m)
-            if (bestLocation != null) {
-                long locationElapsed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 ? 
-                    bestLocation.getElapsedRealtimeNanos() / 1000000L : 0;
-                float acc = bestLocation.hasAccuracy() ? bestLocation.getAccuracy() : 999f;
-                if (locationElapsed > 0 && (nowElapsed - locationElapsed) < 15000 && acc <= 25.0f) {
-                    returnLocationResult(call, bestLocation);
+                long candAge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
+                    ? (nowElapsed - (cand.getElapsedRealtimeNanos() / 1000000L)) : 60000L;
+                float candAcc = cand.hasAccuracy() ? cand.getAccuracy() : 999f;
+                if (candAge < 20000L && candAcc <= 25.0f) {
+                    sLatestAccurateLocation = cand;
+                    sLatestAccurateTime = nowElapsed;
+                    returnLocationResult(call, cand);
                     return;
                 }
             }
 
-            final Location[] bestLiveCandidate = new Location[]{ bestLocation };
+            // 3. Mulai pencarian aktif lokasi presisi satelit
+            final Location[] bestLiveCandidate = new Location[]{ null };
             final Handler timeoutHandler = new Handler(Looper.getMainLooper());
             final boolean[] resolved = new boolean[]{ false };
 
@@ -103,18 +156,23 @@ public class SecurityLocationPlugin extends Plugin {
                         ? bestLiveCandidate[0].getAccuracy() : 9999f;
 
                     // Simpan jika lebih akurat dari kandidat sebelumnya
-                    if (bestLiveCandidate[0] == null || acc <= prevAcc + 10f) {
+                    if (bestLiveCandidate[0] == null || acc < prevAcc) {
                         bestLiveCandidate[0] = location;
                     }
 
-                    // Jika akurasi sudah tajam (<= 30 meter) atau berasal langsung dari satelit GPS dengan akurasi <= 45m, langsung kunci!
-                    boolean isGpsFix = LocationManager.GPS_PROVIDER.equals(location.getProvider()) && acc <= 45.0f;
-                    if (acc <= 30.0f || isGpsFix) {
+                    // Kunci seketika jika:
+                    // a) Berasal dari satelit GPS dengan akurasi <= 35 meter
+                    // b) Atau berasal dari provider manapun dengan akurasi sangat presisi <= 20 meter
+                    boolean isGpsFix = LocationManager.GPS_PROVIDER.equals(location.getProvider()) && acc <= 35.0f;
+                    if (acc <= 20.0f || isGpsFix) {
                         resolved[0] = true;
                         timeoutHandler.removeCallbacksAndMessages(null);
                         try {
                             locationManager.removeUpdates(this);
                         } catch (Exception ignored) {}
+
+                        sLatestAccurateLocation = location;
+                        sLatestAccurateTime = SystemClock.elapsedRealtime();
                         returnLocationResult(call, location);
                     }
                 }
@@ -127,7 +185,7 @@ public class SecurityLocationPlugin extends Plugin {
                 public void onProviderDisabled(String provider) {}
             };
 
-            // Jika dalam 4.5 detik sudah ada kandidat live yang lumayan atau tunggu hingga 6.5 detik maksimal
+            // Beri waktu hingga 10 detik agar satelit GPS punya cukup waktu lock
             timeoutHandler.postDelayed(() -> {
                 if (resolved[0]) return;
                 resolved[0] = true;
@@ -136,20 +194,28 @@ public class SecurityLocationPlugin extends Plugin {
                 } catch (Exception ignored) {}
 
                 if (bestLiveCandidate[0] != null) {
-                    returnLocationResult(call, bestLiveCandidate[0]);
+                    float finalAcc = bestLiveCandidate[0].hasAccuracy() ? bestLiveCandidate[0].getAccuracy() : 999f;
+                    // Hanya izinkan jika akurasi masuk akal (<= 60 meter) agar tidak melempar titik BTS ratusan meter
+                    if (finalAcc <= 60.0f) {
+                        sLatestAccurateLocation = bestLiveCandidate[0];
+                        sLatestAccurateTime = SystemClock.elapsedRealtime();
+                        returnLocationResult(call, bestLiveCandidate[0]);
+                    } else {
+                        call.reject("Sinyal GPS belum stabil (Akurasi ±" + Math.round(finalAcc) + "m). Silakan tunggu sesaat di area terbuka agar satelit GPS terkunci.");
+                    }
                 } else {
-                    call.reject("Timeout GPS: Tidak dapat mengunci satelit dalam waktu yang ditentukan.");
+                    call.reject("Timeout GPS: Tidak dapat mengunci satelit dalam waktu yang ditentukan. Pastikan GPS aktif dan berada di area terbuka.");
                 }
-            }, 5000);
+            }, 10000);
 
             // Minta update aktif dari Fused, GPS, dan Network
             if (isFusedEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 try {
-                    locationManager.requestLocationUpdates(LocationManager.FUSED_PROVIDER, 500L, 0f, precisionListener, Looper.getMainLooper());
+                    locationManager.requestLocationUpdates(LocationManager.FUSED_PROVIDER, 400L, 0f, precisionListener, Looper.getMainLooper());
                 } catch (Exception ignored) {}
             }
             if (isGpsEnabled) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, precisionListener, Looper.getMainLooper());
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 400L, 0f, precisionListener, Looper.getMainLooper());
             }
             if (isNetworkEnabled) {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 500L, 0f, precisionListener, Looper.getMainLooper());

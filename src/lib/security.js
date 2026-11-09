@@ -121,24 +121,102 @@ export function getSecureLocalDateString() {
   }
 }
 
+// Cache koordinat GPS akurat terakhir untuk instant attendance
+let lastAccurateGps = null
+let lastAccurateTimestamp = 0
+let gpsWatchId = null
+
+/**
+ * Memulai pemanasan sinyal GPS di latar belakang agar seketika siap saat presensi diklik
+ */
+export function startGpsPreWarm(onUpdate) {
+  // 1. Jika native Android, panggil warmUpLocation di plugin native
+  if (Capacitor.isNativePlatform()) {
+    try {
+      SecurityLocation.warmUpLocation().catch(() => {})
+    } catch {}
+  }
+
+  // 2. Jalankan watchPosition di web/webview
+  if (typeof navigator !== 'undefined' && navigator.geolocation && gpsWatchId === null) {
+    try {
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const acc = pos.coords.accuracy || 999
+          const isMock = Boolean(
+            pos.coords.isMock || 
+            pos.coords.mocked || 
+            (pos.coords.accuracy === 0)
+          )
+          const gpsData = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            altitude: pos.coords.altitude,
+            accuracy: acc,
+            heading: pos.coords.heading,
+            speed: pos.coords.speed,
+            isMock,
+            timestamp: Date.now()
+          }
+
+          if (acc <= 35 && !isMock) {
+            lastAccurateGps = gpsData
+            lastAccurateTimestamp = Date.now()
+          }
+
+          if (onUpdate && typeof onUpdate === 'function') {
+            onUpdate(gpsData)
+          }
+        },
+        (err) => {
+          console.warn('GPS pre-warm watch notice:', err)
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      )
+    } catch (e) {}
+  }
+}
+
+export function stopGpsPreWarm() {
+  if (typeof navigator !== 'undefined' && navigator.geolocation && gpsWatchId !== null) {
+    try {
+      navigator.geolocation.clearWatch(gpsWatchId)
+    } catch {}
+    gpsWatchId = null
+  }
+}
+
+export function getCachedAccurateLocation() {
+  if (lastAccurateGps && (Date.now() - lastAccurateTimestamp) < 20000 && lastAccurateGps.accuracy <= 30) {
+    return lastAccurateGps
+  }
+  return null
+}
+
 /**
  * Mendapatkan koordinat GPS aman yang mendeteksi Fake GPS / Mock Location
  * @param {Object} options 
  * @returns {Promise<{latitude: number, longitude: number, altitude: number, accuracy: number, heading: number, isMock: boolean}>}
  */
-export async function getSecureLocation(options = { timeout: 8000, enableHighAccuracy: true }) {
-  const timeoutMs = options.timeout || 8000
+export async function getSecureLocation(options = { timeout: 10000, enableHighAccuracy: true }) {
+  // 0. Cek jika sudah ada hasil GPS pre-warm yang sangat akurat (< 20 detik & <= 30m)
+  const cached = getCachedAccurateLocation()
+  if (cached) {
+    return cached
+  }
+
+  const timeoutMs = options.timeout || 10000
 
   // Jika di Android Native (Capacitor), gunakan SecurityLocation plugin dengan proteksi timeout race
   if (Capacitor.isNativePlatform()) {
     try {
       const nativePromise = SecurityLocation.getSecureLocation()
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Native GPS Timeout')), timeoutMs)
+        setTimeout(() => reject(new Error('Native GPS Timeout')), timeoutMs + 2000)
       )
       const result = await Promise.race([nativePromise, timeoutPromise])
       if (result && result.latitude !== undefined && result.longitude !== undefined) {
-        return {
+        const parsed = {
           latitude: result.latitude,
           longitude: result.longitude,
           altitude: result.altitude,
@@ -147,6 +225,11 @@ export async function getSecureLocation(options = { timeout: 8000, enableHighAcc
           speed: result.speed,
           isMock: Boolean(result.isMock)
         }
+        if (parsed.accuracy && parsed.accuracy <= 35 && !parsed.isMock) {
+          lastAccurateGps = parsed
+          lastAccurateTimestamp = Date.now()
+        }
+        return parsed
       }
     } catch (nativeErr) {
       console.warn('SecurityLocation native plugin call failed or timed out, fallback to web geolocation:', nativeErr)
