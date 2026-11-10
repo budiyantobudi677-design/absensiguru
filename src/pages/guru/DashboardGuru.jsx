@@ -338,6 +338,100 @@ const getLocalDateString = () => {
   return getSecureLocalDateString()
 }
 
+// Helper cerdas multi-layer untuk mendapatkan User ID akun aktif bahkan dalam mode luring total
+const getStoredActiveUserId = () => {
+  try {
+    // 1. Cek sesi lokal resmi
+    const lastUser = localStorage.getItem('panrita_last_active_user')
+    if (lastUser) {
+      const p = JSON.parse(lastUser)
+      if (p?.id) return p.id
+    }
+    // 2. Cek token Supabase resmi (sb-*-auth-token)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(k)
+        if (raw) {
+          const p = JSON.parse(raw)
+          if (p?.user?.id) return p.user.id
+        }
+      }
+    }
+    // 3. Cek sesi mode pengembang
+    const dev = localStorage.getItem('panrita_developer_session')
+    if (dev) {
+      const p = JSON.parse(dev)
+      if (p?.user?.id) return p.user.id
+    }
+    // 4. Cek kunci presensi hari ini
+    const today = getSecureLocalDateString()
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(`today_absensi_${today}_`)) {
+        const parts = k.split('_')
+        const candidateId = parts.slice(3).join('_')
+        if (candidateId) return candidateId
+      }
+    }
+  } catch {}
+  return null
+}
+
+// Helper cerdas multi-layer untuk membaca rekaman presensi hari ini secara instan (0 ms) saat luring
+const getStoredTodayAttendanceRecord = (today) => {
+  try {
+    const uid = getStoredActiveUserId()
+
+    // 1. Cek cache spesifik UID aktif
+    if (uid) {
+      const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin')) {
+          return parsed
+        }
+      }
+    }
+
+    // 2. Cek antrean presensi luring lokal (offlineAbsensi)
+    const queue = getOfflineAttendanceQueue()
+    const qToday = queue.find(d => (!uid || d.user_id === uid) && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+    if (qToday) {
+      const qPulang = queue.find(d => (!uid || d.user_id === uid) && d.tanggal === today && d.jenis === 'pulang')
+      const res = {
+        user_id: qToday.user_id,
+        waktu_masuk: qToday.waktu,
+        tanggal: today,
+        lokasi_masuk: qToday.loc,
+        status: qToday.status || (qToday.jenis === 'masuk' || qToday.jenis === 'tugas_luar' ? 'hadir' : qToday.jenis),
+        keterangan: qToday.keterangan || '',
+        is_offline: true
+      }
+      if (qPulang) {
+        res.waktu_pulang = qPulang.waktu
+        res.lokasi_pulang = qPulang.loc
+      }
+      return res
+    }
+
+    // 3. Pindai seluruh kunci localStorage today_absensi_${today}_*
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(`today_absensi_${today}_`)) {
+        const raw = localStorage.getItem(k)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin')) {
+            return parsed
+          }
+        }
+      }
+    }
+  } catch {}
+  return null
+}
+
 export default function DashboardGuru({ roleOverride = null }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -379,19 +473,9 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [hasCheckedIn, setHasCheckedIn] = useState(() => {
     try {
       const today = getLocalDateString()
-      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
-      const uid = authUser?.id
-      if (uid) {
-        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin')) {
-            return true
-          }
-        }
-        const offlineQueue = getOfflineAttendanceQueue(uid)
-        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
-        if (offlineToday) return true
+      const rec = getStoredTodayAttendanceRecord(today)
+      if (rec && (rec.waktu_masuk || rec.status === 'sakit' || rec.status === 'izin')) {
+        return true
       }
     } catch (e) {}
     return false
@@ -399,31 +483,7 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [todayAbsensi, setTodayAbsensi] = useState(() => {
     try {
       const today = getLocalDateString()
-      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
-      const uid = authUser?.id
-      if (uid) {
-        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
-        if (raw) return JSON.parse(raw)
-        const offlineQueue = getOfflineAttendanceQueue(uid)
-        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
-        const offlinePulang = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && d.jenis === 'pulang')
-        if (offlineToday) {
-          const res = {
-            user_id: uid,
-            waktu_masuk: offlineToday.waktu,
-            tanggal: today,
-            lokasi_masuk: offlineToday.loc,
-            status: offlineToday.status || (offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis),
-            keterangan: offlineToday.keterangan || '',
-            is_offline: true
-          }
-          if (offlinePulang) {
-            res.waktu_pulang = offlinePulang.waktu
-            res.lokasi_pulang = offlinePulang.loc
-          }
-          return res
-        }
-      }
+      return getStoredTodayAttendanceRecord(today)
     } catch (e) {}
     return null
   })
@@ -446,18 +506,9 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [todayStatus, setTodayStatus] = useState(() => {
     try {
       const today = getLocalDateString()
-      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
-      const uid = authUser?.id
-      if (uid) {
-        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (parsed?.status) return parsed.status
-        }
-        const offlineQueue = getOfflineAttendanceQueue(uid)
-        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
-        if (offlineToday) return offlineToday.status || (offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
-      }
+      const rec = getStoredTodayAttendanceRecord(today)
+      if (rec?.status) return rec.status
+      if (rec?.jenis) return rec.jenis === 'masuk' || rec.jenis === 'tugas_luar' ? 'hadir' : rec.jenis
     } catch (e) {}
     return null
   })
@@ -1056,8 +1107,8 @@ export default function DashboardGuru({ roleOverride = null }) {
         } catch (e) {}
       }
 
-      // Fallback ke getSession() jika getUser() gagal saat offline
-      if (!realSupabaseUser && !isDeviceOffline) {
+      // Fallback ke getSession() jika getUser() gagal atau saat offline (membaca sesi lokal)
+      if (!realSupabaseUser) {
         try {
           const { data: sessData } = await supabase.auth.getSession()
           realSupabaseUser = sessData?.session?.user || null
@@ -1122,8 +1173,17 @@ export default function DashboardGuru({ roleOverride = null }) {
           if (cachedUser) {
             realSupabaseUser = cachedUser
           } else {
-            return navigate('/')
+            const fallbackUid = getStoredActiveUserId()
+            if (fallbackUid) {
+              const cachedProf = getCachedUserProfile(fallbackUid)
+              if (cachedProf) {
+                realSupabaseUser = { id: fallbackUid, email: cachedProf.email, full_name: cachedProf.full_name, ...cachedProf }
+              }
+            }
           }
+        }
+        if (!realSupabaseUser) {
+          return navigate('/')
         }
         currentUser = realSupabaseUser
 
@@ -1436,18 +1496,23 @@ export default function DashboardGuru({ roleOverride = null }) {
         } catch (e) {}
       } else {
         // Cek apakah ada data presensi lokal sebelumnya (agar saat offline tidak terhapus)
+        const fallbackRec = getStoredTodayAttendanceRecord(today)
         const cachedRaw = localStorage.getItem(`today_absensi_${today}_${currentUser.id}`)
         let cached = null
         try { cached = cachedRaw ? JSON.parse(cachedRaw) : null } catch (e) {}
+        const localRec = cached || fallbackRec
 
-        if (cached && (cached.waktu_masuk || cached.status === 'sakit' || cached.status === 'izin')) {
-          if (offlinePulang && !cached.waktu_pulang) {
-            cached.waktu_pulang = offlinePulang.waktu
-            cached.lokasi_pulang = offlinePulang.loc
+        if (localRec && (localRec.waktu_masuk || localRec.status === 'sakit' || localRec.status === 'izin')) {
+          if (offlinePulang && !localRec.waktu_pulang) {
+            localRec.waktu_pulang = offlinePulang.waktu
+            localRec.lokasi_pulang = offlinePulang.loc
           }
           setHasCheckedIn(true)
-          setTodayStatus(cached.status || 'hadir')
-          setTodayAbsensi(cached)
+          setTodayStatus(localRec.status || (localRec.jenis === 'masuk' || localRec.jenis === 'tugas_luar' ? 'hadir' : localRec.jenis) || 'hadir')
+          setTodayAbsensi(localRec)
+          try {
+            localStorage.setItem(`today_absensi_${today}_${currentUser.id}`, JSON.stringify(localRec))
+          } catch (e) {}
         } else if (!isDeviceOffline) {
           // Hanya hapus jika benar-benar online dan memang dari cloud tidak ada data
           setHasCheckedIn(false)
