@@ -33,6 +33,7 @@ import { fetchSchoolSettings } from '../../lib/schoolSettingsManager'
 import {
   DEFAULT_SHIFTS,
   fetchShiftSystemData,
+  getCachedShiftSystem,
   resolveTeacherShiftForDate,
   getIsoWeekNumber,
   isOddWeek,
@@ -333,6 +334,10 @@ function GuruDesktopWrapper({
   )
 }
 
+const getLocalDateString = () => {
+  return getSecureLocalDateString()
+}
+
 export default function DashboardGuru({ roleOverride = null }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -365,7 +370,12 @@ export default function DashboardGuru({ roleOverride = null }) {
     kkm: 75,
     appMode: 'SD'
   })
-  const [isVerifyingStatus, setIsVerifyingStatus] = useState(true)
+  const [isVerifyingStatus, setIsVerifyingStatus] = useState(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return false
+    }
+    return true
+  })
   const [hasCheckedIn, setHasCheckedIn] = useState(() => {
     try {
       const today = getLocalDateString()
@@ -375,8 +385,13 @@ export default function DashboardGuru({ roleOverride = null }) {
         const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
         if (raw) {
           const parsed = JSON.parse(raw)
-          return !!(parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin'))
+          if (parsed && (parsed.waktu_masuk || parsed.status === 'sakit' || parsed.status === 'izin')) {
+            return true
+          }
         }
+        const offlineQueue = getOfflineAttendanceQueue(uid)
+        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+        if (offlineToday) return true
       }
     } catch (e) {}
     return false
@@ -389,6 +404,25 @@ export default function DashboardGuru({ roleOverride = null }) {
       if (uid) {
         const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
         if (raw) return JSON.parse(raw)
+        const offlineQueue = getOfflineAttendanceQueue(uid)
+        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+        const offlinePulang = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && d.jenis === 'pulang')
+        if (offlineToday) {
+          const res = {
+            user_id: uid,
+            waktu_masuk: offlineToday.waktu,
+            tanggal: today,
+            lokasi_masuk: offlineToday.loc,
+            status: offlineToday.status || (offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis),
+            keterangan: offlineToday.keterangan || '',
+            is_offline: true
+          }
+          if (offlinePulang) {
+            res.waktu_pulang = offlinePulang.waktu
+            res.lokasi_pulang = offlinePulang.loc
+          }
+          return res
+        }
       }
     } catch (e) {}
     return null
@@ -409,7 +443,24 @@ export default function DashboardGuru({ roleOverride = null }) {
   const [unsyncedCount, setUnsyncedCount] = useState(0)
   const [gpsStatus, setGpsStatus] = useState({ ready: false, accuracy: null, text: 'Mencari sinyal GPS...' })
   
-  const [todayStatus, setTodayStatus] = useState(null)
+  const [todayStatus, setTodayStatus] = useState(() => {
+    try {
+      const today = getLocalDateString()
+      const authUser = JSON.parse(localStorage.getItem('sb-yglqoxlsvrqbftrwwtvd-auth-token') || '{}')?.user || JSON.parse(localStorage.getItem('panrita_user') || '{}')
+      const uid = authUser?.id
+      if (uid) {
+        const raw = localStorage.getItem(`today_absensi_${today}_${uid}`)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed?.status) return parsed.status
+        }
+        const offlineQueue = getOfflineAttendanceQueue(uid)
+        const offlineToday = offlineQueue.find(d => d.user_id === uid && d.tanggal === today && (d.jenis === 'masuk' || d.jenis === 'sakit' || d.jenis === 'izin' || d.jenis === 'tugas_luar'))
+        if (offlineToday) return offlineToday.status || (offlineToday.jenis === 'masuk' || offlineToday.jenis === 'tugas_luar' ? 'hadir' : offlineToday.jenis)
+      }
+    } catch (e) {}
+    return null
+  })
   const [pengumumanData, setPengumumanData] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   
@@ -877,7 +928,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     
     // Offline Listeners
     const handleOnline = () => { setIsOffline(false); syncOfflineData(); }
-    const handleOffline = () => setIsOffline(true)
+    const handleOffline = () => { setIsOffline(true); setIsVerifyingStatus(false); }
     
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -923,10 +974,6 @@ export default function DashboardGuru({ roleOverride = null }) {
     }
   }, [])
 
-  const getLocalDateString = () => {
-    return getSecureLocalDateString()
-  }
-
   const checkUnsynced = () => {
     const myOffline = getOfflineAttendanceQueue(user?.id)
     setUnsyncedCount(myOffline.length)
@@ -951,6 +998,7 @@ export default function DashboardGuru({ roleOverride = null }) {
 
   const fetchUser = async (overrideTeacherId = null) => {
     try {
+      const isDeviceOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine)
       // Cek jika sedang dibuka oleh Akun Pengembang (Super Admin Mode)
       const devSession = localStorage.getItem('panrita_developer_session')
       let currentUser = null
@@ -959,29 +1007,39 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       // 1. Ambil registry akun yang telah dihapus agar profil akun terhapus (seperti Guna) tidak pernah dimuat
       let delReg = { deletedIds: [], deletedEmails: [] }
-      try {
-        delReg = await fetchDeletedAccountsRegistry(supabase)
-        setDeletedAccountsReg(delReg)
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          delReg = await fetchDeletedAccountsRegistry(supabase)
+          setDeletedAccountsReg(delReg)
+        } catch (e) {}
+      }
 
       // 2. Jalankan pembersihan otomatis untuk kunci kelas yatim / dari akun yang sudah dihapus
-      try {
-        await cleanupDeletedTeacherClassLocks(supabase)
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          await cleanupDeletedTeacherClassLocks(supabase)
+        } catch (e) {}
+      }
 
       // 3. Ambil seluruh data guru terdaftar (dengan proteksi filter akun yang telah dihapus)
-      try {
-        const { data: profilesAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
-        if (profilesAll) {
-          const activeProfiles = filterActiveProfiles(profilesAll, delReg)
-          setAllProfiles(activeProfiles)
-          localStorage.setItem('panrita_cached_all_profiles', JSON.stringify(activeProfiles))
-        }
-      } catch (errProfiles) {
+      let profilesAll = null
+      if (!isDeviceOffline) {
+        try {
+          const { data: pAll } = await supabase.from('profiles').select('id, full_name, email, role, jabatan, mata_pelajaran, foto_profil, nip')
+          if (pAll) {
+            profilesAll = pAll
+            const activeProfiles = filterActiveProfiles(pAll, delReg)
+            setAllProfiles(activeProfiles)
+            localStorage.setItem('panrita_cached_all_profiles', JSON.stringify(activeProfiles))
+          }
+        } catch (errProfiles) {}
+      }
+      if (!profilesAll) {
         try {
           const cachedAll = localStorage.getItem('panrita_cached_all_profiles')
           if (cachedAll) {
             const parsed = JSON.parse(cachedAll)
+            profilesAll = parsed
             setAllProfiles(filterActiveProfiles(parsed, delReg))
           }
         } catch {}
@@ -991,13 +1049,15 @@ export default function DashboardGuru({ roleOverride = null }) {
 
       // Cek apakah ada sesi Supabase Auth resmi yang sedang aktif
       let realSupabaseUser = null
-      try {
-        const { data: authUserData } = await supabase.auth.getUser()
-        realSupabaseUser = authUserData?.user || null
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          const { data: authUserData } = await supabase.auth.getUser()
+          realSupabaseUser = authUserData?.user || null
+        } catch (e) {}
+      }
 
       // Fallback ke getSession() jika getUser() gagal saat offline
-      if (!realSupabaseUser) {
+      if (!realSupabaseUser && !isDeviceOffline) {
         try {
           const { data: sessData } = await supabase.auth.getSession()
           realSupabaseUser = sessData?.session?.user || null
@@ -1068,14 +1128,16 @@ export default function DashboardGuru({ roleOverride = null }) {
         currentUser = realSupabaseUser
 
         // Ambil profil dari DB, atau fallback ke cache jika luring
-        try {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', realSupabaseUser.id).maybeSingle()
-          if (profile) {
-            currentProfile = profile
-            cacheUserProfile(realSupabaseUser.id, profile)
+        if (!isDeviceOffline) {
+          try {
+            const { data: profile } = await supabase.from('profiles').select('*').eq('id', realSupabaseUser.id).maybeSingle()
+            if (profile) {
+              currentProfile = profile
+              cacheUserProfile(realSupabaseUser.id, profile)
+            }
+          } catch (errProf) {
+            console.warn('Gagal ambil profil dari server (mungkin luring):', errProf)
           }
-        } catch (errProf) {
-          console.warn('Gagal ambil profil dari server (mungkin luring):', errProf)
         }
 
         if (!currentProfile) {
@@ -1092,15 +1154,17 @@ export default function DashboardGuru({ roleOverride = null }) {
       setGeminiApiKey(existingGeminiKey)
       
       let cls = null
-      try {
-        cls = await fetchClassesFromCloud(supabase)
-      } catch (e) {
-        console.warn('Gagal fetchClassesFromCloud di Guru:', e)
+      if (!isDeviceOffline) {
+        try {
+          cls = await fetchClassesFromCloud(supabase)
+        } catch (e) {
+          console.warn('Gagal fetchClassesFromCloud di Guru:', e)
+        }
       }
 
       if (!cls || cls.length === 0) {
         try {
-          const cachedCls = localStorage.getItem('panrita_cached_classes')
+          const cachedCls = localStorage.getItem('panrita_cached_classes') || localStorage.getItem('panrita_classes_v2')
           if (cachedCls) cls = JSON.parse(cachedCls)
         } catch (e) {}
       }
@@ -1116,13 +1180,17 @@ export default function DashboardGuru({ roleOverride = null }) {
       if (cls) setClassesList(cls)
 
       // Sinkronisasi daftar mata pelajaran & penugasan guru dari cloud database
-      try {
-        await syncCloudSubjects(supabase)
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          await syncCloudSubjects(supabase)
+        } catch (e) {}
+      }
       let cloudAssignments = null
-      try {
-        cloudAssignments = await syncCloudTeacherAssignments(supabase)
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          cloudAssignments = await syncCloudTeacherAssignments(supabase)
+        } catch (e) {}
+      }
       const myCloudAssignment = cloudAssignments?.[currentUser.id]
 
       // Cek apakah akun ini dikonfigurasi sebagai Tendik di cloud, route, atau profil
@@ -1223,31 +1291,38 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
 
       // Bersihkan sisa data uji coba lama (<= 2026-10-09) pada akun Tendik (Operator / Non-Operator)
-      if (isTendikCheck && currentUser.id && currentUser.id !== 'developer-master-uid' && currentUser.id !== 'admin-master-uid') {
+      if (!isDeviceOffline && isTendikCheck && currentUser.id && currentUser.id !== 'developer-master-uid' && currentUser.id !== 'admin-master-uid') {
         try {
           await supabase.from('absensi').delete().eq('user_id', currentUser.id).lte('tanggal', '2026-10-09')
         } catch {}
       }
 
       let settings = null
-      try {
-        settings = await fetchSchoolSettings(supabase)
-        if (settings) {
-          cacheSchoolSettings(settings)
+      if (!isDeviceOffline) {
+        try {
+          settings = await fetchSchoolSettings(supabase)
+          if (settings) {
+            cacheSchoolSettings(settings)
+          }
+        } catch (e) {
+          console.warn('Gagal fetchSchoolSettings di Guru:', e)
         }
-      } catch (e) {
-        console.warn('Gagal fetchSchoolSettings di Guru:', e)
       }
 
       if (!settings) {
         settings = getCachedSchoolSettings()
       }
 
-      try {
-        const sData = await fetchShiftSystemData(supabase)
+      if (!isDeviceOffline) {
+        try {
+          const sData = await fetchShiftSystemData(supabase)
+          if (sData) setShiftSystem(sData)
+        } catch (e) {
+          console.warn('Gagal fetchShiftSystemData di Guru:', e)
+        }
+      } else {
+        const sData = getCachedShiftSystem()
         if (sData) setShiftSystem(sData)
-      } catch (e) {
-        console.warn('Gagal fetchShiftSystemData di Guru:', e)
       }
 
       const hariKerjaVal = settings?.hari_kerja || 5
@@ -1261,14 +1336,16 @@ export default function DashboardGuru({ roleOverride = null }) {
       // Ambil data Kepala Sekolah dan NIP dari Pengaturan Aplikasi (cloud config, panrita_kop_surat & profiles role kepsek)
       let pName = ''
       let pNip = ''
-      try {
-        const kData = await loadKepsekConfigFromCloud({ supabase })
-        if (kData) {
-          pName = kData.kepsekNama || ''
-          pNip = kData.kepsekNip || ''
+      if (!isDeviceOffline) {
+        try {
+          const kData = await loadKepsekConfigFromCloud({ supabase })
+          if (kData) {
+            pName = kData.kepsekNama || ''
+            pNip = kData.kepsekNip || ''
+          }
+        } catch (e) {
+          console.warn('Gagal load kepsek config:', e)
         }
-      } catch (e) {
-        console.warn('Gagal load kepsek config:', e)
       }
 
       setSchoolInfoData(prev => ({
@@ -1309,7 +1386,7 @@ export default function DashboardGuru({ roleOverride = null }) {
       
       const today = getLocalDateString()
 
-      if (!holiday) {
+      if (!holiday && !isDeviceOffline) {
          try {
            const { data: libur } = await supabase.from('hari_libur').select('*').eq('tanggal', today).maybeSingle()
            if (libur) {
@@ -1323,9 +1400,11 @@ export default function DashboardGuru({ roleOverride = null }) {
       setHolidayReason(reason)
 
       let absensi = null
-      try {
-        absensi = await getTodayUserAttendance({ userId: currentUser.id, today, supabase })
-      } catch (e) {}
+      if (!isDeviceOffline) {
+        try {
+          absensi = await getTodayUserAttendance({ userId: currentUser.id, today, supabase })
+        } catch (e) {}
+      }
 
       // Periksa juga antrean presensi luring lokal untuk hari ini
       const offlineQueue = getOfflineAttendanceQueue(currentUser.id)
@@ -1369,7 +1448,7 @@ export default function DashboardGuru({ roleOverride = null }) {
           setHasCheckedIn(true)
           setTodayStatus(cached.status || 'hadir')
           setTodayAbsensi(cached)
-        } else if (!isOffline && navigator.onLine) {
+        } else if (!isDeviceOffline) {
           // Hanya hapus jika benar-benar online dan memang dari cloud tidak ada data
           setHasCheckedIn(false)
           setTodayStatus(null)
@@ -1377,6 +1456,11 @@ export default function DashboardGuru({ roleOverride = null }) {
           try {
             localStorage.removeItem(`today_absensi_${today}_${currentUser.id}`)
           } catch (e) {}
+        } else {
+          // Mode offline dan hari ini belum presensi (waktu pagi belum Clock In)
+          setHasCheckedIn(false)
+          setTodayStatus(null)
+          setTodayAbsensi(null)
         }
       }
       setIsVerifyingStatus(false)
@@ -1384,54 +1468,68 @@ export default function DashboardGuru({ roleOverride = null }) {
       // Muat ulang riwayat kehadiran untuk akun aktif ini
       await loadHistory(historyMonth, currentUser, isTendikCheck)
 
-      // Fetch Pengumuman
-      const { data: pData } = await supabase.from('pengumuman')
-         .select('*')
-         .or(`target_type.eq.all,target_users.ilike.%${currentUser.id}%`)
-         .order('created_at', { ascending: false })
-         .limit(20)
-         
-      if (pData) {
-         const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${currentUser.id}`) || '{"read":[], "deleted":[]}')
-         const activePengumuman = pData.filter(p => {
-           if (localData.deleted.includes(p.id)) return false
-           const tt = (p.target_type || '').trim()
-           if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return false
-           if (typeof p.pesan === 'string') {
-             const t = p.pesan.trim()
-             if (t.startsWith('{') && (t.includes('"deviceId"') || t.includes('"DEV-') || t.includes('"boundAt"') || t.includes('"passwordHash"'))) {
-               return false
-             }
-           }
-           return true
-         })
-
-         if (activePengumuman.length === 0) {
-           activePengumuman.push({
-             id: 'welcome-gammara-app',
-             created_at: new Date().toISOString(),
-             pesan: `🌟 SELAMAT DATANG DI APLIKASI GAMMARAAPP 🌟\nSistem Manajemen Pendidikan, Presensi Cerdas & Administrasi Sekolah Digital Modern.\n\nFitur Unggulan GammaraApp:\n🎯 Presensi Digital Berbasis Geofencing GPS & Watermark Foto Anti-Kecurangan\n📚 Master KBM Terpadu (Presensi Siswa, Jurnal Mengajar, Modul Ajar AI & Penilaian)\n💬 Pusat Komunikasi Real-Time (Obrolan Staf, Disposisi & Lembar Instruksi Digital)\n📊 Rekapitulasi Presensi & Laporan Kedinasan Otomatis (Format Excel & PDF)\n🔔 Sistem Notifikasi Audio & Pesan Suara Seketika\n\nMari bersama mewujudkan tata kelola pendidikan yang modern, transparan, dan berintegritas tinggi bersama GammaraApp!`,
-             target_type: 'all'
-           })
-         }
-
-         setPengumumanData(activePengumuman)
-         
-         const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
-         setUnreadCount(unread)
-
-         // Trigger push notification for new announcement if granted
-         if (unread > 0 && 'Notification' in window && Notification.permission === 'granted') {
-           const latestMsg = activePengumuman[0]?.pesan || 'Anda memiliki pengumuman baru.'
-           try {
-             new Notification('Presensia - Pengumuman Sekolah', {
-               body: latestMsg,
-               icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png'
+      if (!isDeviceOffline) {
+        // Fetch Pengumuman
+        try {
+          const { data: pData } = await supabase.from('pengumuman')
+             .select('*')
+             .or(`target_type.eq.all,target_users.ilike.%${currentUser.id}%`)
+             .order('created_at', { ascending: false })
+             .limit(20)
+             
+          if (pData) {
+             const localData = JSON.parse(localStorage.getItem(`pengumuman_meta_${currentUser.id}`) || '{"read":[], "deleted":[]}')
+             const activePengumuman = pData.filter(p => {
+               if (localData.deleted.includes(p.id)) return false
+               const tt = (p.target_type || '').trim()
+               if (tt.startsWith('__') || tt.startsWith('SYSTEM_')) return false
+               if (typeof p.pesan === 'string') {
+                 const t = p.pesan.trim()
+                 if (t.startsWith('{') && (t.includes('"deviceId"') || t.includes('"DEV-') || t.includes('"boundAt"') || t.includes('"passwordHash"'))) {
+                   return false
+                 }
+               }
+               return true
              })
-           } catch (e) {
-             console.log(e)
-           }
-         }
+
+             if (activePengumuman.length === 0) {
+               activePengumuman.push({
+                 id: 'welcome-gammara-app',
+                 created_at: new Date().toISOString(),
+                 pesan: `🌟 SELAMAT DATANG DI APLIKASI GAMMARAAPP 🌟\nSistem Manajemen Pendidikan, Presensi Cerdas & Administrasi Sekolah Digital Modern.\n\nFitur Unggulan GammaraApp:\n🎯 Presensi Digital Berbasis Geofencing GPS & Watermark Foto Anti-Kecurangan\n📚 Master KBM Terpadu (Presensi Siswa, Jurnal Mengajar, Modul Ajar AI & Penilaian)\n💬 Pusat Komunikasi Real-Time (Obrolan Staf, Disposisi & Lembar Instruksi Digital)\n📊 Rekapitulasi Presensi & Laporan Kedinasan Otomatis (Format Excel & PDF)\n🔔 Sistem Notifikasi Audio & Pesan Suara Seketika\n\nMari bersama mewujudkan tata kelola pendidikan yang modern, transparan, dan berintegritas tinggi bersama GammaraApp!`,
+                 target_type: 'all'
+               })
+             }
+
+             setPengumumanData(activePengumuman)
+             try {
+               localStorage.setItem(`cached_pengumuman_${currentUser.id}`, JSON.stringify(activePengumuman))
+             } catch (e) {}
+             
+             const unread = activePengumuman.filter(p => !localData.read.includes(p.id)).length
+             setUnreadCount(unread)
+
+             // Trigger push notification for new announcement if granted
+             if (unread > 0 && 'Notification' in window && Notification.permission === 'granted') {
+               const latestMsg = activePengumuman[0]?.pesan || 'Anda memiliki pengumuman baru.'
+               try {
+                 new Notification('Presensia - Pengumuman Sekolah', {
+                   body: latestMsg,
+                   icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png'
+                 })
+               } catch (e) {
+                 console.log(e)
+               }
+             }
+          }
+        } catch (e) {}
+      } else {
+        try {
+          const cachedP = localStorage.getItem(`cached_pengumuman_${currentUser.id}`)
+          if (cachedP) {
+            setPengumumanData(JSON.parse(cachedP))
+          }
+        } catch (e) {}
       }
     } catch (err) {
       console.error(err)
@@ -1461,6 +1559,43 @@ export default function DashboardGuru({ roleOverride = null }) {
       return
     }
     setHistoryLoading(true)
+
+    const isDeviceOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine)
+    if (isDeviceOffline) {
+      try {
+        const cachedRaw = localStorage.getItem(`cached_history_${activeUser.id}_${targetMonth}`)
+        let cached = cachedRaw ? JSON.parse(cachedRaw) : []
+        if (!Array.isArray(cached)) cached = []
+
+        // Sisipkan presensi hari ini jika ada di antrean atau cache lokal hari ini
+        const today = getLocalDateString()
+        const [tYear, tMonth] = targetMonth.split('-')
+        const currentMonthPrefix = `${tYear}-${String(tMonth).padStart(2, '0')}`
+        if (today.startsWith(currentMonthPrefix)) {
+          const todayRaw = localStorage.getItem(`today_absensi_${today}_${activeUser.id}`)
+          if (todayRaw) {
+            try {
+              const todayObj = JSON.parse(todayRaw)
+              if (todayObj && (todayObj.waktu_masuk || todayObj.status === 'sakit' || todayObj.status === 'izin')) {
+                const existingIdx = cached.findIndex(r => r.tanggal === today)
+                if (existingIdx >= 0) {
+                  cached[existingIdx] = { ...cached[existingIdx], ...todayObj }
+                } else {
+                  cached.unshift({ ...todayObj, tanggal: today, user_id: activeUser.id })
+                }
+              }
+            } catch (e) {}
+          }
+        }
+        setHistoryList(cached)
+      } catch (e) {
+        console.warn('Gagal memuat cache history luring:', e)
+      } finally {
+        setHistoryLoading(false)
+      }
+      return
+    }
+
     try {
       const [year, month] = targetMonth.split('-')
       const firstDay = new Date(year, month - 1, 1).toLocaleDateString('en-CA')
@@ -1533,11 +1668,23 @@ export default function DashboardGuru({ roleOverride = null }) {
         const activeList = filterActiveAttendance(cleaned, deletedReg)
 
         setHistoryList(activeList)
+        try {
+          localStorage.setItem(`cached_history_${activeUser.id}_${targetMonth}`, JSON.stringify(activeList))
+        } catch (e) {}
       } else {
         setHistoryList([])
+        try {
+          localStorage.setItem(`cached_history_${activeUser.id}_${targetMonth}`, JSON.stringify([]))
+        } catch (e) {}
       }
     } catch (e) {
       console.error(e)
+      try {
+        const cachedRaw = localStorage.getItem(`cached_history_${activeUser.id}_${targetMonth}`)
+        if (cachedRaw) {
+          setHistoryList(JSON.parse(cachedRaw))
+        }
+      } catch (errCache) {}
     } finally {
       setHistoryLoading(false)
     }
@@ -1841,6 +1988,21 @@ export default function DashboardGuru({ roleOverride = null }) {
          localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(newRec))
        } catch (e) {}
        setIzinMode(null)
+
+       try {
+         const targetMonth = today.slice(0, 7)
+         const cachedRaw = localStorage.getItem(`cached_history_${user.id}_${targetMonth}`)
+         let cached = cachedRaw ? JSON.parse(cachedRaw) : []
+         if (!Array.isArray(cached)) cached = []
+         const existingIdx = cached.findIndex(r => r.tanggal === today)
+         if (existingIdx >= 0) {
+           cached[existingIdx] = { ...cached[existingIdx], ...newRec }
+         } else {
+           cached.unshift(newRec)
+         }
+         localStorage.setItem(`cached_history_${user.id}_${targetMonth}`, JSON.stringify(cached))
+         setHistoryList(cached)
+       } catch (e) {}
     } else {
        const updated = {
          ...(todayAbsensi || { user_id: user.id, tanggal: today, status: 'hadir' }),
@@ -1851,6 +2013,21 @@ export default function DashboardGuru({ roleOverride = null }) {
        setTodayAbsensi(updated)
        try {
          localStorage.setItem(`today_absensi_${today}_${user.id}`, JSON.stringify(updated))
+       } catch (e) {}
+
+       try {
+         const targetMonth = today.slice(0, 7)
+         const cachedRaw = localStorage.getItem(`cached_history_${user.id}_${targetMonth}`)
+         let cached = cachedRaw ? JSON.parse(cachedRaw) : []
+         if (!Array.isArray(cached)) cached = []
+         const existingIdx = cached.findIndex(r => r.tanggal === today)
+         if (existingIdx >= 0) {
+           cached[existingIdx] = { ...cached[existingIdx], ...updated }
+         } else {
+           cached.unshift(updated)
+         }
+         localStorage.setItem(`cached_history_${user.id}_${targetMonth}`, JSON.stringify(cached))
+         setHistoryList(cached)
        } catch (e) {}
     }
     showPopup("Tersimpan Luring (Offline)", "Presensi tercatat di perangkat. Akan dikirim otomatis ke server saat internet tersambung.", "success")
