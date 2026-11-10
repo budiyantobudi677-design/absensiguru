@@ -140,7 +140,10 @@ export async function saveAttendanceRecord({
           .select('*')
           .eq('user_id', userId)
           .eq('tanggal', today)
+          .order('created_at', { ascending: false })
           .limit(1)
+
+        const finalPulang = effectiveWaktuPulang || now
 
         if (existRows && existRows.length > 0) {
           if (existRows[0].waktu_masuk) {
@@ -150,7 +153,7 @@ export async function saveAttendanceRecord({
           const { data, error } = await supabase
             .from('absensi')
             .update({
-              waktu_pulang: now,
+              waktu_pulang: finalPulang,
               lokasi_pulang: loc
             })
             .eq('id', existRows[0].id)
@@ -166,7 +169,7 @@ export async function saveAttendanceRecord({
             .insert({
               user_id: userId,
               waktu_masuk: finalMasuk,
-              waktu_pulang: now,
+              waktu_pulang: finalPulang,
               tanggal: today,
               lokasi_masuk: loc,
               lokasi_pulang: loc,
@@ -667,6 +670,8 @@ export async function getTodayUserAttendance({
     }
   } catch (e) {}
 
+  let finalRecord = null
+
   // 1. Coba dari DB Supabase
   if (supabase) {
     try {
@@ -675,7 +680,7 @@ export async function getTodayUserAttendance({
         .select('*')
         .eq('user_id', userId)
         .eq('tanggal', today)
-        .order('waktu_masuk', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
 
       if (!error && data && data.length > 0) {
@@ -687,15 +692,12 @@ export async function getTodayUserAttendance({
           } catch (e) {}
           return null
         }
-        try {
-          localStorage.setItem(`today_absensi_${today}_${userId}`, JSON.stringify(dbRec))
-        } catch (e) {}
-        return dbRec
+        finalRecord = { ...dbRec }
       }
     } catch (e) {}
   }
 
-  // 2. Coba dari Cloud Mirroring Layer
+  // 2. Cek Cloud Mirroring Layer (Tabel pengumuman) untuk memperkaya waktu_pulang atau fallback record
   if (supabase) {
     try {
       const dateTarget = `${SYSTEM_ATTENDANCE_DATE_PREFIX}${today}`
@@ -715,16 +717,28 @@ export async function getTodayUserAttendance({
             } catch (e) {}
             return null
           }
-          try {
-            localStorage.setItem(`today_absensi_${today}_${userId}`, JSON.stringify(mirrorRec))
-          } catch (e) {}
-          return mirrorRec
+          if (!finalRecord) {
+            finalRecord = { ...mirrorRec }
+          } else {
+            // Perkaya waktu_pulang jika DB belum memiliki waktu pulang tapi cloud mirror sudah mencatatnya
+            if (!finalRecord.waktu_pulang && mirrorRec.waktu_pulang) {
+              finalRecord.waktu_pulang = mirrorRec.waktu_pulang
+              finalRecord.lokasi_pulang = mirrorRec.lokasi_pulang || finalRecord.lokasi_pulang
+              // Sinkronkan ke tabel absensi di latar belakang
+              if (finalRecord.id && !String(finalRecord.id).startsWith('cloud-att-')) {
+                supabase.from('absensi').update({
+                  waktu_pulang: mirrorRec.waktu_pulang,
+                  lokasi_pulang: mirrorRec.lokasi_pulang
+                }).eq('id', finalRecord.id).then(() => {}).catch(() => {})
+              }
+            }
+          }
         }
       }
     } catch (e) {}
   }
 
-  // 3. Fallback ke Cache Lokal
+  // 3. Perkaya dengan Cache Lokal / Antrean Offline
   try {
     const raw = localStorage.getItem(`today_absensi_${today}_${userId}`)
     if (raw) {
@@ -733,9 +747,23 @@ export async function getTodayUserAttendance({
         localStorage.removeItem(`today_absensi_${today}_${userId}`)
         return null
       }
-      return localRec
+      if (!finalRecord) {
+        finalRecord = { ...localRec }
+      } else {
+        // Jangan pernah menimpa waktu_pulang lokal yang sah dengan null dari server
+        if (!finalRecord.waktu_pulang && localRec.waktu_pulang) {
+          finalRecord.waktu_pulang = localRec.waktu_pulang
+          finalRecord.lokasi_pulang = localRec.lokasi_pulang || finalRecord.lokasi_pulang
+        }
+      }
     }
   } catch (e) {}
 
-  return null
+  if (finalRecord) {
+    try {
+      localStorage.setItem(`today_absensi_${today}_${userId}`, JSON.stringify(finalRecord))
+    } catch (e) {}
+  }
+
+  return finalRecord
 }

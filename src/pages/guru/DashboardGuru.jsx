@@ -1038,7 +1038,8 @@ export default function DashboardGuru({ roleOverride = null }) {
       checkUnsynced()
       if (res.successCount > 0) {
         showPopup("Sinkronisasi Selesai", `${res.successCount} data presensi luring telah disinkronkan ke server.`, "success")
-        fetchUser() // Refresh UI
+        await fetchUser() // Refresh UI
+        await loadHistory(historyMonth, user)
       }
     } catch (err) {
       console.warn('Gagal sinkronisasi luring:', err)
@@ -1476,6 +1477,12 @@ export default function DashboardGuru({ roleOverride = null }) {
           absensi.waktu_pulang = offlinePulang.waktu
           absensi.lokasi_pulang = offlinePulang.loc
         }
+        // Pastikan waktu pulang lokal / cache tidak terhapus jika response absensi DB belum memuat jam pulang
+        const localRec = getStoredTodayAttendanceRecord(today)
+        if (!absensi.waktu_pulang && localRec?.waktu_pulang) {
+          absensi.waktu_pulang = localRec.waktu_pulang
+          absensi.lokasi_pulang = localRec.lokasi_pulang || absensi.lokasi_pulang
+        }
         setHasCheckedIn(true)
         setTodayStatus(absensi.status)
         setTodayAbsensi(absensi)
@@ -1685,16 +1692,44 @@ export default function DashboardGuru({ roleOverride = null }) {
         .order('waktu_masuk', { ascending: false })
 
       let effectiveData = (!error && data) ? data : []
-      if (effectiveData.length === 0) {
-        try {
-          const cloudList = await fetchAttendanceRecords({
-            supabase,
-            laporanTipe: 'bulanan',
-            bulan: targetMonth,
-            profiles: allProfiles
-          })
-          effectiveData = cloudList.filter(r => r.user_id === activeUser.id)
-        } catch {}
+      try {
+        const cloudList = await fetchAttendanceRecords({
+          supabase,
+          laporanTipe: 'bulanan',
+          bulan: targetMonth,
+          profiles: allProfiles
+        })
+        const myCloudRows = cloudList.filter(r => r.user_id === activeUser.id)
+        for (const cr of myCloudRows) {
+          const idx = effectiveData.findIndex(r => r.tanggal === cr.tanggal)
+          if (idx >= 0) {
+            if (!effectiveData[idx].waktu_pulang && cr.waktu_pulang) {
+              effectiveData[idx].waktu_pulang = cr.waktu_pulang
+              effectiveData[idx].lokasi_pulang = cr.lokasi_pulang || effectiveData[idx].lokasi_pulang
+            }
+          } else {
+            effectiveData.push(cr)
+          }
+        }
+      } catch {}
+
+      // Pastikan presensi hari ini selalu terisi dan tidak kosong di riwayat
+      const today = getLocalDateString()
+      const [tYear, tMonth] = targetMonth.split('-')
+      const currentMonthPrefix = `${tYear}-${String(tMonth).padStart(2, '0')}`
+      if (today.startsWith(currentMonthPrefix)) {
+        const localToday = getStoredTodayAttendanceRecord(today)
+        if (localToday && (localToday.waktu_masuk || localToday.status === 'sakit' || localToday.status === 'izin')) {
+          const tIdx = effectiveData.findIndex(r => r.tanggal === today)
+          if (tIdx >= 0) {
+            if (!effectiveData[tIdx].waktu_pulang && localToday.waktu_pulang) {
+              effectiveData[tIdx].waktu_pulang = localToday.waktu_pulang
+              effectiveData[tIdx].lokasi_pulang = localToday.lokasi_pulang || effectiveData[tIdx].lokasi_pulang
+            }
+          } else {
+            effectiveData.unshift({ ...localToday, tanggal: today, user_id: activeUser.id })
+          }
+        }
       }
 
       if (effectiveData.length > 0) {
@@ -1710,8 +1745,8 @@ export default function DashboardGuru({ roleOverride = null }) {
             if (row.id) duplicateIds.push(row.id)
             continue
           }
-          // Saring baris sebelum waktu registrasi akun baru
-          if (regTime > 0 && row.created_at && new Date(row.created_at).getTime() < regTime - 5000) {
+          // Saring baris sebelum waktu registrasi akun baru (hanya untuk data lama sebelum 10 Okt 2026)
+          if (regTime > 0 && row.tanggal < '2026-10-10' && row.created_at && new Date(row.created_at).getTime() < regTime - 5000) {
             if (row.id) duplicateIds.push(row.id)
             continue
           }
