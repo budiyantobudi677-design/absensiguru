@@ -264,9 +264,10 @@ export default function DashboardAdmin() {
   const [shiftAdminSubTab, setShiftAdminSubTab] = useState('plotting') // 'plotting' | 'master'
   const [savingShift, setSavingShift] = useState(false)
 
-  // State Penyesuaian Shift Khusus (Semua Guru Masuk Pagi)
+  // State Penyesuaian Shift Khusus (Semua Guru Masuk Siang / Masuk Pagi)
   const [showSpecialShiftModal, setShowSpecialShiftModal] = useState(false)
   const [specialShiftDate, setSpecialShiftDate] = useState(() => getLocalDateString())
+  const [specialShiftTargetId, setSpecialShiftTargetId] = useState('shift-genap') // 'shift-genap' (Siang) | 'shift-ganjil' (Pagi)
   const [specialShiftReason, setSpecialShiftReason] = useState('')
   const [savingSpecialShift, setSavingSpecialShift] = useState(false)
   const [specialShiftNotice, setSpecialShiftNotice] = useState({ type: '', text: '' })
@@ -278,11 +279,13 @@ export default function DashboardAdmin() {
     }
     setSavingSpecialShift(true)
     setSpecialShiftNotice({ type: '', text: '' })
+    const isSiang = specialShiftTargetId === 'shift-genap' || String(specialShiftTargetId).toLowerCase().includes('siang')
+    const defaultLabel = isSiang ? 'Semua Guru Masuk Siang' : 'Semua Guru Masuk Pagi'
     try {
       await addDailyShiftOverride({
         dateStr: specialShiftDate,
-        targetShiftId: 'shift-ganjil',
-        reason: specialShiftReason.trim() || 'Semua Guru Masuk Pagi',
+        targetShiftId: specialShiftTargetId || 'shift-genap',
+        reason: specialShiftReason.trim() || defaultLabel,
         createdBy: admin?.full_name || 'Administrator',
         supabase
       })
@@ -290,7 +293,7 @@ export default function DashboardAdmin() {
       setShiftSystem(fresh)
       setSpecialShiftNotice({
         type: 'success',
-        text: `Berhasil mengatur Semua Guru Masuk Pagi untuk tanggal ${specialShiftDate}!`
+        text: `Berhasil mengatur ${defaultLabel} untuk tanggal ${specialShiftDate}!`
       })
       setTimeout(() => {
         setSpecialShiftNotice({ type: '', text: '' })
@@ -304,7 +307,7 @@ export default function DashboardAdmin() {
   }
 
   const handleRemoveSpecialShift = async (dateStr) => {
-    if (!window.confirm(`Batalkan penyesuaian Masuk Pagi untuk tanggal ${dateStr}? Jadwal guru akan kembali normal.`)) return
+    if (!window.confirm(`Batalkan penyesuaian shift khusus untuk tanggal ${dateStr}? Jadwal guru akan kembali normal.`)) return
     try {
       await removeDailyShiftOverride({ dateStr, supabase })
       const fresh = await fetchShiftSystemData(supabase)
@@ -3901,18 +3904,19 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  {/* Tombol Utama: Setel Semua Masuk Pagi */}
+                  {/* Tombol Utama: Setel Shift Khusus Harian */}
                   <button
                     type="button"
                     onClick={() => {
                       setSpecialShiftDate(getLocalDateString())
+                      setSpecialShiftTargetId('shift-genap')
                       setShowSpecialShiftModal(true)
                     }}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                      background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                       color: '#FFFFFF',
                       border: 'none',
                       padding: '0.55rem 1.05rem',
@@ -3920,12 +3924,12 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       fontWeight: 800,
                       fontSize: '0.82rem',
                       cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.35)'
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)'
                     }}
-                    title="Atur penyesuaian shift agar semua guru masuk pagi pada tanggal tertentu"
+                    title="Atur penyesuaian shift harian khusus (Semua Masuk Siang atau Semua Masuk Pagi) pada tanggal tertentu"
                   >
-                    <span>☀️</span>
-                    <span>Setel Semua Masuk Pagi</span>
+                    <span>⚡</span>
+                    <span>Setel Shift Khusus Harian</span>
                   </button>
 
                   {/* Sub-tab pills */}
@@ -4992,15 +4996,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                 {/* Modal Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.85rem', borderBottom: '1px solid #E2E8F0', marginBottom: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>
-                      ☀️
+                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: specialShiftTargetId === 'shift-genap' ? '#E0F2FE' : '#FEF3C7', color: specialShiftTargetId === 'shift-genap' ? '#0284C7' : '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>
+                      {specialShiftTargetId === 'shift-genap' ? '⛅' : '☀️'}
                     </div>
                     <div>
                       <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#1E293B' }}>
-                        Setel Semua Guru Masuk Pagi
+                        Setel Shift Khusus Harian
                       </h3>
                       <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748B' }}>
-                        Penyesuaian shift khusus harian (otomatis normal kembali keesokan harinya)
+                        Berlaku hanya di tanggal tertentu (keesokan harinya otomatis kembali normal)
                       </p>
                     </div>
                   </div>
@@ -5044,9 +5048,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
-                          border: specialShiftDate === todayStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
-                          background: specialShiftDate === todayStr ? '#FEF3C7' : '#F8FAFC',
-                          color: specialShiftDate === todayStr ? '#92400E' : '#475569',
+                          border: specialShiftDate === todayStr ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                          background: specialShiftDate === todayStr ? '#E0F2FE' : '#F8FAFC',
+                          color: specialShiftDate === todayStr ? '#0369A1' : '#475569',
                           fontSize: '0.76rem',
                           fontWeight: 700,
                           cursor: 'pointer'
@@ -5060,9 +5064,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
-                          border: specialShiftDate === tomorrowStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
-                          background: specialShiftDate === tomorrowStr ? '#FEF3C7' : '#F8FAFC',
-                          color: specialShiftDate === tomorrowStr ? '#92400E' : '#475569',
+                          border: specialShiftDate === tomorrowStr ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                          background: specialShiftDate === tomorrowStr ? '#E0F2FE' : '#F8FAFC',
+                          color: specialShiftDate === tomorrowStr ? '#0369A1' : '#475569',
                           fontSize: '0.76rem',
                           fontWeight: 700,
                           cursor: 'pointer'
@@ -5076,9 +5080,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
-                          border: specialShiftDate === lusaStr ? '2px solid #F59E0B' : '1px solid #CBD5E1',
-                          background: specialShiftDate === lusaStr ? '#FEF3C7' : '#F8FAFC',
-                          color: specialShiftDate === lusaStr ? '#92400E' : '#475569',
+                          border: specialShiftDate === lusaStr ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                          background: specialShiftDate === lusaStr ? '#E0F2FE' : '#F8FAFC',
+                          color: specialShiftDate === lusaStr ? '#0369A1' : '#475569',
                           fontSize: '0.76rem',
                           fontWeight: 700,
                           cursor: 'pointer'
@@ -5106,14 +5110,66 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </div>
                   </div>
 
-                  {/* Step 2: Alasan / Kegiatan */}
+                  {/* Step 2: Pilih Target Shift Khusus */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
-                      2. Alasan / Nama Kegiatan:
+                      2. Aturan Shift pada Tanggal Ini:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div
+                        onClick={() => setSpecialShiftTargetId('shift-genap')}
+                        style={{
+                          border: specialShiftTargetId === 'shift-genap' ? '2px solid #0284C7' : '1.5px solid #E2E8F0',
+                          background: specialShiftTargetId === 'shift-genap' ? '#F0F9FF' : '#FFFFFF',
+                          borderRadius: '12px',
+                          padding: '0.75rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>⛅</span>
+                          <strong style={{ fontSize: '0.82rem', color: specialShiftTargetId === 'shift-genap' ? '#0369A1' : '#1E293B' }}>
+                            Semua Masuk Siang
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B', lineHeight: '1.35' }}>
+                          Yang masuk pagi dialihkan ke siang, dan yang jadwal siang tetap siang.
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={() => setSpecialShiftTargetId('shift-ganjil')}
+                        style={{
+                          border: specialShiftTargetId === 'shift-ganjil' ? '2px solid #F59E0B' : '1.5px solid #E2E8F0',
+                          background: specialShiftTargetId === 'shift-ganjil' ? '#FFFBEB' : '#FFFFFF',
+                          borderRadius: '12px',
+                          padding: '0.75rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>☀️</span>
+                          <strong style={{ fontSize: '0.82rem', color: specialShiftTargetId === 'shift-ganjil' ? '#B45309' : '#1E293B' }}>
+                            Semua Masuk Pagi
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B', lineHeight: '1.35' }}>
+                          Yang masuk siang dialihkan ke pagi, dan yang jadwal pagi tetap pagi.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3: Alasan / Kegiatan */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
+                      3. Alasan / Nama Kegiatan:
                     </label>
                     <input
                       type="text"
-                      placeholder="Contoh: Upacara Bendera, Ujian Semester, Rapat Dinas..."
+                      placeholder={specialShiftTargetId === 'shift-genap' ? 'Contoh: Kegiatan Pagi / Pembersihan Sekolah, Jadwal Khusus Siang...' : 'Contoh: Upacara Bendera, Ujian Semester, Rapat Dinas...'}
                       value={specialShiftReason}
                       onChange={(e) => setSpecialShiftReason(e.target.value)}
                       style={{
@@ -5128,7 +5184,10 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     />
                     {/* Quick suggestion chips */}
                     <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                      {['Upacara Bendera', 'Ujian Semester (PAS/PAT)', 'Rapat Dinas Guru', 'Class Meeting / Porseni', 'Kegiatan Peringatan Hari Besar'].map(chip => (
+                      {(specialShiftTargetId === 'shift-genap'
+                        ? ['Penyesuaian Khusus Masuk Siang', 'Pembersihan Sekolah Pagi', 'Acara Sore / Porseni', 'Rapat Koordinasi Pagi', 'Jadwal Khusus Siang']
+                        : ['Upacara Bendera', 'Ujian Semester (PAS/PAT)', 'Rapat Dinas Guru', 'Class Meeting / Porseni', 'Kegiatan Peringatan Hari Besar']
+                      ).map(chip => (
                         <button
                           key={chip}
                           type="button"
@@ -5150,22 +5209,33 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </div>
                   </div>
 
-                  {/* Step 3: Informasi Ketentuan */}
+                  {/* Step 4: Informasi Ketentuan */}
                   <div style={{
-                    background: '#FEF3C7',
-                    border: '1px solid #FDE68A',
+                    background: specialShiftTargetId === 'shift-genap' ? '#F0F9FF' : '#FEF3C7',
+                    border: specialShiftTargetId === 'shift-genap' ? '1px solid #BAE6FD' : '1px solid #FDE68A',
                     borderRadius: '12px',
                     padding: '0.75rem 1rem',
                     fontSize: '0.76rem',
-                    color: '#92400E',
+                    color: specialShiftTargetId === 'shift-genap' ? '#0369A1' : '#92400E',
                     lineHeight: '1.5'
                   }}>
                     <strong>Ketentuan Jam Kerja:</strong>
-                    <div>• Seluruh guru diterapkan <strong>Shift Pagi (07:00 – 14:00 WITA)</strong> dengan batas toleransi s.d. 07:30.</div>
-                    <div>• Pengaturan ini <strong>hanya berlaku pada tanggal yang dipilih</strong>. Keesokan harinya, jadwal seluruh guru <strong>otomatis kembali normal</strong> sesuai plotting masing-masing.</div>
+                    {specialShiftTargetId === 'shift-genap' ? (
+                      <>
+                        <div>• Seluruh guru diterapkan <strong>Shift Siang (10:00 – 17:00 WITA / Jumat 13:00 – 17:00 / Sabtu 09:30 – 15:00)</strong>.</div>
+                        <div>• Guru yang jadwal dasarnya pagi dialihkan masuk siang, dan yang jadwal dasarnya siang tetap masuk siang.</div>
+                        <div>• Pengaturan ini <strong>hanya berlaku pada tanggal {specialShiftDate || 'terpilih'}</strong>. Keesokan harinya, seluruh guru <strong>otomatis normal kembali</strong> sesuai rotasi masing-masing.</div>
+                      </>
+                    ) : (
+                      <>
+                        <div>• Seluruh guru diterapkan <strong>Shift Pagi (07:00 – 14:00 WITA)</strong> dengan batas toleransi s.d. 07:30.</div>
+                        <div>• Guru yang jadwal dasarnya siang dialihkan masuk pagi, dan yang jadwal dasarnya pagi tetap masuk pagi.</div>
+                        <div>• Pengaturan ini <strong>hanya berlaku pada tanggal {specialShiftDate || 'terpilih'}</strong>. Keesokan harinya, seluruh guru <strong>otomatis normal kembali</strong> sesuai rotasi masing-masing.</div>
+                      </>
+                    )}
                   </div>
 
-                  {/* Step 4: Daftar Penyesuaian Terjadwal */}
+                  {/* Step 5: Daftar Penyesuaian Terjadwal */}
                   {allDates.length > 0 && (
                     <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '0.85rem' }}>
                       <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', marginBottom: '0.45rem' }}>
@@ -5175,6 +5245,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                         {allDates.map(dKey => {
                           const item = overrides[dKey]
                           const isToday = dKey === todayStr
+                          const isSiangItem = item.targetShiftId === 'shift-genap' || String(item.targetShiftId || '').includes('siang')
                           return (
                             <div
                               key={dKey}
@@ -5183,17 +5254,27 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 padding: '0.5rem 0.75rem',
-                                background: isToday ? '#FFFBEB' : '#F8FAFC',
-                                border: isToday ? '1px solid #FDE68A' : '1px solid #E2E8F0',
+                                background: isToday ? (isSiangItem ? '#F0F9FF' : '#FFFBEB') : '#F8FAFC',
+                                border: isToday ? (isSiangItem ? '1px solid #BAE6FD' : '1px solid #FDE68A') : '1px solid #E2E8F0',
                                 borderRadius: '8px',
                                 fontSize: '0.75rem'
                               }}
                             >
-                              <div>
-                                <strong style={{ color: isToday ? '#B45309' : '#1E293B' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  background: isSiangItem ? '#E0F2FE' : '#FEF3C7',
+                                  color: isSiangItem ? '#0284C7' : '#D97706'
+                                }}>
+                                  {isSiangItem ? '⛅ MASUK SIANG' : '☀️ MASUK PAGI'}
+                                </span>
+                                <strong style={{ color: isToday ? (isSiangItem ? '#0284C7' : '#B45309') : '#1E293B' }}>
                                   {dKey} {isToday ? '(Hari Ini)' : ''}:
                                 </strong>{' '}
-                                <span style={{ color: '#64748B' }}>{item.reason || 'Semua Masuk Pagi'}</span>
+                                <span style={{ color: '#64748B' }}>{item.reason || (isSiangItem ? 'Semua Masuk Siang' : 'Semua Masuk Pagi')}</span>
                               </div>
                               <button
                                 type="button"
@@ -5244,13 +5325,13 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     style={{
                       padding: '0.6rem 1.35rem',
                       borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                      background: specialShiftTargetId === 'shift-genap' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
                       border: 'none',
                       color: '#FFFFFF',
                       fontWeight: 800,
                       fontSize: '0.82rem',
                       cursor: savingSpecialShift ? 'not-allowed' : 'pointer',
-                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.35)'
+                      boxShadow: specialShiftTargetId === 'shift-genap' ? '0 2px 8px rgba(2, 132, 199, 0.35)' : '0 2px 8px rgba(245, 158, 11, 0.35)'
                     }}
                   >
                     {savingSpecialShift ? 'Menyimpan...' : 'Simpan & Terapkan'}

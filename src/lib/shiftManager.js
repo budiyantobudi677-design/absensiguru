@@ -375,7 +375,7 @@ export async function saveTeacherShiftAssignment({ teacherId, assignmentData, su
 export async function addDailyShiftOverride({
   dateStr, // YYYY-MM-DD
   targetShiftId = 'shift-ganjil',
-  reason = 'Semua Masuk Pagi',
+  reason = '',
   createdBy = 'Administrator',
   supabase
 }) {
@@ -383,10 +383,13 @@ export async function addDailyShiftOverride({
   const current = await fetchShiftSystemData(supabase)
   const overrides = { ...(current.dailyShiftOverrides || {}) }
 
+  const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
+  const defaultReason = isSiang ? 'Semua Masuk Siang (Penyesuaian Khusus)' : 'Semua Masuk Pagi (Penyesuaian Khusus)'
+
   overrides[dateStr] = {
     date: dateStr,
     targetShiftId: targetShiftId || 'shift-ganjil',
-    reason: reason || 'Semua Masuk Pagi (Penyesuaian Khusus)',
+    reason: reason ? reason.trim() : defaultReason,
     createdBy: createdBy || 'Administrator',
     createdAt: new Date().toISOString()
   }
@@ -446,11 +449,12 @@ export function resolveTeacherShiftForDate({
   let isSpecialDailyOverride = false
   let specialReason = null
 
-  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Masuk Pagi)
+  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Masuk Pagi / Masuk Siang)
   if (overrideForDate && overrideForDate.targetShiftId) {
     targetShiftId = overrideForDate.targetShiftId
     isSpecialDailyOverride = true
-    specialReason = overrideForDate.reason || 'Semua Masuk Pagi (Penyesuaian Khusus)'
+    const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
+    specialReason = overrideForDate.reason || (isSiang ? 'Semua Masuk Siang (Penyesuaian Khusus)' : 'Semua Masuk Pagi (Penyesuaian Khusus)')
   } else if (userAssignment.mode === 'fixed') {
     targetShiftId = userAssignment.fixedShiftId || 'shift-ganjil'
   } else if (userAssignment.mode === 'rolling_weekly') {
@@ -566,7 +570,8 @@ export function isAttendanceLate(item, shiftSystem = null) {
               teacherId: item.user_id,
               date: d,
               shifts: sys?.shifts || DEFAULT_SHIFTS,
-              assignments: sys?.assignments || {}
+              assignments: sys?.assignments || {},
+              dailyShiftOverrides: sys?.dailyShiftOverrides || {}
             })
             if (resolved?.shiftId === 'shift-genap' || resolved?.shiftName?.toLowerCase().includes('siang')) {
               isShiftSiang = true
