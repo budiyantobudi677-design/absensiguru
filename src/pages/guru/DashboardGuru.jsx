@@ -547,7 +547,7 @@ export default function DashboardGuru({ roleOverride = null }) {
     })
   }, [user?.id, shiftSystem])
 
-  // Cek apakah ada jadwal Masuk Pagi khusus besok
+  // Cek apakah ada jadwal Masuk Pagi/Siang khusus besok
   const tomorrowSpecialShift = useMemo(() => {
     try {
       const tomorrowObj = new Date()
@@ -558,6 +558,11 @@ export default function DashboardGuru({ roleOverride = null }) {
       const tomorrowStr = `${y}-${m}-${d}`
       const override = shiftSystem?.dailyShiftOverrides?.[tomorrowStr]
       if (override) {
+        // Cek apakah penyesuaian besok berlaku untuk guru ini
+        const isSelected = override.targetScope === 'selected' && Array.isArray(override.targetTeacherIds) && override.targetTeacherIds.length > 0
+        if (isSelected && (!user?.id || !override.targetTeacherIds.includes(user.id))) {
+          return null
+        }
         const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
         return {
           ...override,
@@ -567,7 +572,7 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
     } catch {}
     return null
-  }, [shiftSystem])
+  }, [shiftSystem, user?.id])
 
   // Toggle Tampilan Jadwal Shift Guru (Default disembunyikan agar tampilan bersih)
   const [showShiftSchedule, setShowShiftSchedule] = useState(false)

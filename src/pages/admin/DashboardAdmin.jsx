@@ -264,27 +264,49 @@ export default function DashboardAdmin() {
   const [shiftAdminSubTab, setShiftAdminSubTab] = useState('plotting') // 'plotting' | 'master'
   const [savingShift, setSavingShift] = useState(false)
 
-  // State Penyesuaian Shift Khusus (Semua Guru Masuk Siang / Masuk Pagi)
+  // State Penyesuaian Shift Khusus (Semua Guru / Guru Pilihan Masuk Siang / Masuk Pagi)
   const [showSpecialShiftModal, setShowSpecialShiftModal] = useState(false)
   const [specialShiftDate, setSpecialShiftDate] = useState(() => getLocalDateString())
   const [specialShiftTargetId, setSpecialShiftTargetId] = useState('shift-genap') // 'shift-genap' (Siang) | 'shift-ganjil' (Pagi)
+  const [specialShiftScope, setSpecialShiftScope] = useState('all') // 'all' | 'selected'
+  const [selectedSpecialShiftTeachers, setSelectedSpecialShiftTeachers] = useState([])
+  const [specialShiftTeacherSearch, setSpecialShiftTeacherSearch] = useState('')
   const [specialShiftReason, setSpecialShiftReason] = useState('')
   const [savingSpecialShift, setSavingSpecialShift] = useState(false)
   const [specialShiftNotice, setSpecialShiftNotice] = useState({ type: '', text: '' })
+
+  const filteredSpecialShiftTeachers = useMemo(() => {
+    if (!Array.isArray(pegawaiData)) return []
+    const q = (specialShiftTeacherSearch || '').trim().toLowerCase()
+    return pegawaiData.filter(p => {
+      if (!q) return true
+      const name = (p.full_name || p.nama || p.email || '').toLowerCase()
+      const nip = (p.nip || '').toLowerCase()
+      const role = (p.role || p.jabatan || p.penugasan_tipe || '').toLowerCase()
+      return name.includes(q) || nip.includes(q) || role.includes(q)
+    })
+  }, [pegawaiData, specialShiftTeacherSearch])
 
   const handleApplySpecialShift = async () => {
     if (!specialShiftDate) {
       alert('Pilih tanggal pelaksanaan terlebih dahulu.')
       return
     }
+    if (specialShiftScope === 'selected' && selectedSpecialShiftTeachers.length === 0) {
+      alert('Pilih minimal 1 nama guru jika memilih target Guru Tertentu.')
+      return
+    }
     setSavingSpecialShift(true)
     setSpecialShiftNotice({ type: '', text: '' })
     const isSiang = specialShiftTargetId === 'shift-genap' || String(specialShiftTargetId).toLowerCase().includes('siang')
-    const defaultLabel = isSiang ? 'Semua Guru Masuk Siang' : 'Semua Guru Masuk Pagi'
+    const countLabel = specialShiftScope === 'selected' ? `(${selectedSpecialShiftTeachers.length} Guru Terpilih)` : 'Seluruh Guru'
+    const defaultLabel = isSiang ? `Masuk Siang ${countLabel}` : `Masuk Pagi ${countLabel}`
     try {
       await addDailyShiftOverride({
         dateStr: specialShiftDate,
         targetShiftId: specialShiftTargetId || 'shift-genap',
+        targetScope: specialShiftScope,
+        targetTeacherIds: specialShiftScope === 'selected' ? selectedSpecialShiftTeachers : [],
         reason: specialShiftReason.trim() || defaultLabel,
         createdBy: admin?.full_name || 'Administrator',
         supabase
@@ -3910,6 +3932,9 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     onClick={() => {
                       setSpecialShiftDate(getLocalDateString())
                       setSpecialShiftTargetId('shift-genap')
+                      setSpecialShiftScope('all')
+                      setSelectedSpecialShiftTeachers([])
+                      setSpecialShiftTeacherSearch('')
                       setShowSpecialShiftModal(true)
                     }}
                     style={{
@@ -5162,10 +5187,175 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </div>
                   </div>
 
-                  {/* Step 3: Alasan / Kegiatan */}
+                  {/* Step 3: Target Guru yang Diterapkan */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
-                      3. Alasan / Nama Kegiatan:
+                      3. Target Guru yang Diterapkan:
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '0.65rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSpecialShiftScope('all')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '10px',
+                          border: specialShiftScope === 'all' ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                          background: specialShiftScope === 'all' ? '#E0F2FE' : '#F8FAFC',
+                          color: specialShiftScope === 'all' ? '#0369A1' : '#475569',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        👥 Seluruh Guru ({pegawaiData.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpecialShiftScope('selected')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '10px',
+                          border: specialShiftScope === 'selected' ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                          background: specialShiftScope === 'selected' ? '#E0F2FE' : '#F8FAFC',
+                          color: specialShiftScope === 'selected' ? '#0369A1' : '#475569',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        👤 Pilih Nama Guru {selectedSpecialShiftTeachers.length > 0 ? `(${selectedSpecialShiftTeachers.length})` : ''}
+                      </button>
+                    </div>
+
+                    {specialShiftScope === 'selected' && (
+                      <div style={{
+                        background: '#F8FAFC',
+                        border: '1.5px solid #CBD5E1',
+                        borderRadius: '12px',
+                        padding: '0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <input
+                            type="text"
+                            placeholder="Cari nama atau NIP guru..."
+                            value={specialShiftTeacherSearch}
+                            onChange={(e) => setSpecialShiftTeacherSearch(e.target.value)}
+                            style={{
+                              flex: 1,
+                              padding: '0.45rem 0.7rem',
+                              borderRadius: '8px',
+                              border: '1px solid #CBD5E1',
+                              fontSize: '0.78rem',
+                              background: 'white'
+                            }}
+                          />
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSpecialShiftTeachers(pegawaiData.map(p => p.id))}
+                              style={{
+                                padding: '0.35rem 0.65rem',
+                                borderRadius: '6px',
+                                border: '1px solid #0284C7',
+                                background: '#E0F2FE',
+                                color: '#0369A1',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Pilih Semua
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSpecialShiftTeachers([])}
+                              style={{
+                                padding: '0.35rem 0.65rem',
+                                borderRadius: '6px',
+                                border: '1px solid #E2E8F0',
+                                background: 'white',
+                                color: '#64748B',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {filteredSpecialShiftTeachers.length === 0 ? (
+                            <div style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.74rem', color: '#64748B' }}>
+                              Tidak ada data guru yang cocok.
+                            </div>
+                          ) : (
+                            filteredSpecialShiftTeachers.map(p => {
+                              const isChecked = selectedSpecialShiftTeachers.includes(p.id)
+                              return (
+                                <label
+                                  key={p.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.45rem 0.65rem',
+                                    borderRadius: '8px',
+                                    background: isChecked ? '#EFF6FF' : 'white',
+                                    border: isChecked ? '1px solid #93C5FD' : '1px solid #E2E8F0',
+                                    cursor: 'pointer',
+                                    userSelect: 'none'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedSpecialShiftTeachers(prev => [...prev, p.id])
+                                        } else {
+                                          setSelectedSpecialShiftTeachers(prev => prev.filter(id => id !== p.id))
+                                        }
+                                      }}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    />
+                                    <div>
+                                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1E293B' }}>
+                                        {p.full_name || p.nama || p.email}
+                                      </div>
+                                      <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                        {p.jabatan || p.penugasan_tipe || (p.role === 'guru' ? 'Guru' : p.role)} {p.nip && p.nip !== '-' ? `• NIP: ${p.nip}` : ''}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {isChecked && (
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284C7' }}>
+                                      ✓ Terpilih
+                                    </span>
+                                  )}
+                                </label>
+                              )
+                            })
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#0369A1', fontWeight: 700, textAlign: 'right' }}>
+                          {selectedSpecialShiftTeachers.length} dari {pegawaiData.length} guru terpilih
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 4: Alasan / Kegiatan */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
+                      4. Alasan / Nama Kegiatan:
                     </label>
                     <input
                       type="text"
@@ -5209,7 +5399,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     </div>
                   </div>
 
-                  {/* Step 4: Informasi Ketentuan */}
+                  {/* Step 5: Informasi Ketentuan */}
                   <div style={{
                     background: specialShiftTargetId === 'shift-genap' ? '#F0F9FF' : '#FEF3C7',
                     border: specialShiftTargetId === 'shift-genap' ? '1px solid #BAE6FD' : '1px solid #FDE68A',
@@ -5222,20 +5412,20 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     <strong>Ketentuan Jam Kerja:</strong>
                     {specialShiftTargetId === 'shift-genap' ? (
                       <>
-                        <div>• Seluruh guru diterapkan <strong>Shift Siang (10:00 – 17:00 WITA / Jumat 13:00 – 17:00 / Sabtu 09:30 – 15:00)</strong>.</div>
-                        <div>• Guru yang jadwal dasarnya pagi dialihkan masuk siang, dan yang jadwal dasarnya siang tetap masuk siang.</div>
+                        <div>• Guru sasaran diterapkan <strong>Shift Siang (10:00 – 17:00 WITA / Jumat 13:00 – 17:00 / Sabtu 09:30 – 15:00)</strong>.</div>
+                        <div>• {specialShiftScope === 'selected' ? `Hanya berlaku bagi ${selectedSpecialShiftTeachers.length} guru yang dipilih. Guru lain tetap mengikuti jadwal normal.` : 'Berlaku bagi seluruh guru. Yang jadwal pagi dialihkan ke siang, dan jadwal siang tetap siang.'}</div>
                         <div>• Pengaturan ini <strong>hanya berlaku pada tanggal {specialShiftDate || 'terpilih'}</strong>. Keesokan harinya, seluruh guru <strong>otomatis normal kembali</strong> sesuai rotasi masing-masing.</div>
                       </>
                     ) : (
                       <>
-                        <div>• Seluruh guru diterapkan <strong>Shift Pagi (07:00 – 14:00 WITA)</strong> dengan batas toleransi s.d. 07:30.</div>
-                        <div>• Guru yang jadwal dasarnya siang dialihkan masuk pagi, dan yang jadwal dasarnya pagi tetap masuk pagi.</div>
+                        <div>• Guru sasaran diterapkan <strong>Shift Pagi (07:00 – 14:00 WITA)</strong> dengan batas toleransi s.d. 07:30.</div>
+                        <div>• {specialShiftScope === 'selected' ? `Hanya berlaku bagi ${selectedSpecialShiftTeachers.length} guru yang dipilih. Guru lain tetap mengikuti jadwal normal.` : 'Berlaku bagi seluruh guru. Yang jadwal siang dialihkan ke pagi, dan jadwal pagi tetap pagi.'}</div>
                         <div>• Pengaturan ini <strong>hanya berlaku pada tanggal {specialShiftDate || 'terpilih'}</strong>. Keesokan harinya, seluruh guru <strong>otomatis normal kembali</strong> sesuai rotasi masing-masing.</div>
                       </>
                     )}
                   </div>
 
-                  {/* Step 5: Daftar Penyesuaian Terjadwal */}
+                  {/* Step 6: Daftar Penyesuaian Terjadwal */}
                   {allDates.length > 0 && (
                     <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '0.85rem' }}>
                       <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', marginBottom: '0.45rem' }}>
@@ -5246,6 +5436,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           const item = overrides[dKey]
                           const isToday = dKey === todayStr
                           const isSiangItem = item.targetShiftId === 'shift-genap' || String(item.targetShiftId || '').includes('siang')
+                          const isSelectedScope = item.targetScope === 'selected' && Array.isArray(item.targetTeacherIds)
                           return (
                             <div
                               key={dKey}
@@ -5260,7 +5451,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                 fontSize: '0.75rem'
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <span style={{
                                   padding: '2px 6px',
                                   borderRadius: '5px',
@@ -5271,10 +5462,33 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                 }}>
                                   {isSiangItem ? '⛅ MASUK SIANG' : '☀️ MASUK PAGI'}
                                 </span>
+                                {isSelectedScope ? (
+                                  <span style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '5px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    background: '#F1F5F9',
+                                    color: '#475569'
+                                  }}>
+                                    👤 {item.targetTeacherIds.length} Guru
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '5px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    background: '#F1F5F9',
+                                    color: '#475569'
+                                  }}>
+                                    👥 Semua Guru
+                                  </span>
+                                )}
                                 <strong style={{ color: isToday ? (isSiangItem ? '#0284C7' : '#B45309') : '#1E293B' }}>
                                   {dKey} {isToday ? '(Hari Ini)' : ''}:
                                 </strong>{' '}
-                                <span style={{ color: '#64748B' }}>{item.reason || (isSiangItem ? 'Semua Masuk Siang' : 'Semua Masuk Pagi')}</span>
+                                <span style={{ color: '#64748B' }}>{item.reason || (isSiangItem ? 'Masuk Siang' : 'Masuk Pagi')}</span>
                               </div>
                               <button
                                 type="button"

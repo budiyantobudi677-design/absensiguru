@@ -375,6 +375,8 @@ export async function saveTeacherShiftAssignment({ teacherId, assignmentData, su
 export async function addDailyShiftOverride({
   dateStr, // YYYY-MM-DD
   targetShiftId = 'shift-ganjil',
+  targetScope = 'all', // 'all' | 'selected'
+  targetTeacherIds = [], // Array of teacher UUIDs jika targetScope === 'selected'
   reason = '',
   createdBy = 'Administrator',
   supabase
@@ -384,11 +386,13 @@ export async function addDailyShiftOverride({
   const overrides = { ...(current.dailyShiftOverrides || {}) }
 
   const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
-  const defaultReason = isSiang ? 'Semua Masuk Siang (Penyesuaian Khusus)' : 'Semua Masuk Pagi (Penyesuaian Khusus)'
+  const defaultReason = isSiang ? 'Masuk Siang (Penyesuaian Khusus)' : 'Masuk Pagi (Penyesuaian Khusus)'
 
   overrides[dateStr] = {
     date: dateStr,
     targetShiftId: targetShiftId || 'shift-ganjil',
+    targetScope: targetScope || 'all',
+    targetTeacherIds: Array.isArray(targetTeacherIds) ? targetTeacherIds : [],
     reason: reason ? reason.trim() : defaultReason,
     createdBy: createdBy || 'Administrator',
     createdAt: new Date().toISOString()
@@ -449,12 +453,25 @@ export function resolveTeacherShiftForDate({
   let isSpecialDailyOverride = false
   let specialReason = null
 
-  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Masuk Pagi / Masuk Siang)
+  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Guru atau Guru Pilihan Tertentu)
+  let appliesToTeacher = false
   if (overrideForDate && overrideForDate.targetShiftId) {
+    const isTargetSelected = overrideForDate.targetScope === 'selected' && Array.isArray(overrideForDate.targetTeacherIds) && overrideForDate.targetTeacherIds.length > 0
+    if (isTargetSelected) {
+      if (teacherId && overrideForDate.targetTeacherIds.includes(teacherId)) {
+        appliesToTeacher = true
+      }
+    } else {
+      // Default: Berlaku untuk seluruh guru/pegawai
+      appliesToTeacher = true
+    }
+  }
+
+  if (appliesToTeacher) {
     targetShiftId = overrideForDate.targetShiftId
     isSpecialDailyOverride = true
     const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
-    specialReason = overrideForDate.reason || (isSiang ? 'Semua Masuk Siang (Penyesuaian Khusus)' : 'Semua Masuk Pagi (Penyesuaian Khusus)')
+    specialReason = overrideForDate.reason || (isSiang ? 'Masuk Siang (Penyesuaian Khusus)' : 'Masuk Pagi (Penyesuaian Khusus)')
   } else if (userAssignment.mode === 'fixed') {
     targetShiftId = userAssignment.fixedShiftId || 'shift-ganjil'
   } else if (userAssignment.mode === 'rolling_weekly') {
