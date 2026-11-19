@@ -558,14 +558,40 @@ export default function DashboardGuru({ roleOverride = null }) {
       const tomorrowStr = `${y}-${m}-${d}`
       const override = shiftSystem?.dailyShiftOverrides?.[tomorrowStr]
       if (override) {
-        // Cek apakah penyesuaian besok berlaku untuk guru ini
-        const isSelected = override.targetScope === 'selected' && Array.isArray(override.targetTeacherIds) && override.targetTeacherIds.length > 0
-        if (isSelected && (!user?.id || !override.targetTeacherIds.includes(user.id))) {
-          return null
+        let appliesToUser = false
+        let userTargetShiftId = override.targetShiftId
+
+        // Mode A: Kustom per-guru
+        if (
+          override.targetScope === 'custom' || 
+          override.targetShiftId === 'custom' || 
+          (override.customTeacherShifts && Object.keys(override.customTeacherShifts).length > 0)
+        ) {
+          const customShifts = override.customTeacherShifts || {}
+          if (user?.id && customShifts[user.id]) {
+            appliesToUser = true
+            userTargetShiftId = customShifts[user.id]
+          }
+        } 
+        // Mode B: Guru terpilih
+        else if (override.targetScope === 'selected' && Array.isArray(override.targetTeacherIds)) {
+          if (user?.id && override.targetTeacherIds.includes(user.id)) {
+            appliesToUser = true
+            userTargetShiftId = override.targetShiftId
+          }
+        } 
+        // Mode C: Seluruh guru
+        else if (override.targetShiftId && override.targetShiftId !== 'custom') {
+          appliesToUser = true
+          userTargetShiftId = override.targetShiftId
         }
+
+        if (!appliesToUser) return null
+
         const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
         return {
           ...override,
+          targetShiftId: userTargetShiftId,
           dayName: days[tomorrowObj.getDay()],
           dateStr: tomorrowStr
         }

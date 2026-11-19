@@ -374,9 +374,10 @@ export async function saveTeacherShiftAssignment({ teacherId, assignmentData, su
  */
 export async function addDailyShiftOverride({
   dateStr, // YYYY-MM-DD
-  targetShiftId = 'shift-ganjil',
-  targetScope = 'all', // 'all' | 'selected'
+  targetShiftId = 'shift-ganjil', // 'shift-ganjil' | 'shift-genap' | 'custom'
+  targetScope = 'all', // 'all' | 'selected' | 'custom'
   targetTeacherIds = [], // Array of teacher UUIDs jika targetScope === 'selected'
+  customTeacherShifts = {}, // { [teacherId]: 'shift-ganjil' | 'shift-genap' } jika targetScope === 'custom'
   reason = '',
   createdBy = 'Administrator',
   supabase
@@ -385,14 +386,18 @@ export async function addDailyShiftOverride({
   const current = await fetchShiftSystemData(supabase)
   const overrides = { ...(current.dailyShiftOverrides || {}) }
 
+  const isCustom = targetScope === 'custom' || targetShiftId === 'custom'
   const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
-  const defaultReason = isSiang ? 'Masuk Siang (Penyesuaian Khusus)' : 'Masuk Pagi (Penyesuaian Khusus)'
+  const defaultReason = isCustom
+    ? 'Penyesuaian Shift Kustom (Bagi Pagi & Siang)'
+    : (isSiang ? 'Masuk Siang (Penyesuaian Khusus)' : 'Masuk Pagi (Penyesuaian Khusus)')
 
   overrides[dateStr] = {
     date: dateStr,
-    targetShiftId: targetShiftId || 'shift-ganjil',
-    targetScope: targetScope || 'all',
+    targetShiftId: isCustom ? 'custom' : (targetShiftId || 'shift-ganjil'),
+    targetScope: isCustom ? 'custom' : (targetScope || 'all'),
     targetTeacherIds: Array.isArray(targetTeacherIds) ? targetTeacherIds : [],
+    customTeacherShifts: isCustom && customTeacherShifts && typeof customTeacherShifts === 'object' ? customTeacherShifts : {},
     reason: reason ? reason.trim() : defaultReason,
     createdBy: createdBy || 'Administrator',
     createdAt: new Date().toISOString()
@@ -453,22 +458,39 @@ export function resolveTeacherShiftForDate({
   let isSpecialDailyOverride = false
   let specialReason = null
 
-  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Semua Guru atau Guru Pilihan Tertentu)
+  // 1. Prioritas Utama: Penyesuaian Harian Khusus untuk Tanggal Ini (Kustom Per-Guru, Guru Tertentu, atau Semua Guru)
   let appliesToTeacher = false
-  if (overrideForDate && overrideForDate.targetShiftId) {
-    const isTargetSelected = overrideForDate.targetScope === 'selected' && Array.isArray(overrideForDate.targetTeacherIds) && overrideForDate.targetTeacherIds.length > 0
-    if (isTargetSelected) {
+  let resolvedTargetShiftId = null
+
+  if (overrideForDate) {
+    // Mode A: Kustom Per-Guru (Alihkan masuk pagi guru tertentu, masuk siang guru tertentu)
+    if (
+      overrideForDate.targetScope === 'custom' || 
+      overrideForDate.targetShiftId === 'custom' || 
+      (overrideForDate.customTeacherShifts && Object.keys(overrideForDate.customTeacherShifts).length > 0)
+    ) {
+      const customShifts = overrideForDate.customTeacherShifts || {}
+      if (teacherId && customShifts[teacherId]) {
+        appliesToTeacher = true
+        resolvedTargetShiftId = customShifts[teacherId]
+      }
+    } 
+    // Mode B: Guru Tertentu (Pilihan satu shift untuk daftar guru terpilih)
+    else if (overrideForDate.targetScope === 'selected' && Array.isArray(overrideForDate.targetTeacherIds) && overrideForDate.targetTeacherIds.length > 0) {
       if (teacherId && overrideForDate.targetTeacherIds.includes(teacherId)) {
         appliesToTeacher = true
+        resolvedTargetShiftId = overrideForDate.targetShiftId
       }
-    } else {
-      // Default: Berlaku untuk seluruh guru/pegawai
+    } 
+    // Mode C: Seluruh Guru (Global untuk semua guru)
+    else if (overrideForDate.targetShiftId && overrideForDate.targetShiftId !== 'custom') {
       appliesToTeacher = true
+      resolvedTargetShiftId = overrideForDate.targetShiftId
     }
   }
 
-  if (appliesToTeacher) {
-    targetShiftId = overrideForDate.targetShiftId
+  if (appliesToTeacher && resolvedTargetShiftId) {
+    targetShiftId = resolvedTargetShiftId
     isSpecialDailyOverride = true
     const isSiang = targetShiftId === 'shift-genap' || String(targetShiftId).toLowerCase().includes('siang')
     specialReason = overrideForDate.reason || (isSiang ? 'Masuk Siang (Penyesuaian Khusus)' : 'Masuk Pagi (Penyesuaian Khusus)')
