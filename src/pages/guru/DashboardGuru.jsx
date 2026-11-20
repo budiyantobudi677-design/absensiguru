@@ -536,16 +536,19 @@ export default function DashboardGuru({ roleOverride = null }) {
   // State Sistem Shift & Jadwal Guru
   const [shiftSystem, setShiftSystem] = useState({ shifts: DEFAULT_SHIFTS, assignments: {} })
 
-  // Shift aktif hari ini untuk guru (diperbarui otomatis berdasarkan shiftSystem & user)
+  // Target teacher ID untuk shift (mendukung Mode Pratinjau Pengembang / selectedViewTeacherId)
+  const activeTeacherIdForShift = selectedViewTeacherId || user?.id
+
+  // Shift aktif hari ini untuk guru (diperbarui otomatis berdasarkan shiftSystem & user/selectedViewTeacherId)
   const todayShift = useMemo(() => {
     return resolveTeacherShiftForDate({
-      teacherId: user?.id,
+      teacherId: activeTeacherIdForShift,
       date: new Date(),
       shifts: shiftSystem?.shifts || DEFAULT_SHIFTS,
       assignments: shiftSystem?.assignments || {},
       dailyShiftOverrides: shiftSystem?.dailyShiftOverrides || {}
     })
-  }, [user?.id, shiftSystem])
+  }, [activeTeacherIdForShift, shiftSystem])
 
   // Cek apakah ada jadwal Masuk Pagi/Siang khusus besok
   const tomorrowSpecialShift = useMemo(() => {
@@ -568,14 +571,14 @@ export default function DashboardGuru({ roleOverride = null }) {
           (override.customTeacherShifts && Object.keys(override.customTeacherShifts).length > 0)
         ) {
           const customShifts = override.customTeacherShifts || {}
-          if (user?.id && customShifts[user.id]) {
+          if (activeTeacherIdForShift && customShifts[activeTeacherIdForShift]) {
             appliesToUser = true
-            userTargetShiftId = customShifts[user.id]
+            userTargetShiftId = customShifts[activeTeacherIdForShift]
           }
         } 
         // Mode B: Guru terpilih
         else if (override.targetScope === 'selected' && Array.isArray(override.targetTeacherIds)) {
-          if (user?.id && override.targetTeacherIds.includes(user.id)) {
+          if (activeTeacherIdForShift && override.targetTeacherIds.includes(activeTeacherIdForShift)) {
             appliesToUser = true
             userTargetShiftId = override.targetShiftId
           }
@@ -598,7 +601,7 @@ export default function DashboardGuru({ roleOverride = null }) {
       }
     } catch {}
     return null
-  }, [shiftSystem, user?.id])
+  }, [shiftSystem, activeTeacherIdForShift])
 
   // Toggle Tampilan Jadwal Shift Guru (Default disembunyikan agar tampilan bersih)
   const [showShiftSchedule, setShowShiftSchedule] = useState(false)
@@ -3410,10 +3413,10 @@ export default function DashboardGuru({ roleOverride = null }) {
                         <span style={{ fontSize: '1.25rem' }}>{isSiangToday ? '⛅' : '☀️'}</span>
                         <div>
                           <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isSiangToday ? '#0369A1' : '#92400E' }}>
-                            Instruksi Hari Ini: Seluruh Guru {isSiangToday ? 'Masuk Siang' : 'Masuk Pagi'} ({todayShift.jamMasuk} – {todayShift.jamPulang} WITA)
+                            Penyesuaian Hari Ini: Anda Dijadwalkan {isSiangToday ? 'Masuk Siang' : 'Masuk Pagi'} ({todayShift.jamMasuk} – {todayShift.jamPulang} WITA)
                           </div>
                           <div style={{ fontSize: '0.74rem', color: isSiangToday ? '#0284C7' : '#B45309' }}>
-                            Kegiatan: <strong>{todayShift.specialReason || (isSiangToday ? 'Semua Masuk Siang' : 'Semua Masuk Pagi')}</strong> • Besok otomatis kembali ke rotasi normal.
+                            Kegiatan: <strong>{todayShift.specialReason || (isSiangToday ? 'Masuk Siang' : 'Masuk Pagi')}</strong> • Besok otomatis kembali ke rotasi normal.
                           </div>
                         </div>
                       </div>

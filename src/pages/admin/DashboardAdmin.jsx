@@ -276,6 +276,41 @@ export default function DashboardAdmin() {
   const [savingSpecialShift, setSavingSpecialShift] = useState(false)
   const [specialShiftNotice, setSpecialShiftNotice] = useState({ type: '', text: '' })
 
+  const handleOpenSpecialShiftModal = (dateStr = null) => {
+    const targetDate = dateStr || getLocalDateString()
+    setSpecialShiftDate(targetDate)
+    const existing = shiftSystem.dailyShiftOverrides?.[targetDate]
+    if (existing) {
+      const isCustom = existing.targetScope === 'custom' || existing.targetShiftId === 'custom' || (existing.customTeacherShifts && Object.keys(existing.customTeacherShifts).length > 0)
+      setSpecialShiftTargetId(isCustom ? 'custom' : (existing.targetShiftId || 'shift-genap'))
+      setSpecialShiftScope(existing.targetScope || (isCustom ? 'custom' : 'all'))
+      setSelectedSpecialShiftTeachers(existing.targetTeacherIds || [])
+      setCustomTeacherShifts(existing.customTeacherShifts || {})
+      setSpecialShiftReason(existing.reason || '')
+    } else {
+      setSpecialShiftTargetId('custom')
+      setSpecialShiftScope('all')
+      setSelectedSpecialShiftTeachers([])
+      setCustomTeacherShifts({})
+      setSpecialShiftReason('')
+    }
+    setSpecialShiftTeacherSearch('')
+    setShowSpecialShiftModal(true)
+  }
+
+  const handleSelectSpecialShiftDate = (dStr) => {
+    setSpecialShiftDate(dStr)
+    const existing = shiftSystem.dailyShiftOverrides?.[dStr]
+    if (existing) {
+      const isCustom = existing.targetScope === 'custom' || existing.targetShiftId === 'custom' || (existing.customTeacherShifts && Object.keys(existing.customTeacherShifts).length > 0)
+      setSpecialShiftTargetId(isCustom ? 'custom' : (existing.targetShiftId || 'shift-genap'))
+      setSpecialShiftScope(existing.targetScope || (isCustom ? 'custom' : 'all'))
+      setSelectedSpecialShiftTeachers(existing.targetTeacherIds || [])
+      setCustomTeacherShifts(existing.customTeacherShifts || {})
+      setSpecialShiftReason(existing.reason || '')
+    }
+  }
+
   const filteredSpecialShiftTeachers = useMemo(() => {
     if (!Array.isArray(pegawaiData)) return []
     const q = (specialShiftTeacherSearch || '').trim().toLowerCase()
@@ -3948,14 +3983,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                   {/* Tombol Utama: Setel Shift Khusus Harian */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setSpecialShiftDate(getLocalDateString())
-                      setSpecialShiftTargetId('shift-genap')
-                      setSpecialShiftScope('all')
-                      setSelectedSpecialShiftTeachers([])
-                      setSpecialShiftTeacherSearch('')
-                      setShowSpecialShiftModal(true)
-                    }}
+                    onClick={() => handleOpenSpecialShiftModal(getLocalDateString())}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -4025,12 +4053,45 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                  .filter(d => d > todayStr)
                  .sort()
 
+               const getOverrideSummary = (ov) => {
+                 if (!ov) return null
+                 const isCustom = ov.targetScope === 'custom' || ov.targetShiftId === 'custom' || (ov.customTeacherShifts && Object.keys(ov.customTeacherShifts).length > 0)
+                 if (isCustom) {
+                   const pagi = Object.values(ov.customTeacherShifts || {}).filter(v => v === 'shift-ganjil').length
+                   const siang = Object.values(ov.customTeacherShifts || {}).filter(v => v === 'shift-genap').length
+                   return {
+                     title: `Penyesuaian Khusus Hari Ini Aktif: Mode Kustom (${pagi} Guru Pagi, ${siang} Guru Siang)`,
+                     detail: `Kegiatan: ${ov.reason || 'Kustom Per-Guru'} • Besok otomatis kembali ke rotasi normal masing-masing guru.`,
+                     badgeText: `${pagi} Pagi • ${siang} Siang`,
+                     icon: '🔀',
+                     isSiang: false,
+                     isCustom: true
+                   }
+                 }
+                 const isSiang = ov.targetShiftId === 'shift-genap' || String(ov.targetShiftId || '').toLowerCase().includes('siang')
+                 const scopeLabel = ov.targetScope === 'selected' ? `${(ov.targetTeacherIds || []).length} Guru Terpilih` : 'Seluruh Guru'
+                 return {
+                   title: `Penyesuaian Hari Ini Aktif: ${scopeLabel} Disetel ${isSiang ? 'Masuk Siang' : 'Masuk Pagi'}`,
+                   detail: `Kegiatan: ${ov.reason || (isSiang ? 'Semua Masuk Siang' : 'Semua Masuk Pagi')} • Besok otomatis kembali ke rotasi normal masing-masing guru.`,
+                   badgeText: isSiang ? 'Masuk Siang' : 'Masuk Pagi',
+                   icon: isSiang ? '⛅' : '☀️',
+                   isSiang,
+                   isCustom: false
+                 }
+               }
+
+               const todaySummary = getOverrideSummary(todayOverride)
+
                return (
                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
-                   {todayOverride && (
+                   {todayOverride && todaySummary && (
                      <div style={{
-                       background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
-                       border: '1.5px solid #F59E0B',
+                       background: todaySummary.isCustom 
+                         ? 'linear-gradient(135deg, #EEF2FF 0%, #E0F2FE 100%)' 
+                         : (todaySummary.isSiang 
+                           ? 'linear-gradient(135deg, #E0F2FE 0%, #F0F9FF 100%)' 
+                           : 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)'),
+                       border: todaySummary.isCustom ? '1.5px solid #6366F1' : (todaySummary.isSiang ? '1.5px solid #0284C7' : '1.5px solid #F59E0B'),
                        borderRadius: '16px',
                        padding: '1rem 1.25rem',
                        display: 'flex',
@@ -4038,38 +4099,66 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                        justifyContent: 'space-between',
                        flexWrap: 'wrap',
                        gap: '0.75rem',
-                       boxShadow: '0 4px 15px rgba(245, 158, 11, 0.15)'
+                       boxShadow: todaySummary.isCustom ? '0 4px 15px rgba(99, 102, 241, 0.15)' : (todaySummary.isSiang ? '0 4px 15px rgba(2, 132, 199, 0.15)' : '0 4px 15px rgba(245, 158, 11, 0.15)')
                      }}>
                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                         <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
-                           ☀️
+                         <div style={{ 
+                           width: '40px', 
+                           height: '40px', 
+                           borderRadius: '12px', 
+                           background: todaySummary.isCustom ? '#E0E7FF' : (todaySummary.isSiang ? '#BAE6FD' : '#FDE68A'), 
+                            display: 'flex', 
+                           alignItems: 'center', 
+                           justifyContent: 'center', 
+                           fontSize: '1.3rem' 
+                         }}>
+                           {todaySummary.icon}
                          </div>
                          <div>
-                           <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#92400E' }}>
-                             Penyesuaian Hari Ini Aktif: Seluruh Guru Disetel Masuk Pagi (07:00 - 14:00 WITA)
+                           <div style={{ fontSize: '0.92rem', fontWeight: 800, color: todaySummary.isCustom ? '#3730A3' : (todaySummary.isSiang ? '#0369A1' : '#92400E') }}>
+                             {todaySummary.title}
                            </div>
-                           <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
-                             Kegiatan: <strong>{todayOverride.reason || 'Semua Masuk Pagi'}</strong> • Besok otomatis kembali ke rotasi normal masing-masing guru.
+                           <div style={{ fontSize: '0.78rem', color: todaySummary.isCustom ? '#4338CA' : (todaySummary.isSiang ? '#0284C7' : '#B45309') }}>
+                             {todaySummary.detail}
                            </div>
                          </div>
                        </div>
-                       <button
-                         type="button"
-                         onClick={() => handleRemoveSpecialShift(todayStr)}
-                         style={{
-                           padding: '0.45rem 0.95rem',
-                           background: '#FFFFFF',
-                           color: '#DC2626',
-                           border: '1.5px solid #FECACA',
-                           borderRadius: '10px',
-                           fontSize: '0.78rem',
-                           fontWeight: 800,
-                           cursor: 'pointer',
-                           boxShadow: '0 2px 6px rgba(220, 38, 38, 0.1)'
-                         }}
-                       >
-                         Batalkan Hari Ini
-                       </button>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                         <button
+                           type="button"
+                           onClick={() => handleOpenSpecialShiftModal(todayStr)}
+                           style={{
+                             padding: '0.45rem 0.95rem',
+                             background: '#FFFFFF',
+                             color: '#4F46E5',
+                             border: '1.5px solid #C7D2FE',
+                             borderRadius: '10px',
+                             fontSize: '0.78rem',
+                             fontWeight: 800,
+                             cursor: 'pointer',
+                             boxShadow: '0 2px 6px rgba(79, 70, 229, 0.1)'
+                           }}
+                         >
+                           ✏️ Edit Hari Ini
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => handleRemoveSpecialShift(todayStr)}
+                           style={{
+                             padding: '0.45rem 0.95rem',
+                             background: '#FFFFFF',
+                             color: '#DC2626',
+                             border: '1.5px solid #FECACA',
+                             borderRadius: '10px',
+                             fontSize: '0.78rem',
+                             fontWeight: 800,
+                             cursor: 'pointer',
+                             boxShadow: '0 2px 6px rgba(220, 38, 38, 0.1)'
+                           }}
+                         >
+                           Batalkan Hari Ini
+                         </button>
+                       </div>
                      </div>
                    )}
 
@@ -4088,18 +4177,19 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                          <Calendar size={16} color="#16A34A" />
                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#166534' }}>
-                           Jadwal Masuk Pagi Terjadwal Mendatang:
+                           Jadwal Khusus Terjadwal Mendatang:
                          </span>
                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                            {upcomingDates.map(dateKey => {
                              const item = overrides[dateKey]
+                             const itemSummary = getOverrideSummary(item)
                              return (
                                <span
                                  key={dateKey}
                                  style={{
                                    display: 'inline-flex',
                                    alignItems: 'center',
-                                   gap: '5px',
+                                   gap: '6px',
                                    background: '#DCFCE7',
                                    color: '#15803D',
                                    border: '1px solid #86EFAC',
@@ -4109,7 +4199,13 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                                    fontWeight: 700
                                  }}
                                >
-                                 <span>{dateKey} ({item.reason || 'Pagi'})</span>
+                                 <span 
+                                   style={{ cursor: 'pointer' }}
+                                   onClick={() => handleOpenSpecialShiftModal(dateKey)}
+                                   title="Klik untuk melihat atau mengedit jadwal tanggal ini"
+                                 >
+                                   {dateKey} ({itemSummary?.badgeText || item?.reason || 'Khusus'})
+                                 </span>
                                  <button
                                    type="button"
                                    onClick={() => handleRemoveSpecialShift(dateKey)}
@@ -4229,6 +4325,15 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       badgeBorder = '#BAE6FD'
                     }
 
+                    const todayResolved = resolveTeacherShiftForDate({
+                      teacherId: p.id,
+                      date: new Date(),
+                      shifts: shiftSystem.shifts || DEFAULT_SHIFTS,
+                      assignments: shiftSystem.assignments || {},
+                      dailyShiftOverrides: shiftSystem.dailyShiftOverrides || {}
+                    })
+                    const isTodaySiang = todayResolved?.shiftId === 'shift-genap' || String(todayResolved?.shiftName || '').toLowerCase().includes('siang')
+
                     return (
                       <div key={p.id} className="card" style={{ padding: '1.15rem', borderRadius: '16px', background: 'white', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.75rem' }}>
                         <div>
@@ -4241,6 +4346,59 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                           <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                             {p.jabatan || 'Guru'} {p.nip ? `• NIP: ${p.nip}` : ''}
                           </p>
+
+                          {/* Indikator Shift Aktif Hari Ini (Mendukung Penyesuaian Harian Khusus) */}
+                          {todayResolved?.isSpecialDailyOverride ? (
+                            <div style={{
+                              marginTop: '0.65rem',
+                              padding: '0.5rem 0.75rem',
+                              borderRadius: '10px',
+                              background: isTodaySiang ? '#E0F2FE' : '#FEF3C7',
+                              border: isTodaySiang ? '1.5px solid #0284C7' : '1.5px solid #F59E0B',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              flexWrap: 'wrap',
+                              gap: '6px'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '1rem' }}>{isTodaySiang ? '⛅' : '☀️'}</span>
+                                <div>
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: isTodaySiang ? '#0369A1' : '#92400E' }}>
+                                    Hari Ini: {todayResolved.shiftName} ({todayResolved.jamMasuk} - {todayResolved.jamPulang})
+                                  </div>
+                                  <div style={{ fontSize: '0.68rem', color: isTodaySiang ? '#0284C7' : '#B45309' }}>
+                                    Khusus: {todayResolved.specialReason || 'Penyesuaian Tanggal'}
+                                  </div>
+                                </div>
+                              </div>
+                              <span style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                padding: '2px 7px',
+                                borderRadius: '6px',
+                                background: '#FFFFFF',
+                                color: isTodaySiang ? '#0369A1' : '#B45309',
+                                border: isTodaySiang ? '1px solid #BAE6FD' : '1px solid #FDE68A'
+                              }}>
+                                Aktif Hari Ini
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.72rem',
+                              color: '#64748B',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <span>Shift Aktif Hari Ini:</span>
+                              <strong style={{ color: isTodaySiang ? '#D97706' : '#059669' }}>
+                                {todayResolved?.shiftName || 'Shift'} ({todayResolved?.jamMasuk || '07:00'} - {todayResolved?.jamPulang || '14:00'})
+                              </strong>
+                            </div>
+                          )}
                         </div>
 
                         <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5088,7 +5246,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
                       <button
                         type="button"
-                        onClick={() => setSpecialShiftDate(todayStr)}
+                        onClick={() => handleSelectSpecialShiftDate(todayStr)}
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
@@ -5104,7 +5262,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSpecialShiftDate(tomorrowStr)}
+                        onClick={() => handleSelectSpecialShiftDate(tomorrowStr)}
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
@@ -5120,7 +5278,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSpecialShiftDate(lusaStr)}
+                        onClick={() => handleSelectSpecialShiftDate(lusaStr)}
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '8px',
@@ -5140,7 +5298,7 @@ Apakah Anda yakin untuk melanjutkan penghapusan?`
                       <input
                         type="date"
                         value={specialShiftDate}
-                        onChange={(e) => setSpecialShiftDate(e.target.value)}
+                        onChange={(e) => handleSelectSpecialShiftDate(e.target.value)}
                         style={{
                           flex: 1,
                           padding: '0.65rem 0.85rem',
